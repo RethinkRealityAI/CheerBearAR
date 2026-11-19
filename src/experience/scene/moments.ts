@@ -1,0 +1,522 @@
+// The eleven moments (plus a generic Cheer) as short choreographies on a Timeline: Cheer Bear's clip, the props that
+// appear, particles, lighting mood and sound. Every moment starts from and returns to a tidy idle, so they can follow
+// each other in any order. Timings port the Mattercraft timelines (cb-ref 3d.txt) where those existed: House Up
+// (house pops in 0.49 s, car "drive in" 2.6 s), Rainbow (flies in from the camera at 1.65 s, lands 2.65 s, grows
+// to 3.67 s), Magic Orb (rises 0.99 s, circles 1.24 / 2.48 / 3.72 / 4.96 s, emissive cycle 1.32 s steps), Party Time
+// (floor + TV rise in 0.5 s, theme song, disco ball spins). Running, Sleep, WakeUp, Cold and Dance are new designs.
+//
+// Runner rules: one moment at a time; up to two wait in a queue (repeats of the same name are ignored); 1.5 s
+// cooldown per name; Sleep is a state (she stays asleep until WakeUp, another action, the joystick, or ~30 s); a
+// queued action shortens a long moment (Party, House) to its outro once it has had a few seconds.
+import * as THREE from 'three';
+import { CORE_ACTIONS } from '../../shared/contracts';
+import type { BearClip } from '../../shared/contracts';
+import { Timeline, ease, sampleKeys } from '../core/timeline';
+import type { EmitOptions } from './fx';
+import { PAL, RAINBOW } from './fx';
+import type { Stage } from './stage';
+
+export const MOMENT_NAMES = [...CORE_ACTIONS, 'Cheer'] as const;
+export type MomentName = (typeof MOMENT_NAMES)[number];
+
+const ALIASES: Record<string, MomentName> = { wake: 'WakeUp', 'wake up': 'WakeUp', run: 'Running', magicorb: 'Magic', 'magic orb': 'Magic' };
+/** Case-insensitive name lookup ('wakeup', 'Wake Up', 'RAINBOW' ...). Null when unknown. */
+export function canonicalMoment(name: string): MomentName | null {
+  const n = String(name ?? '').trim().toLowerCase();
+  if (!n) return null;
+  for (const m of MOMENT_NAMES) if (m.toLowerCase() === n) return m;
+  return ALIASES[n] ?? ALIASES[n.replace(/[\s_-]+/g, ' ')] ?? ALIASES[n.replace(/[\s_-]+/g, '')] ?? null;
+}
+
+interface MomentDef {
+  tl: Timeline;
+  /** Put everything this moment touched back (called after the timeline ends or is cut). */
+  tidy(): void;
+  /** Time of the outro (a queued action may skip to it after `minT`). */
+  outro?: number;
+  minT?: number;
+  /** Turn her to the camera while it plays (default true). */
+  faceCam?: boolean;
+}
+
+interface Ctx {
+  st: Stage;
+  /** Her spot when the moment started (stage-local, y = 0). */
+  A: THREE.Vector3;
+  /** Unit XZ vector from her towards the camera, and the side vector (camera's right as seen from her). */
+  f: THREE.Vector3;
+  s: THREE.Vector3;
+  yawCam: number;
+  emit(o: EmitOptions): void;
+  reduced: boolean;
+  play(clip: BearClip, once?: boolean, speed?: number): void;
+}
+
+export interface RunnerHost {
+  reducedMotion: boolean;
+  /** Something needs a moment of quiet (e.g. AR: inside the house the House action opens/closes it instead). */
+  intercept?(name: MomentName): boolean;
+}
+
+const v3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const yawOf = (d: THREE.Vector3) => Math.atan2(d.x, d.z);
+
+export class MomentRunner {
+  private cur: { name: MomentName; def: MomentDef } | null = null;
+  private queue: MomentName[] = [];
+  private last = new Map<MomentName, number>();
+  private cutting = false;
+  private sleepT = 0;
+  private zT = 0;
+  /** Seconds she sleeps before waking up by herself. */
+  autoWake = 30;
+
+  constructor(private st: Stage, private host: RunnerHost) {}
+
+  get busy(): boolean {
+    return !!this.cur;
+  }
+  get current(): MomentName | null {
+    return this.cur?.name ?? null;
+  }
+  get asleep(): boolean {
+    return this.st.actor.asleep;
+  }
+
+  /** Queue or start a moment. Returns false for unknown names (or when ignored as a repeat / cooldown). */
+  trigger(name: string): boolean {
+    const m = canonicalMoment(name);
+    if (!m) return false;
+    if (this.host.intercept?.(m)) return true;
+    const t = performance.now();
+    if (this.cur?.name === m || this.queue.includes(m)) return false; // already happening
+    if (t - (this.last.get(m) ?? -1e9) < 1500) return false; // cooldown
+    if (m === 'Sleep' && this.asleep && !this.cur) return false; // already asleep
+    if (this.queue.length >= 2) this.queue.shift();
+    // asleep: anything else wakes her first
+    if (this.asleep && m !== 'WakeUp' && m !== 'Sleep' && !this.queue.includes('WakeUp') && this.cur?.name !== 'WakeUp') this.queue.push('WakeUp');
+    this.queue.push(m);
+    this.last.set(m, t);
+    if (!this.cur) this.next();
+    return true;
+  }
+
+  /** The joystick moved (or she was tapped) while asleep: wake up. */
+  nudge(): void {
+    if (this.asleep && this.cur?.name !== 'WakeUp' && !this.queue.includes('WakeUp')) {
+      this.queue.unshift('WakeUp');
+      if (!this.cur) this.next();
+    }
+  }
+
+  /** Cut whatever is playing and forget the queue (Move, a mode switch, entering the house). Sleep state stays. */
+  cancel(): void {
+    this.queue.length = 0;
+    this.cut();
+  }
+
+  /** Start again: everything tidy, awake, normal light. */
+  reset(): void {
+    this.cancel();
+    const a = this.st.actor;
+    a.asleep = false;
+    a.scripted = 0;
+    this.st.resetLayout();
+    this.st.media.stopTheme('party');
+    a.settle();
+    a.face('neutral');
+    this.sleepT = 0;
+  }
+
+  update(dt: number): void {
+    const a = this.st.actor;
+    if (this.cur) {
+      const { def } = this.cur;
+      if (this.queue.length && def.outro !== undefined && def.tl.t >= (def.minT ?? 3) && def.tl.t < def.outro) def.tl.skipTo(def.outro);
+      if (def.faceCam !== false) a.turnToPoint(this.st.cam, dt, 5);
+      if (def.tl.update(dt)) this.end();
+    }
+    if (a.asleep) {
+      this.sleepT += dt;
+      this.zT -= dt;
+      if (this.zT <= 0) {
+        this.zT = 1.2;
+        const p = a.position;
+        this.st.fx.emit({ count: 1, glyph: 'z', colors: [PAL.white, PAL.sky], at: v3(p.x + 0.12, 0.62, p.z + 0.05), vel: [0.05, 0.22, 0.02], sway: 0.05, life: [2.4, 2.8], size: [0.1, 0.16], drag: 0.2 });
+      }
+      if (this.sleepT > this.autoWake && !this.cur && !this.queue.length) this.nudge();
+    } else this.sleepT = 0;
+  }
+
+  // ------------------------------------------------------------------ internals
+  private next(): void {
+    const m = this.queue.shift();
+    if (!m) return;
+    const st = this.st, a = st.actor;
+    const A = a.position.clone().setY(0);
+    const f = st.cam.clone().sub(A).setY(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 0, 1);
+    f.normalize();
+    const s = v3(f.z, 0, -f.x); // the viewer's right (camera looks along -f)
+    const ctx: Ctx = {
+      st, A, f, s, yawCam: yawOf(f), reduced: this.host.reducedMotion,
+      emit: (o) => { if (!this.cutting) st.fx.emit(o); },
+      play: (clip, once = true, speed = 1) => {
+        if (this.cutting) return;
+        if (once) void a.once(clip, 6, speed);
+        else a.setLoop(clip, 0.25);
+      },
+    };
+    a.scripted++;
+    a.setLoop('idle', 0.25);
+    this.cur = { name: m, def: BUILD[m](ctx) };
+  }
+
+  private end(): void {
+    const c = this.cur;
+    if (!c) return;
+    this.cur = null;
+    c.def.tidy();
+    const a = this.st.actor;
+    a.scripted = Math.max(0, a.scripted - 1);
+    if (!a.scripted) a.settle();
+    if (this.queue.length) this.next();
+  }
+
+  private cut(): void {
+    if (!this.cur) return;
+    this.cutting = true;
+    try {
+      this.cur.def.tl.finish();
+    } finally {
+      this.cutting = false;
+    }
+    this.end();
+  }
+}
+
+// ==================================================================== the moments
+const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
+  Wave: (c) => {
+    const tl = new Timeline();
+    const head = c.A.clone().setY(0.95).addScaledVector(c.f, 0.1);
+    tl.at(0, () => { c.play('wave'); c.st.actor.face('happy', 3); })
+      .at(0.5, () => c.emit({ count: 6, glyph: 'heart', colors: [PAL.pink, PAL.pinkSoft, PAL.red], at: head, spread: [0.25, 0.1, 0.1], vel: [0, 0.35, 0.05], velSpread: [0.15, 0.1, 0.05], life: [1.4, 2], size: [0.08, 0.14], sway: 0.04 }))
+      .at(1.4, () => c.emit({ count: 5, glyph: 'heart', colors: [PAL.pink, PAL.pinkSoft], at: head, spread: [0.3, 0.1, 0.1], vel: [0, 0.4, 0.05], velSpread: [0.15, 0.1, 0.05], life: [1.4, 2], size: [0.07, 0.12], sway: 0.04 }))
+      .hold(3.2);
+    return { tl, tidy: () => undefined };
+  },
+
+  Sparkle: (c) => {
+    // Mattercraft: two sparkle emitters, one low and wide rising slowly (blue/pink/lilac/lime), one at chest height
+    const tl = new Timeline();
+    const cols = [0x1c64e0, 0xe74caa, 0xe6ccff, 0xcfe77f, PAL.yellow, PAL.white];
+    tl.at(0, () => { c.play('cheer'); c.st.actor.face('happy', 3); });
+    for (let k = 0; k < (c.reduced ? 3 : 6); k++) {
+      tl.at(0.15 + k * 0.4, () => c.emit({ count: 22, glyph: ['sparkle', 'star'], colors: cols, at: c.A.clone().setY(0.05), ring: 0.75, spread: [0, 0.05, 0], vel: [0, 0.45, 0], velSpread: [0.12, 0.15, 0.12], life: [1.4, 2.2], size: [0.06, 0.13], drag: 0.3 }));
+    }
+    tl.at(0.7, () => c.emit({ count: 50, glyph: ['sparkle', 'star', 'dot'], colors: cols, at: c.A.clone().setY(0.6), burst: 1.4, drag: 1.6, gravity: 0.15, life: [1.2, 1.9], size: [0.05, 0.12] }))
+      .hold(3.5);
+    return { tl, tidy: () => undefined };
+  },
+
+  Running: (c) => {
+    // a lap: a circle beside her, through her spot, then back to face you
+    const a = c.st.actor, R = c.st.variant === 'ar' ? 0.7 : 0.9, T = (2 * Math.PI * R) / 1.75;
+    const C = c.A.clone().addScaledVector(c.s, R);
+    const d0 = c.A.clone().sub(C).normalize();
+    const p = v3(), tan = v3();
+    let dustT = 0, lastT = 0;
+    const tl = new Timeline();
+    tl.at(0, () => { c.play('run', false); a.face('happy', T + 1); })
+      .tween(0.15, T, (k, t) => {
+        const th = -k * Math.PI * 2; // counter-clockwise seen from above: runs off to the viewer's right first
+        const cs = Math.cos(th), sn = Math.sin(th);
+        p.set(d0.x * cs - d0.z * sn, 0, d0.x * sn + d0.z * cs);
+        tan.set(-p.z, 0, p.x).multiplyScalar(-1); // direction of travel (d/dθ with θ decreasing)
+        a.position.copy(C).addScaledVector(p, R);
+        a.setHeading(yawOf(tan));
+        dustT -= t - lastT;
+        lastT = t;
+        if (dustT <= 0 && k < 0.98) {
+          dustT = 0.16;
+          c.emit({ count: 2, glyph: 'dot', colors: [PAL.white, PAL.pinkSoft], at: a.position.clone().setY(0.03), spread: [0.05, 0, 0.05], vel: [0, 0.15, 0], velSpread: [0.1, 0.05, 0.1], life: [0.5, 0.8], size: [0.05, 0.09], drag: 2 });
+        }
+      }, ease.sine)
+      .at(0.15 + T, () => { a.position.copy(c.A); c.play('idle', false); })
+      .at(0.3 + T, () => c.play('cheer'))
+      .hold(T + 2.2);
+    return { tl, faceCam: false, tidy: () => a.position.copy(c.A) };
+  },
+
+  Sleep: (c) => {
+    const a = c.st.actor, tl = new Timeline();
+    tl.at(0, () => { a.face('sleepy'); c.st.setMood('sleep'); c.play('sleep', false); a.asleep = true; })
+      .at(0.9, () => c.emit({ count: 1, glyph: 'z', colors: [PAL.white], at: c.A.clone().setY(0.62).addScaledVector(c.s, 0.12), vel: [0.05, 0.22, 0.02], sway: 0.05, life: [2.4, 2.8], size: [0.12, 0.16], drag: 0.2 }))
+      .hold(2.4);
+    return {
+      tl,
+      tidy: () => {
+        // cut before she fell asleep properly: still asleep (the state is the point of Sleep)
+        a.asleep = true;
+        c.st.setMood('sleep');
+      },
+    };
+  },
+
+  WakeUp: (c) => {
+    const a = c.st.actor, tl = new Timeline();
+    const was = a.asleep;
+    tl.at(0, () => {
+      a.asleep = false;
+      c.st.setMood('normal');
+      a.face(was ? 'surprised' : 'happy', 1.2);
+      c.play('wakeUp');
+    })
+      .at(1.3, () => { a.face('happy', 2); c.emit({ count: 18, glyph: ['sparkle', 'star'], colors: [PAL.yellow, PAL.white, PAL.pinkSoft], at: c.A.clone().setY(0.9), burst: 0.8, drag: 1.5, life: [0.9, 1.4], size: [0.05, 0.1] }); })
+      .hold(3);
+    return { tl, tidy: () => { a.asleep = false; c.st.setMood('normal'); } };
+  },
+
+  Dance: (c) => {
+    const a = c.st.actor, tl = new Timeline(), D = 6;
+    tl.at(0, () => { c.play('dance', false); a.face('happy', D); });
+    for (let t = 0.2; t < D - 0.6; t += c.reduced ? 0.8 : 0.45) {
+      tl.at(t, () => c.emit({ count: 1, glyph: 'note', colors: [PAL.pink, PAL.blue, PAL.purple, PAL.yellow], at: c.A.clone().setY(0.9), spread: [0.35, 0.15, 0.2], vel: [0, 0.32, 0], velSpread: [0.15, 0.05, 0.1], sway: 0.06, life: [1.6, 2.2], size: [0.1, 0.15], drag: 0.3 }));
+    }
+    tl.at(D - 0.4, () => c.play('idle', false)).hold(D);
+    return { tl, tidy: () => undefined };
+  },
+
+  Magic: (c) => {
+    // the Magic Orb: rises from her paws, circles her (Mattercraft keys 1.24 / 2.48 / 3.72 / 4.96 s), comes back and
+    // bursts into sparkles; its glow cycles blue -> gold -> pink -> green -> blue
+    const st = c.st, orb = st.orb, mat = orb.material as THREE.MeshStandardMaterial, a = st.actor;
+    const keys: Array<[number, [number, number, number]]> = []; // in her frame: x = side, y = up, z = towards camera
+    keys.push([0, [0, 0.45, 0.22]], [0.99, [0, 0.62, 0.3]], [1.24, [0, 0.75, 0.62]], [2.48, [-0.75, 0.82, 0]], [3.72, [0, 0.9, -0.7]], [4.96, [0.75, 0.82, 0]], [6.0, [0, 0.75, 0.55]], [6.8, [0, 0.72, 0.32]]);
+    const scaleK: Array<[number, number]> = [[0, 0.02], [0.99, 0.13], [3.31, 0.12], [4.96, 0.1], [6.8, 0.12]];
+    const glow: Array<[number, [number, number, number]]> = [[0, [0.3, 0.6, 1]], [1.32, [1, 0.8, 0.2]], [2.64, [1, 0.3, 0.8]], [3.97, [0.2, 1, 0.6]], [4.96, [0.3, 0.6, 1]], [6.3, [1, 0.8, 0.2]], [7, [0.3, 0.6, 1]]];
+    const loc = v3(), g = v3();
+    const place = (t: number) => {
+      sampleKeys(keys, t, loc);
+      orb.position.copy(c.A).addScaledVector(c.s, loc.x).addScaledVector(c.f, loc.z).setY(loc.y + Math.sin(t * 5) * 0.02);
+      orb.scale.setScalar(sampleKeys(scaleK, t));
+      sampleKeys(glow, t, g);
+      mat.emissive.setRGB(g.x, g.y, g.z);
+    };
+    let trail = 0, prev = 0;
+    const tl = new Timeline();
+    tl.at(0, () => { place(0); orb.visible = true; mat.opacity = 0.85; c.play('present'); a.face('surprised', 1); })
+      .tween(0, 6.8, (_k, t) => {
+        place(t);
+        trail -= t - prev;
+        prev = t;
+        if (trail <= 0) {
+          trail = c.reduced ? 0.2 : 0.08;
+          c.emit({ count: 1, glyph: 'sparkle', colors: [0x80ccff, PAL.white, PAL.yellow], at: orb.position, spread: [0.03, 0.03, 0.03], vel: [0, 0.05, 0], life: [0.6, 0.9], size: [0.04, 0.08] });
+        }
+      }, ease.linear)
+      .at(1.6, () => { a.face('happy', 5); c.play('sway', false); })
+      .at(6.8, () => {
+        c.emit({ count: 60, glyph: ['sparkle', 'star', 'dot'], colors: [0x80ccff, PAL.yellow, PAL.pink, PAL.white, PAL.green], at: orb.position.clone(), burst: 1.3, drag: 1.7, gravity: 0.12, life: [1, 1.7], size: [0.05, 0.12] });
+        c.play('cheer');
+      })
+      .tween(6.8, 0.25, (k) => { orb.scale.setScalar(0.12 * (1 + k * 0.8)); mat.opacity = 0.85 * (1 - k); }, ease.out)
+      .at(7.1, () => { orb.visible = false; })
+      .hold(8.6);
+    return { tl, tidy: () => { orb.visible = false; mat.opacity = 0.85; mat.emissive.setRGB(0.3, 0.6, 1); } };
+  },
+
+  Cold: (c) => {
+    const st = c.st, a = st.actor, tl = new Timeline(), D = 6;
+    const base = c.A.clone();
+    tl.at(0, () => { st.setMood('cold'); a.face('cold', D); c.play('shiver', false); });
+    for (let t = 0; t < D - 1; t += c.reduced ? 0.5 : 0.22) {
+      tl.at(t, () => c.emit({ count: 4, glyph: 'snow', colors: [PAL.white, PAL.ice, PAL.sky], at: c.A.clone().setY(1.9), spread: [1.3, 0.2, 1.1], vel: [0, -0.32, 0], velSpread: [0.05, 0.08, 0.05], sway: 0.08, spin: 1, life: [3.2, 4], size: [0.05, 0.1], drag: 0 }));
+    }
+    if (!c.reduced) tl.tween(0.3, D - 1.4, (_k, t) => { a.position.copy(base).addScaledVector(c.s, Math.sin(t * 62) * 0.006); }, ease.linear);
+    tl.at(D - 1.1, () => { a.position.copy(base); st.setMood('normal'); c.play('idle', false); })
+      .at(D - 0.9, () => { a.face('happy', 1.5); c.emit({ count: 10, glyph: 'heart', colors: [PAL.pink, PAL.orange], at: c.A.clone().setY(0.85), burst: 0.5, drag: 1.2, life: [1, 1.4], size: [0.06, 0.1] }); })
+      .hold(D);
+    return { tl, tidy: () => { a.position.copy(base); st.setMood('normal'); } };
+  },
+
+  Party: (c) => {
+    // Party Time: tile floor grows in (0.5 s), the TV rises behind her playing the theme with sound, the disco ball
+    // drops in and spins, party lights, she dances, notes and confetti
+    const st = c.st, a = st.actor, D = 15, OUT = D - 1.2;
+    const floor = st.discoFloor, fm = floor.material, ball = st.discoBall, tv = st.partyTv;
+    const tvPos = c.A.clone().addScaledVector(c.f, -1.25).addScaledVector(c.s, 0.25);
+    const tl = new Timeline();
+    tl.at(0, () => {
+      st.disco.position.copy(c.A);
+      floor.mesh.visible = true;
+      fm.opacity = 0;
+      ball.visible = true;
+      ball.position.set(0, 1.55, 0);
+      ball.scale.setScalar(0.001);
+      tv.visible = true;
+      tv.position.copy(tvPos);
+      tv.rotation.y = yawOf(c.f);
+      tv.scale.setScalar(0.001);
+      st.media.playTheme('party', true);
+      st.setMood('party');
+      a.face('happy', D);
+    })
+      .tween(0, 0.5, (k) => { fm.opacity = 0.92 * k; floor.mesh.scale.setScalar(0.3 + 0.7 * k); }, ease.out)
+      .tween(0.1, 0.55, (k) => tv.scale.setScalar(Math.max(0.001, k)), ease.backOut)
+      .tween(0.35, 0.7, (k) => { ball.scale.setScalar(Math.max(0.001, k)); ball.position.y = 2.1 - 0.55 * k; }, ease.backOut)
+      .at(0.4, () => c.play('dance', false));
+    for (let t = 0.6; t < OUT - 0.3; t += c.reduced ? 0.9 : 0.4) {
+      tl.at(t, () => {
+        c.emit({ count: 1, glyph: 'note', colors: [PAL.pink, PAL.blue, PAL.purple, PAL.yellow], at: c.A.clone().setY(0.95), spread: [0.4, 0.15, 0.25], vel: [0, 0.3, 0], velSpread: [0.15, 0.05, 0.1], sway: 0.06, life: [1.6, 2.2], size: [0.1, 0.15] });
+        c.emit({ count: 3, glyph: ['dot', 'star'], colors: RAINBOW, at: c.A.clone().setY(1.75), spread: [1, 0.1, 0.9], vel: [0, -0.4, 0], velSpread: [0.1, 0.1, 0.1], sway: 0.05, spin: 3, life: [2.4, 3], size: [0.04, 0.07], drag: 0 });
+      });
+    }
+    tl.at(OUT, () => { st.media.stopTheme('party'); st.setMood('normal'); c.play('idle', false); c.play('cheer'); })
+      .tween(OUT, 0.6, (k) => { fm.opacity = 0.92 * (1 - k); floor.mesh.scale.setScalar(1 - 0.3 * k); }, ease.in)
+      .tween(OUT, 0.5, (k) => tv.scale.setScalar(Math.max(0.001, 1 - k)), ease.in)
+      .tween(OUT + 0.1, 0.6, (k) => { ball.scale.setScalar(Math.max(0.001, 1 - k)); ball.position.y = 1.55 + 0.55 * k; }, ease.in)
+      .hold(D);
+    return {
+      tl, outro: OUT, minT: 4,
+      tidy: () => {
+        floor.mesh.visible = false; fm.opacity = 0; floor.mesh.scale.setScalar(1);
+        ball.visible = false; ball.scale.setScalar(1);
+        tv.visible = false; tv.scale.setScalar(1);
+        st.media.stopTheme('party');
+        st.setMood('normal');
+      },
+    };
+  },
+
+  Rainbow: (c) => {
+    // flies in from beside the camera, lands behind her, pops up big, holds while she sways, shrinks away
+    const st = c.st, rb = st.rainbow, a = st.actor;
+    const camDist = st.cam.distanceTo(c.A);
+    const from = st.cam.clone().addScaledVector(st.camDir, Math.min(0.9, camDist * 0.3)).setY(Math.max(0.3, st.cam.y - 0.4)).addScaledVector(c.s, 0.25);
+    const land = c.A.clone().addScaledVector(c.f, -0.55);
+    const p = v3();
+    let trail = 0, prev = 0;
+    const tl = new Timeline();
+    tl.at(0, () => {
+      rb.visible = true;
+      rb.position.copy(from);
+      rb.rotation.set(0, c.yawCam, 0);
+      rb.scale.setScalar(0.08);
+      a.face('surprised', 1);
+    })
+      .tween(0, 1.0, (k, t) => {
+        p.lerpVectors(from, land, k);
+        p.y += Math.sin(k * Math.PI) * 0.35;
+        rb.position.copy(p);
+        rb.rotation.z = Math.sin(k * Math.PI * 2) * 0.3;
+        rb.scale.setScalar(0.08 + 0.07 * k);
+        trail -= t - prev;
+        prev = t;
+        if (trail <= 0) {
+          trail = 0.05;
+          c.emit({ count: 2, glyph: ['sparkle', 'dot'], colors: RAINBOW, at: p.clone().setY(p.y + 0.05), spread: [0.04, 0.04, 0.04], life: [0.5, 0.9], size: [0.04, 0.08] });
+        }
+      }, ease.inOut)
+      .at(1.0, () => {
+        c.emit({ count: 40, glyph: ['sparkle', 'star', 'dot'], colors: RAINBOW, at: land.clone().setY(0.1), burst: 1.1, drag: 1.6, gravity: 0.2, life: [1, 1.6], size: [0.05, 0.11] });
+        a.face('happy', 4);
+        c.play('sway', false);
+      })
+      // Mattercraft: 0.14 -> 0.93 (x) with a squash, then settles
+      .tween(1.0, 0.9, (k) => { rb.scale.set(0.15 + 0.85 * k, 0.15 + 0.85 * k * (0.9 + 0.1 * k), 1 * (0.15 + 0.85 * k)); rb.rotation.z = 0; }, ease.elasticOut)
+      .tween(4.6, 0.7, (k) => rb.scale.setScalar(Math.max(0.001, 1 - k)), ease.in)
+      .at(5.3, () => { rb.visible = false; c.play('idle', false); })
+      .hold(6.2);
+    return { tl, tidy: () => { rb.visible = false; rb.scale.setScalar(1); rb.rotation.set(0, 0, 0); } };
+  },
+
+  House: (c) => (c.st.variant === 'ar' ? houseAr(c) : houseShowcase(c)),
+
+  Cheer: (c) => {
+    const tl = new Timeline();
+    tl.at(0, () => { c.play('cheer'); c.st.actor.face('happy', 2.5); })
+      .at(0.5, () => c.emit({ count: 26, glyph: ['star', 'sparkle'], colors: [PAL.pink, PAL.yellow, PAL.blue, PAL.white], at: c.A.clone().setY(0.9), burst: 1, drag: 1.6, gravity: 0.2, life: [1, 1.5], size: [0.05, 0.11] }))
+      .hold(2.6);
+    return { tl, tidy: () => undefined };
+  },
+};
+
+// ------------------------------------------------------------------ House
+function carDrive(c: Ctx, from: THREE.Vector3, to: THREE.Vector3): (k: number) => void {
+  const car = c.st.car, d = to.clone().sub(from);
+  const yaw = yawOf(d);
+  return (k) => {
+    car.position.lerpVectors(from, to, k);
+    car.rotation.set(0, yaw, 0);
+    c.st.carModel.position.y = Math.abs(Math.sin(k * 40)) * 0.012 * (1 - k);
+  };
+}
+
+/** Showcase: her house pops up behind her (elastic), the car drives in and parks, the mailbox pops up. */
+function houseShowcase(c: Ctx): MomentDef {
+  const st = c.st, h = st.house, mb = st.mailbox, a = st.actor;
+  const hp = c.A.clone().addScaledVector(c.f, -2.7);
+  const park = hp.clone().addScaledVector(c.s, 1.75).addScaledVector(c.f, 0.85);
+  const start = park.clone().addScaledVector(c.s, 3.2).addScaledVector(c.f, 0.2);
+  const gone = park.clone().addScaledVector(c.s, -6);
+  const mbp = hp.clone().addScaledVector(c.s, -1.7).addScaledVector(c.f, 1.0);
+  const tl = new Timeline();
+  const OUT = 9.2;
+  tl.at(0, () => {
+    h.visible = true; h.position.copy(hp); h.rotation.set(0, c.yawCam, 0); h.scale.setScalar(0.07);
+    mb.visible = false; mb.position.copy(mbp); mb.rotation.set(0, c.yawCam + 0.4, 0);
+    st.car.visible = false;
+    c.emit({ count: 45, glyph: ['sparkle', 'star'], colors: [0xe6ccff, PAL.pink, PAL.yellow, PAL.white], at: hp.clone().setY(0.4), spread: [0.9, 0.3, 0.6], burst: 0.9, drag: 1.4, life: [1, 1.6], size: [0.07, 0.14] });
+    a.face('surprised', 1.2);
+  })
+    .tween(0, 0.9, (k) => h.scale.setScalar(0.07 + 0.93 * k), ease.elasticOut)
+    .at(0.7, () => { mb.visible = true; mb.scale.setScalar(0.001); })
+    .tween(0.7, 0.6, (k) => mb.scale.setScalar(Math.max(0.001, k)), ease.backOut)
+    .at(0.9, () => { c.play('present'); a.face('happy', 6); })
+    .at(1.2, () => { st.car.visible = true; })
+    .tween(1.2, 2.6, carDrive(c, start, park), ease.out)
+    .at(4.0, () => c.play('cheer'))
+    .at(OUT, () => c.play('wave'))
+    .tween(OUT, 1.6, carDrive(c, park, gone), ease.in)
+    .tween(OUT + 1.2, 0.5, (k) => { h.scale.setScalar(Math.max(0.001, 1 - k)); mb.scale.setScalar(Math.max(0.001, 1 - k)); }, ease.in)
+    .hold(OUT + 1.9);
+  return {
+    tl, outro: OUT, minT: 4,
+    tidy: () => {
+      h.visible = false; h.scale.setScalar(1);
+      mb.visible = false; mb.scale.setScalar(1);
+      st.car.visible = false;
+    },
+  };
+}
+
+/** AR: the house is already there. It bounces with sparkles, the car drives up and parks beside it, then drives off. */
+function houseAr(c: Ctx): MomentDef {
+  const st = c.st, h = st.house, a = st.actor, mb = st.mailbox;
+  const front = st.houseSize.z / 2;
+  const park = v3(h.position.x + st.houseSize.x / 2 + 0.55, 0, h.position.z + front * 0.4);
+  const start = park.clone().add(v3(3, 0, 0.6));
+  const gone = park.clone().add(v3(-0.4, 0, 3.5));
+  const OUT = 7.5;
+  const mbRot = mb.rotation.y;
+  const tl = new Timeline();
+  tl.at(0, () => {
+    st.car.visible = false;
+    c.emit({ count: 45, glyph: ['sparkle', 'star'], colors: [0xe6ccff, PAL.pink, PAL.yellow, PAL.white], at: h.position.clone().setY(1.6), spread: [0.8, 0.3, 0.5], burst: 1, drag: 1.4, life: [1, 1.6], size: [0.07, 0.14] });
+    c.play('present');
+    a.face('happy', 6);
+  })
+    .tween(0, 0.9, (k) => { const s = 1 + Math.sin(k * Math.PI) * 0.12 * (1 - k * 0.5); h.scale.set(s, 2 - s, s); }, ease.linear)
+    .tween(0.3, 1.2, (k) => { mb.rotation.y = mbRot + Math.sin(k * Math.PI * 4) * 0.25 * (1 - k); }, ease.linear)
+    .at(0.8, () => { st.car.visible = true; })
+    .tween(0.8, 2.6, carDrive(c, start, park), ease.out)
+    .at(3.6, () => c.play('cheer'))
+    .tween(OUT, 1.8, carDrive(c, park, gone), ease.in)
+    .hold(OUT + 1.9);
+  return {
+    tl, outro: OUT, minT: 3.5,
+    tidy: () => { h.scale.setScalar(1); mb.rotation.y = mbRot; st.car.visible = false; },
+  };
+}

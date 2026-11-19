@@ -128,7 +128,15 @@ export interface TriggerEvent {
 }
 
 export interface VoiceEvents {
-  status: { status: CallStatus; message?: string };
+  /**
+   * `code` says why (for the app to pick the right message); `mock` is true while the call is the demo call.
+   */
+  status: {
+    status: CallStatus;
+    message?: string;
+    code?: 'not_configured' | 'mic_denied' | 'token_failed' | 'call_failed' | 'demo';
+    mock?: boolean;
+  };
   transcript: TranscriptEvent;
   trigger: TriggerEvent;
   /** Cheer Bear's audio (the remote side of the call), or null when it stops. Feed to ExperienceApi.setSpeechStream. */
@@ -142,7 +150,8 @@ export interface VoiceSession {
   readonly status: CallStatus;
   readonly muted: boolean;
   /** Must be called from a tap (microphone permission + audio unlock). */
-  startCall(opts?: { to?: string }): Promise<void>;
+  /** `mock: true` starts the demo call (no Twilio, scripted Cheer Bear audio). */
+  startCall(opts?: { to?: string; mock?: boolean }): Promise<void>;
   endCall(): Promise<void>;
   setMuted(muted: boolean): void;
   /** Send a typed message: runs it through the classifier (when user triggers are allowed) and the SMS bridge. */
@@ -159,7 +168,8 @@ export interface VoiceSession {
 //   src/bear/index.ts        export function loadBear(opts?: { onProgress?: (p: number) => void }): Promise<BearCharacter>
 //                            export function unlockAudio(): void            // call inside a user gesture
 //   src/experience/index.ts  export function createExperience(opts?: ExperienceOptions): ExperienceApi
-//   src/voice/index.ts       export function createVoiceSession(opts: { getConfig(): AppConfig }): VoiceSession
+//   src/voice/index.ts       export function createVoiceSession(opts: { getConfig(): AppConfig; mock?; endCallWhenHidden? }): VoiceSession
+//                            (extras: VoiceSessionExt, ConfigClientExt.services, AdminApiExt; see docs/handoff/server-voice.md)
 //                            export const configClient: ConfigClient
 //                            export const adminApi: AdminApi
 //   src/app/App.tsx          default export: the experience page       (route /)

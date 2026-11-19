@@ -4,10 +4,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx scripts/dev.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:web": "vite",
+    "dev:api": "tsx watch --clear-screen=false --include 'netlify/**' --include 'src/shared/**' scripts/dev-api.ts",
+    "test:server": "tsx scripts/check-classifier.ts && tsx scripts/check-config.ts && tsx scripts/check-voice-logic.ts && tsx scripts/check-functions.ts",
+    "test:voice": "tsx scripts/check-voice-browser.ts"
   },
   "dependencies": {
     "@fontsource-variable/fredoka": "^5.3.0",

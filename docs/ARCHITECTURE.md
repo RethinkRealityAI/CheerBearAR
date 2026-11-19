@@ -31,7 +31,7 @@ change elsewhere, write it in `docs/handoff/<your-name>.md` and code against the
 | `src/bear/`, `src/lipsync/`, `src/audio/`, `public/models/cheer-bear*`, `tools/blender/` | The character (`BearCharacter`), lip sync engine, shared AudioContext, model build scripts, `/lab/lipsync` test page (`src/bear/lab/`) | bear-lipsync |
 | `src/experience/` (except `modes/face`, `modes/photo`, `capture`) | Engine boot, splash, mode switching, in-camera HUD, showcase mode, AR mode, actions, props; `public/models/props/`, `public/media/` | xr-core |
 | `src/experience/modes/face/`, `src/experience/modes/photo/`, `src/experience/capture/` | Selfie filter, 3D Photo, capture, reveal, share | xr-capture (starts after xr-core) |
-| `netlify/functions/`, `src/voice/`, `netlify.toml`, `.env.example`, README dev section | Functions, Twilio client, browser transcription, trigger dispatch, config client | server-voice |
+| `netlify/functions/`, `netlify/lib/` (shared server helpers), `scripts/`, `src/voice/`, `netlify.toml`, `.env.example`, README dev section | Functions, Twilio client, browser transcription, trigger dispatch, config client | server-voice |
 | `src/app/`, `src/admin/`, `src/main.tsx` | React shell and routes, talk button, chat, game modes, hints, settings, admin panel | app-ui |
 
 Routes: `/` the experience, `/admin` the admin panel, `/lab/lipsync` the lip sync test page (unlinked).

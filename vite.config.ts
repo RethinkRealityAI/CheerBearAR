@@ -10,7 +10,9 @@ export default defineConfig({
   server: {
     host: true,
     port: Number(process.env.PORT) || 5173,
-    proxy: process.env.API_PROXY ? { '/api': { target: process.env.API_PROXY, changeOrigin: true } } : undefined,
+    // `npm run dev` (scripts/dev.ts) sets API_PROXY to the local functions runner. xfwd passes the browser's host on
+    // (X-Forwarded-Host) so the functions' same-origin check accepts requests coming through this proxy.
+    proxy: process.env.API_PROXY ? { '/api': { target: process.env.API_PROXY, changeOrigin: true, xfwd: true } } : undefined,
   },
   build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 1500 },
 });

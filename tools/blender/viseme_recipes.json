@@ -1,0 +1,17 @@
+{
+  "_doc": "Viseme recipes in ARKit shape terms. 'jaw' is the jawOpen amount that belongs to the viseme; the baked viseme_* target holds the LIP shape only (everything except jawOpen), and the runtime drives jawOpen separately from loudness x the viseme's jaw. 'L/R' pairs are written once with the suffix '*' meaning both sides.",
+  "aa": { "jaw": 0.62, "shapes": { "mouthLowerDown*": 0.3, "mouthUpperUp*": 0.12, "mouthStretch*": 0.1 } },
+  "E":  { "jaw": 0.34, "shapes": { "mouthStretch*": 0.45, "mouthSmile*": 0.15, "mouthLowerDown*": 0.3, "mouthUpperUp*": 0.25 } },
+  "I":  { "jaw": 0.2,  "shapes": { "mouthStretch*": 0.6, "mouthSmile*": 0.3, "mouthUpperUp*": 0.3, "mouthLowerDown*": 0.3 } },
+  "O":  { "jaw": 0.42, "shapes": { "mouthFunnel": 0.75, "mouthPucker": 0.25 } },
+  "U":  { "jaw": 0.16, "shapes": { "mouthPucker": 0.9, "mouthFunnel": 0.4 } },
+  "PP": { "jaw": 0.0,  "shapes": { "mouthPress*": 0.6, "mouthRollLower": 0.3, "mouthRollUpper": 0.2 } },
+  "FF": { "jaw": 0.06, "shapes": { "mouthRollLower": 0.65, "mouthUpperUp*": 0.25, "mouthPress*": 0.2 } },
+  "TH": { "jaw": 0.16, "shapes": { "tongueOut": 0.35, "mouthUpperUp*": 0.15 } },
+  "DD": { "jaw": 0.22, "shapes": { "mouthStretch*": 0.25, "mouthUpperUp*": 0.15, "mouthLowerDown*": 0.15 } },
+  "kk": { "jaw": 0.26, "shapes": { "mouthStretch*": 0.3, "mouthLowerDown*": 0.12 } },
+  "CH": { "jaw": 0.16, "shapes": { "mouthFunnel": 0.45, "mouthPucker": 0.35, "mouthUpperUp*": 0.25, "mouthLowerDown*": 0.25 } },
+  "SS": { "jaw": 0.08, "shapes": { "mouthStretch*": 0.5, "mouthSmile*": 0.2, "mouthUpperUp*": 0.25, "mouthLowerDown*": 0.25 } },
+  "nn": { "jaw": 0.13, "shapes": { "mouthStretch*": 0.2, "mouthUpperUp*": 0.1 } },
+  "RR": { "jaw": 0.16, "shapes": { "mouthPucker": 0.45, "mouthFunnel": 0.35 } }
+}
