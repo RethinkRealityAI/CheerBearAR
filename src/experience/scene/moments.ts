@@ -16,10 +16,15 @@ import type { EmitOptions } from './fx';
 import { PAL, RAINBOW } from './fx';
 import type { Stage } from './stage';
 
-export const MOMENT_NAMES = [...CORE_ACTIONS, 'Cheer'] as const;
+// 'Stare' (the Care Bear Stare, round 2) is not in CORE_ACTIONS (the admin's keyword list); the experience lists it in
+// `actions` so the app and the voice keywords can use it ("care bear stare").
+export const MOMENT_NAMES = [...CORE_ACTIONS, 'Cheer', 'Stare'] as const;
 export type MomentName = (typeof MOMENT_NAMES)[number];
 
-const ALIASES: Record<string, MomentName> = { wake: 'WakeUp', 'wake up': 'WakeUp', run: 'Running', magicorb: 'Magic', 'magic orb': 'Magic' };
+const ALIASES: Record<string, MomentName> = {
+  wake: 'WakeUp', 'wake up': 'WakeUp', run: 'Running', magicorb: 'Magic', 'magic orb': 'Magic',
+  'care bear stare': 'Stare', carebearstare: 'Stare', 'bear stare': 'Stare', bearstare: 'Stare',
+};
 /** Case-insensitive name lookup ('wakeup', 'Wake Up', 'RAINBOW' ...). Null when unknown. */
 export function canonicalMoment(name: string): MomentName | null {
   const n = String(name ?? '').trim().toLowerCase();
@@ -50,6 +55,8 @@ interface Ctx {
   emit(o: EmitOptions): void;
   reduced: boolean;
   play(clip: BearClip, once?: boolean, speed?: number): void;
+  /** True while the moment is being cut short (spawn nothing new). */
+  cut(): boolean;
 }
 
 export interface RunnerHost {
@@ -161,6 +168,7 @@ export class MomentRunner {
     const ctx: Ctx = {
       st, A, f, s, yawCam: yawOf(f), reduced: this.host.reducedMotion,
       emit: (o) => { if (!this.cutting) st.fx.emit(o); },
+      cut: () => this.cutting,
       play: (clip, once = true, speed = 1) => {
         if (this.cutting) return;
         if (once) void a.once(clip, 6, speed);
@@ -215,7 +223,7 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
     for (let k = 0; k < (c.reduced ? 3 : 6); k++) {
       tl.at(0.15 + k * 0.4, () => c.emit({ count: 22, glyph: ['sparkle', 'star'], colors: cols, at: c.A.clone().setY(0.05), ring: 0.75, spread: [0, 0.05, 0], vel: [0, 0.45, 0], velSpread: [0.12, 0.15, 0.12], life: [1.4, 2.2], size: [0.06, 0.13], drag: 0.3 }));
     }
-    tl.at(0.7, () => c.emit({ count: 50, glyph: ['sparkle', 'star', 'dot'], colors: cols, at: c.A.clone().setY(0.6), burst: 1.4, drag: 1.6, gravity: 0.15, life: [1.2, 1.9], size: [0.05, 0.12] }))
+    tl.at(0.7, () => c.emit({ count: 50, glyph: ['sparkle', 'star', 'dot'], colors: cols, at: c.A.clone().setY(0.6), burst: 1.4, drag: 1.2, gravity: 1.6, life: [1.6, 2.3], size: [0.05, 0.12], floor: 0, bounce: 0.5, rest: 0.6 }))
       .hold(3.5);
     return { tl, tidy: () => undefined };
   },
@@ -318,7 +326,8 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
       }, ease.linear)
       .at(1.6, () => { a.face('happy', 5); c.play('sway', false); })
       .at(6.8, () => {
-        c.emit({ count: 60, glyph: ['sparkle', 'star', 'dot'], colors: [0x80ccff, PAL.yellow, PAL.pink, PAL.white, PAL.green], at: orb.position.clone(), burst: 1.3, drag: 1.7, gravity: 0.12, life: [1, 1.7], size: [0.05, 0.12] });
+        c.emit({ count: 60, glyph: ['sparkle', 'star', 'dot'], colors: [0x80ccff, PAL.yellow, PAL.pink, PAL.white, PAL.green], at: orb.position.clone(), burst: 1.3, drag: 1.3, gravity: 1.4, life: [1.4, 2], size: [0.05, 0.12], floor: 0, bounce: 0.45, rest: 0.5 });
+        c.st.play.starBurst(orb.position, 6, 1.1, [0x80ccff, PAL.yellow, PAL.pink, PAL.white, PAL.green], 1.2);
         c.play('cheer');
       })
       .tween(6.8, 0.25, (k) => { orb.scale.setScalar(0.16 * (1 + k * 0.8)); mat.opacity = 0.92 * (1 - k); }, ease.out)
@@ -332,7 +341,9 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
     const base = c.A.clone();
     tl.at(0, () => { st.setMood('cold'); a.face('cold', D); c.play('shiver', false); });
     for (let t = 0; t < D - 1; t += c.reduced ? 0.5 : 0.22) {
-      tl.at(t, () => c.emit({ count: 4, glyph: 'snow', colors: [PAL.white, PAL.ice, PAL.sky], at: c.A.clone().setY(1.9), spread: [1.3, 0.2, 1.1], vel: [0, -0.32, 0], velSpread: [0.05, 0.08, 0.05], sway: 0.08, spin: 1, life: [3.2, 4], size: [0.05, 0.1], drag: 0 }));
+      // the flakes land (floor and her head) and pile up for a moment before they melt away
+      tl.at(t, () => c.emit({ count: 4, glyph: 'snow', colors: [PAL.white, PAL.ice, PAL.sky], at: c.A.clone().setY(1.9), spread: [1.3, 0.2, 1.1], vel: [0, -0.42, 0], velSpread: [0.05, 0.08, 0.05], sway: 0.08, spin: 1, life: [5.5, 6], size: [0.05, 0.1], drag: 0, floor: 0, bounce: 0, rest: 1.6, perch: c.st.headPerch }));
+      if (!c.reduced) tl.at(t + 0.1, () => c.emit({ count: 1, glyph: 'snow', colors: [PAL.white], at: c.A.clone().setY(1.6), spread: [0.18, 0.1, 0.16], vel: [0, -0.4, 0], velSpread: [0.02, 0.05, 0.02], sway: 0.03, spin: 0.6, life: [5, 5.5], size: [0.06, 0.09], drag: 0, floor: 0, bounce: 0, rest: 1.8, perch: c.st.headPerch }));
     }
     if (!c.reduced) tl.tween(0.3, D - 1.4, (_k, t) => { a.position.copy(base).addScaledVector(c.s, Math.sin(t * 62) * 0.006); }, ease.linear);
     tl.at(D - 1.1, () => { a.position.copy(base); st.setMood('normal'); c.play('idle', false); })
@@ -366,14 +377,16 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
       .tween(0, 0.5, (k) => { fm.opacity = 0.92 * k; floor.mesh.scale.setScalar(0.3 + 0.7 * k); }, ease.out)
       .tween(0.1, 0.55, (k) => tv.scale.setScalar(Math.max(0.001, k)), ease.backOut)
       .tween(0.35, 0.7, (k) => { ball.scale.setScalar(Math.max(0.001, k)); ball.position.y = 2.1 - 0.55 * k; }, ease.backOut)
-      .at(0.4, () => c.play('dance', false));
+      .at(0.4, () => c.play('dance', false))
+      // balloons rise around her and float, bumping each other (tap one to pop it); they float away at the end
+      .at(0.6, () => { if (!c.cut()) st.play.balloonsAround(c.A, c.reduced ? 4 : 7, 1.45, 0.95); });
     for (let t = 0.6; t < OUT - 0.3; t += c.reduced ? 0.9 : 0.4) {
       tl.at(t, () => {
         c.emit({ count: 1, glyph: 'note', colors: [PAL.pink, PAL.blue, PAL.purple, PAL.yellow], at: c.A.clone().setY(0.95), spread: [0.4, 0.15, 0.25], vel: [0, 0.3, 0], velSpread: [0.15, 0.05, 0.1], sway: 0.06, life: [1.6, 2.2], size: [0.1, 0.15] });
-        c.emit({ count: 3, glyph: ['dot', 'star'], colors: RAINBOW, at: c.A.clone().setY(1.75), spread: [1, 0.1, 0.9], vel: [0, -0.4, 0], velSpread: [0.1, 0.1, 0.1], sway: 0.05, spin: 3, life: [2.4, 3], size: [0.04, 0.07], drag: 0 });
+        c.emit({ count: 3, glyph: ['dot', 'star'], colors: RAINBOW, at: c.A.clone().setY(1.75), spread: [1, 0.1, 0.9], vel: [0, -0.4, 0], velSpread: [0.1, 0.1, 0.1], sway: 0.05, spin: 3, life: [4.6, 5], size: [0.04, 0.07], drag: 0, floor: 0, bounce: 0, rest: 1.2 });
       });
     }
-    tl.at(OUT, () => { st.media.stopTheme('party'); st.setMood('normal'); c.play('idle', false); c.play('cheer'); })
+    tl.at(OUT, () => { st.media.stopTheme('party'); st.setMood('normal'); c.play('idle', false); c.play('cheer'); st.play.releaseBalloons(); })
       .tween(OUT, 0.6, (k) => { fm.opacity = 0.92 * (1 - k); floor.mesh.scale.setScalar(1 - 0.3 * k); }, ease.in)
       .tween(OUT, 0.5, (k) => tv.scale.setScalar(Math.max(0.001, 1 - k)), ease.in)
       .tween(OUT + 0.1, 0.6, (k) => { ball.scale.setScalar(Math.max(0.001, 1 - k)); ball.position.y = 1.55 + 0.55 * k; }, ease.in)
@@ -386,6 +399,7 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
         tv.visible = false; tv.scale.setScalar(1);
         st.media.stopTheme('party');
         st.setMood('normal');
+        st.play.releaseBalloons();
       },
     };
   },
@@ -420,12 +434,16 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
         }
       }, ease.inOut)
       .at(1.0, () => {
-        c.emit({ count: 40, glyph: ['sparkle', 'star', 'dot'], colors: RAINBOW, at: land.clone().setY(0.1), burst: 1.1, drag: 1.6, gravity: 0.2, life: [1, 1.6], size: [0.05, 0.11] });
+        c.emit({ count: 40, glyph: ['sparkle', 'star', 'dot'], colors: RAINBOW, at: land.clone().setY(0.1), burst: 1.1, drag: 1.4, gravity: 1.2, life: [1.4, 2], size: [0.05, 0.11], floor: 0, bounce: 0.5, rest: 0.5 });
+        if (!c.cut()) c.st.play.starBurst(land.clone().setY(0.25), 10, 1.3, RAINBOW, 1.9);
         a.face('happy', 4);
         c.play('sway', false);
       })
       // Mattercraft: 0.14 -> 0.93 (x) with a squash, then settles
       .tween(1.0, 0.9, (k) => { rb.scale.set(0.15 + 0.85 * k, 0.15 + 0.85 * k * (0.9 + 0.1 * k), 1 * (0.15 + 0.85 * k)); rb.rotation.z = 0; }, ease.elasticOut)
+      // the rainbow drips a few more sparkly stars off its arc while it stands
+      .at(2.2, () => { if (!c.cut()) c.st.play.starBurst(rb.position.clone().addScaledVector(c.s, 0.5).setY(1.05), c.reduced ? 2 : 4, 0.5, RAINBOW, 0.4); })
+      .at(3.3, () => { if (!c.cut()) c.st.play.starBurst(rb.position.clone().addScaledVector(c.s, -0.5).setY(1.05), c.reduced ? 2 : 4, 0.5, RAINBOW, 0.4); })
       .tween(4.6, 0.7, (k) => rb.scale.setScalar(Math.max(0.001, 1 - k)), ease.in)
       .at(5.3, () => { rb.visible = false; c.play('idle', false); })
       .hold(6.2);
@@ -433,6 +451,8 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
   },
 
   House: (c) => (c.st.variant === 'ar' ? houseAr(c) : houseShowcase(c)),
+
+  Stare: (c) => stare(c),
 
   Cheer: (c) => {
     const tl = new Timeline();
@@ -519,4 +539,86 @@ function houseAr(c: Ctx): MomentDef {
     tl, outro: OUT, minT: 3.5,
     tidy: () => { h.scale.setScalar(1); mb.rotation.y = mbRot; st.car.visible = false; },
   };
+}
+
+// ------------------------------------------------------------------ the Care Bear Stare
+/**
+ * Her signature: she plants her feet, her tummy glitters, and a flat-striped rainbow beam rolls out of it, dips to the
+ * floor and runs along it towards you (in AR it stops a little in front of your feet); stars bounce out where it
+ * lands. 5.6 s.
+ */
+function stare(c: Ctx): MomentDef {
+  const st = c.st, a = st.actor, beam = st.beam, bm = beam.material;
+  const tummy = c.A.clone().addScaledVector(c.f, 0.2).setY(0.42);
+  const camXZ = st.cam.clone().setY(0);
+  const toCam = camXZ.distanceTo(c.A);
+  let land: THREE.Vector3;
+  if (st.variant === 'ar') {
+    // along the floor towards you, ending ~45 cm in front of the phone
+    const metres = Math.max(0.05, st.root.scale.x);
+    const L = THREE.MathUtils.clamp(toCam - 0.45 / metres, 1.2, 6);
+    land = c.A.clone().addScaledVector(c.f, L).addScaledVector(c.s, 0.12).setY(0.012);
+  } else {
+    // across the cloud towards you and off to one side, landing where you can see the stars bounce
+    const L = THREE.MathUtils.clamp(toCam * 0.3, 0.8, 1.2);
+    land = c.A.clone().addScaledVector(c.f, L).addScaledVector(c.s, 0.85).setY(0.012);
+  }
+  const W0 = 0.14, W1 = st.variant === 'ar' ? 0.62 : 0.5;
+  const FIRE = 1.0, RUN = 0.55, END = 3.8, BACK = 0.5;
+  let head = 0, tail = 0, glit = 0, sprk = 0, starT = 0, prev = 0, prevB = 0;
+  const p = v3();
+  const along = (u: number): THREE.Vector3 => {
+    const s2 = Math.min(1, u / 0.45);
+    return p.lerpVectors(tummy, land, u).setY(land.y + (tummy.y - land.y) * (1 - s2) * (1 - s2) * (1 + 2 * s2) + 0.04);
+  };
+  const tl = new Timeline();
+  tl.at(0, () => { c.play('present'); a.face('happy', 5); a.jiggle(-0.12); })
+    // the tummy glitters while she gathers it up
+    .tween(0, FIRE, (_k, t) => {
+      glit -= t - prev;
+      prev = t;
+      if (glit <= 0) {
+        glit = c.reduced ? 0.25 : 0.1;
+        c.emit({ count: 3, glyph: ['sparkle', 'star'], colors: [PAL.white, PAL.yellow, PAL.pink], at: tummy, spread: [0.07, 0.07, 0.03], burst: 0.35, drag: 2.5, life: [0.3, 0.5], size: [0.04, 0.08] });
+      }
+    }, ease.linear)
+    .at(FIRE - 0.15, () => c.emit({ count: 1, glyph: 'ring', colors: [PAL.white], at: tummy, life: [0.3, 0.32], size: [0.26, 0.27], spin: 0 }))
+    .at(FIRE, () => {
+      if (c.cut()) return;
+      beam.mesh.visible = true;
+      bm.opacity = 0.96;
+      a.jiggle(0.2);
+      c.emit({ count: 14, glyph: ['sparkle', 'star', 'heart'], colors: RAINBOW, at: tummy, burst: 0.9, drag: 2, life: [0.5, 0.8], size: [0.05, 0.1] });
+    })
+    .tween(FIRE, RUN, (k) => { head = k; }, ease.out)
+    .tween(FIRE, END + BACK - FIRE, (_k, t) => {
+      beam.set(tummy, land, tail, Math.max(head, tail + 0.001), W0, W1, t, c.reduced ? 0.3 : 1);
+      // sparkles stream along it, stars bounce out where it lands
+      sprk -= t - prevB;
+      prevB = t;
+      if (sprk <= 0 && head > 0.1 && tail < 0.9) {
+        sprk = c.reduced ? 0.2 : 0.07;
+        const u = tail + Math.random() * (head - tail);
+        c.emit({ count: 1, glyph: ['sparkle', 'star'], colors: [PAL.white, ...RAINBOW], at: along(u), spread: [0.08, 0.03, 0.08], vel: [0, 0.3, 0], life: [0.5, 0.8], size: [0.04, 0.08] });
+      }
+      if (head >= 0.98 && tail < 0.6 && t >= starT) {
+        starT = t + (c.reduced ? 0.42 : 0.2);
+        st.play.starBurst(land, 2, 1.1, RAINBOW, 2.2);
+      }
+    }, ease.linear)
+    .at(FIRE + RUN, () => {
+      if (c.cut()) return;
+      c.emit({ count: 24, glyph: ['sparkle', 'star', 'dot'], colors: RAINBOW, at: land.clone().setY(0.08), burst: 1.2, drag: 1.4, gravity: 1.4, life: [1.2, 1.8], size: [0.05, 0.11], floor: 0, bounce: 0.5, rest: 0.4 });
+      c.emit({ count: 1, glyph: 'ring', colors: [PAL.white], at: land.clone().setY(0.05), life: [0.35, 0.4], size: [0.5, 0.52], spin: 0 });
+    })
+    .tween(END, BACK, (k) => { tail = k; bm.opacity = 0.96 * (1 - k * 0.4); }, ease.in)
+    .at(END + BACK, () => {
+      beam.mesh.visible = false;
+      if (c.cut()) return;
+      st.play.starBurst(land, 6, 1.4, RAINBOW, 2.4);
+      c.play('cheer');
+      a.face('happy', 2);
+    })
+    .hold(5.6);
+  return { tl, tidy: () => { beam.mesh.visible = false; bm.opacity = 0.96; } };
 }

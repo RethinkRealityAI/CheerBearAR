@@ -11,6 +11,13 @@ import { Actor } from './actor';
 import { DiscoFloor, Particles, chromaKeyMaterial, contactShadow } from './fx';
 import { damp } from '../core/timeline';
 import type { Media } from './media';
+import { Playground } from '../physics/playground';
+import { StareBeam } from './stare';
+
+/** Gravity for the toys, in metres per second squared (soft: hearts float a little). */
+const TOY_G = 6.4;
+/** The showcase treats Cheer Bear as this many metres tall (AR: the stage scale). */
+const SHOWCASE_M = 0.9;
 
 export type Variant = 'showcase' | 'ar';
 export type MoodName = 'normal' | 'sleep' | 'cold' | 'party';
@@ -31,6 +38,15 @@ export class Stage {
   readonly content = new THREE.Group(); // everything except the tint (the AR mode moves/scales root)
   readonly actor: Actor;
   readonly fx = new Particles(700);
+  /** Physical toys: thrown hearts, bouncing stars, party balloons (src/experience/physics). */
+  readonly play: Playground;
+  /** The Care Bear Stare beam (the Stare moment). */
+  readonly beam = new StareBeam();
+  /** Her head, for snow to land on (the Cold moment); follows her every frame. */
+  readonly headPerch = new THREE.Sphere(new THREE.Vector3(0, 0.76, 0), 0.24);
+  /** Her arms are open for a catch (set by the toss game every frame). */
+  catching = false;
+  catchY = 0.6;
   readonly hemi = new THREE.HemisphereLight(0xffffff, 0xc8a8bc, 1.25);
   readonly sun = new THREE.DirectionalLight(0xfff3e6, 1.7);
   // house set
@@ -61,6 +77,10 @@ export class Stage {
   private partyT = 0;
   private c1 = new THREE.Color();
   private c2 = new THREE.Color();
+  private inv = new THREE.Matrix4();
+  private camW = new THREE.Vector3();
+  private sunOff = new THREE.Vector3(2.2, 5, 3.2);
+  private pw = new THREE.Vector3();
 
   constructor(readonly variant: Variant, kit: PropKit, readonly media: Media) {
     this.root.name = `stage-${variant}`;
@@ -151,6 +171,10 @@ export class Stage {
 
     this.content.add(this.fx.points);
 
+    // ---- physical toys + the Stare beam (one program each, compiled with everything else at load)
+    this.play = new Playground(this.fx);
+    this.content.add(this.play.group, this.beam.mesh);
+
     // ---- mood tint: a camera-facing flat quad (sleep dims everything, cold frosts it); drawn last, no depth
     this.tint = new THREE.Mesh(
       new THREE.PlaneGeometry(4, 4),
@@ -192,7 +216,7 @@ export class Stage {
     if (camWorld) {
       camWorld.getWorldPosition(this.cam);
       camWorld.getWorldDirection(this.camDir);
-      const inv = new THREE.Matrix4().copy(this.root.matrixWorld).invert();
+      const inv = this.inv.copy(this.root.matrixWorld).invert();
       this.cam.applyMatrix4(inv);
       this.camDir.transformDirection(inv);
     }
@@ -221,20 +245,43 @@ export class Stage {
     if (this.tint.visible) {
       // just in front of the camera, facing it, big enough to cover the view
       this.tint.position.copy(this.cam).addScaledVector(this.camDir, 0.5 / Math.max(1e-3, this.root.scale.x));
-      this.tint.lookAt(this.root.localToWorld(this.cam.clone()));
+      this.tint.lookAt(this.root.localToWorld(this.camW.copy(this.cam)));
       this.tint.scale.setScalar(1 / Math.max(1e-3, this.root.scale.x));
     }
     this.sun.target.position.copy(this.actor.position).setY(0.5);
-    this.sun.position.copy(this.actor.position).add(new THREE.Vector3(2.2, 5, 3.2));
+    this.sun.position.copy(this.actor.position).add(this.sunOff);
     this.discoFloor.update(dt);
     if (this.discoBall.visible) this.discoBall.rotation.y += dt * 1.2;
+    this.updateToys(dt);
     this.fx.update(dt);
-    if (this.portal && this.portal.visible) this.portal.lookAt(this.root.localToWorld(this.cam.clone()).setY(this.portal.getWorldPosition(new THREE.Vector3()).y));
+    if (this.portal && this.portal.visible) this.portal.lookAt(this.root.localToWorld(this.camW.copy(this.cam)).setY(this.portal.getWorldPosition(this.pw).y));
+  }
+
+  /** The toys' physics: her body, the house walls (AR, house at rest), gravity in stage units. */
+  private updateToys(dt: number): void {
+    const play = this.play, a = this.actor;
+    const metres = this.variant === 'ar' ? Math.max(0.05, this.root.scale.x) : SHOWCASE_M;
+    play.world.gravityY = TOY_G / metres;
+    play.setBear(a.position, this.catching && !!a.bear && !a.asleep, this.catchY);
+    // her arms reach out a little in front of her
+    play.sensor.x += Math.sin(a.heading) * 0.15;
+    play.sensor.z += Math.cos(a.heading) * 0.15;
+    this.headPerch.center.set(a.position.x, 0.76, a.position.z);
+    const hb = play.houseBox, h = this.house;
+    hb.on = this.variant === 'ar' && h.visible && !this.interior.visible && Math.abs(h.scale.x - 1) < 0.2;
+    if (hb.on) {
+      const hw = this.houseSize.x / 2, hd = this.houseSize.z / 2;
+      hb.min.set(h.position.x - hw, 0, h.position.z - hd);
+      hb.max.set(h.position.x + hw, this.houseSize.y * 0.62, h.position.z + hd);
+    }
+    play.update(dt);
   }
 
   /** Everything back to its resting layout (Start again). */
   resetLayout(): void {
     this.fx.clear();
+    this.play.clear();
+    this.beam.mesh.visible = false;
     this.rainbow.visible = false;
     this.discoFloor.mesh.visible = false;
     this.discoBall.visible = false;

@@ -15,7 +15,7 @@ export function ActionsPanel() {
           return (
             <button key={k} type="button" className="cb-action" onClick={() => c.quickAction(k)}>
               <span className="cb-action-icon" style={{ background: look.color }} aria-hidden="true">
-                <look.icon size={22} strokeWidth={2.2} />
+                <look.icon size={18} strokeWidth={2.4} />
               </span>
               <span>{look.label}</span>
             </button>

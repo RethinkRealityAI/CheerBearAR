@@ -15,6 +15,10 @@ import type { MomentRunner } from '../../scene/moments';
 import { damp, ease } from '../../core/timeline';
 import { IS_PHONE } from '../../core/device';
 import { bindGestures, keyStick, type Shared } from '../shared';
+import { HeartToss, hugBear } from '../../physics/toss';
+
+/** The "throw hearts" hint shows once per visit (after the look-around hint). */
+let tossHinted = false;
 
 const FOV_WIDE = 50; // portrait screens: a taller view shows more of Care-a-Lot
 const FOV_LAND = 38;
@@ -57,8 +61,25 @@ export class ShowcaseMode implements Mode {
   private stick: { readonly vector: THREE.Vector2; readonly active: boolean } | null = null;
   /** Programs compiled after warm-up (pitfall 13 check: must not grow when moments appear). */
   programsAfterWarm = 0;
+  /** Swipe up to throw hearts at her (src/experience/physics/toss.ts). */
+  readonly toss: HeartToss;
+  private hintNext = '';
+  private onKey = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space' || !this.active || e.repeat) return;
+    if ((e.target as HTMLElement)?.closest?.('input,textarea,select,button,[contenteditable]')) return;
+    e.preventDefault();
+    this.throwHeart(0.42 + Math.random() * 0.16, (Math.random() - 0.5) * 0.2);
+  };
 
   constructor(private sh: Shared, readonly stage: Stage, private runner: MomentRunner, backdrop: THREE.Texture) {
+    stage.actor.soft = sh.reduced;
+    this.toss = new HeartToss({
+      stage, runner, layer: sh.hud.layer, reduced: sh.reduced,
+      constrain: (p) => {
+        const l = Math.hypot(p.x, p.z);
+        if (l > LIM.area) { p.x *= LIM.area / l; p.z *= LIM.area / l; }
+      },
+    });
     backdrop.mapping = THREE.EquirectangularReflectionMapping;
     this.scene.background = backdrop;
     // the panorama's floating island (its centre column) straight ahead of the default view
@@ -94,6 +115,8 @@ export class ShowcaseMode implements Mode {
     this.scene.environmentIntensity = 0.7;
     this.unbind = bindGestures(c, {
       onTap: (x, y) => this.tap(x, y),
+      onFlick: (power, side) => this.throwHeart(power, side),
+      onLongPress: (x, y) => this.hug(x, y),
       onDrag: (dx, dy) => {
         if (!this.active) return;
         this.yaw = THREE.MathUtils.clamp(this.yaw - dx * 0.006, -LIM.yaw, LIM.yaw);
@@ -171,11 +194,18 @@ export class ShowcaseMode implements Mode {
     this.stick = this.sh.hud.joystick(true);
     this.hintT = 5;
     this.sh.hud.hint(IS_PHONE ? 'Drag to look around' : 'Drag to look, arrows walk');
+    this.hintNext = tossHinted ? '' : IS_PHONE ? 'Swipe up to throw hearts' : 'Press Space to throw hearts';
+    this.toss.show(true);
+    window.addEventListener('keydown', this.onKey);
   }
 
   exit(_to: ExperienceMode): void {
     this.active = false;
     this.runner.cancel();
+    this.toss.show(false);
+    this.toss.reset();
+    this.stage.play.clear();
+    window.removeEventListener('keydown', this.onKey);
     this.sh.hud.joystick(false);
     this.sh.hud.hint('');
     this.stick = null;
@@ -191,7 +221,16 @@ export class ShowcaseMode implements Mode {
     return this.runner.trigger(name);
   }
 
+  /** Throw a heart at her (swipe up, Space, tests). */
+  throwHeart(power: number, side = 0): boolean {
+    if (!this.active || !this.stage.actor.bear) return false;
+    const ok = this.toss.throw(power, side);
+    if (ok && this.hintNext) { tossHinted = true; this.hintNext = ''; this.hintT = 0; this.sh.hud.hint(''); }
+    return ok;
+  }
+
   reset(): void {
+    this.toss.reset();
     this.runner.reset();
     const a = this.stage.actor;
     a.position.set(0, 0, 0);
@@ -228,9 +267,14 @@ export class ShowcaseMode implements Mode {
         const l = Math.hypot(p.x, p.z);
         if (l > LIM.area) { p.x *= LIM.area / l; p.z *= LIM.area / l; }
       });
-      if (this.hintT > 0 && (this.hintT -= dt) <= 0) this.sh.hud.hint('');
+      if (this.hintT > 0 && (this.hintT -= dt) <= 0) {
+        // then, once: how to throw hearts
+        if (this.hintNext) { this.sh.hud.hint(this.hintNext); this.hintNext = ''; tossHinted = true; this.hintT = 5; }
+        else this.sh.hud.hint('');
+      }
     }
     this.runner.update(dt);
+    if (this.active) this.toss.update(dt);
     // camera follows her
     this.target.x += (a.position.x - this.target.x) * damp(3.5, dt);
     this.target.z += (a.position.z - this.target.z) * damp(3.5, dt);
@@ -290,24 +334,46 @@ export class ShowcaseMode implements Mode {
     if (!this.active || !this.canvas) return;
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     this.ray.setFromCamera(new THREE.Vector2((x / w) * 2 - 1, -(y / h) * 2 + 1), this.cam);
+    // party balloons pop first (the stage sits at the origin here: world = stage space)
+    if (this.stage.play.popRay(this.ray.ray)) return;
     const a = this.stage.actor;
-    if (!a.bear) return;
-    // her body: a capsule-ish box around her spot (the skinned mesh bounds are unreliable for raycasts)
-    const box = new THREE.Box3(new THREE.Vector3(-0.32, 0, -0.32).add(a.position), new THREE.Vector3(0.32, 1.02, 0.32).add(a.position));
-    if (!this.ray.ray.intersectsBox(box)) return;
+    if (!a.bear || !this.hitsBear(this.ray.ray)) return;
+    // a poke: she always jiggles; a reaction plays when she's free
+    a.jiggle(0.14);
     const name = a.asleep ? 'WakeUp' : TAP_REACTIONS[Math.floor(Math.random() * TAP_REACTIONS.length)];
     if (this.runner.busy && !a.asleep) return;
     if (this.runner.trigger(name)) this.sh.tapAction(name);
   }
 
+  private box = new THREE.Box3();
+  private hitsBear(ray: THREE.Ray): boolean {
+    // her body: a capsule-ish box around her spot (the skinned mesh bounds are unreliable for raycasts)
+    const p = this.stage.actor.position;
+    this.box.min.set(p.x - 0.32, 0, p.z - 0.32);
+    this.box.max.set(p.x + 0.32, 1.02, p.z + 0.32);
+    return ray.intersectsBox(this.box);
+  }
+
+  /** Long press on her: a hug (a squeeze, a ring of hearts). */
+  private hug(x: number, y: number): void {
+    if (!this.active || !this.canvas) return;
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    this.ray.setFromCamera(new THREE.Vector2((x / w) * 2 - 1, -(y / h) * 2 + 1), this.cam);
+    if (!this.stage.actor.bear || !this.hitsBear(this.ray.ray)) return;
+    hugBear(this.stage, this.runner, this.sh.reduced);
+  }
+
   dispose(): void {
     this.releaseRenderer();
     this.keys.dispose();
+    this.toss.show(false);
+    window.removeEventListener('keydown', this.onKey);
   }
 }
 
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
-const WIDE: Record<string, number> = { House: 3.4, Party: 1.6, Rainbow: 1.0, Running: 1.2, Magic: 0.8, Cold: 0.6 };
+const WIDE: Record<string, number> = { House: 3.4, Party: 1.6, Rainbow: 1.0, Running: 1.2, Magic: 0.8, Cold: 0.6, Stare: 0.9 };
+
 
 /** A soft white cloud under her (one colour fading out), so walking reads against the far-away panorama. */
 function cloudFloor(): THREE.Mesh {

@@ -143,7 +143,14 @@ export function ConversationSheet() {
           </button>
         </header>
         {tabs.length > 1 && (
-          <div className="cb-tabs" role="tablist" aria-label="Conversation" onKeyDown={onTabKey}>
+          <div
+            className="cb-tabs"
+            role="tablist"
+            aria-label="Conversation"
+            onKeyDown={onTabKey}
+            style={{ '--n': tabs.length, '--i': Math.max(0, tabs.findIndex((t) => t.id === activeTab)) } as React.CSSProperties}
+          >
+            <span className="cb-tabs-pill" aria-hidden="true" />
             {tabs.map((t) => (
               <button
                 key={t.id}

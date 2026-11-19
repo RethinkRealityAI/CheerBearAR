@@ -10,7 +10,18 @@ export const RUN_SPEED = 1.7;
 export class Actor {
   /** Feet on the stage floor; rotation.y = heading (0 = facing +z). The bear is normalised to 1 unit tall inside. */
   readonly holder = new THREE.Group();
+  /** Between the holder and the bear: squash-and-stretch and little hops live here (her shadow stays put). */
+  readonly body = new THREE.Group();
   bear: BearCharacter | null = null;
+  /** Look at this (world space) instead of the camera while set (a heart flying at her). */
+  lookOverride: THREE.Vector3 | null = null;
+  /** A hop height (stage units) added for one frame by the toss game's side-steps. */
+  hop = 0;
+  /** Reduced motion: smaller jiggles. */
+  soft = false;
+  // squash spring: s = vertical stretch (+ taller, - squashed)
+  private sq = 0;
+  private sqV = 0;
   heading = 0;
   /** > 0 while a moment drives her (the joystick waits). */
   scripted = 0;
@@ -23,6 +34,13 @@ export class Actor {
 
   constructor(name: string) {
     this.holder.name = name;
+    this.body.name = `${name}-body`;
+    this.holder.add(this.body);
+  }
+
+  /** A squash-and-stretch jiggle (tap, catch, landing). `amount` ~0.1 small, 0.25 big; negative squashes first. */
+  jiggle(amount = 0.14): void {
+    this.sqV += (this.soft ? 0.5 : 1) * amount * 22;
   }
 
   attach(bear: BearCharacter): void {
@@ -32,17 +50,17 @@ export class Actor {
     o.rotation.set(0, 0, 0);
     o.scale.setScalar(1 / (bear.height || 1));
     o.userData.cbxOwnGpu = !!bear.releaseRenderer;
-    this.holder.add(o);
+    this.body.add(o);
     this.gait = 'idle';
     bear.play(this.asleep ? 'sleep' : 'idle', { fade: 0.2 });
     this.loop = this.asleep ? 'sleep' : 'idle';
   }
   detach(): void {
-    if (this.bear && this.bear.object.parent === this.holder) this.holder.remove(this.bear.object);
+    if (this.bear && this.bear.object.parent === this.body) this.body.remove(this.bear.object);
     this.bear = null;
   }
   get attached(): boolean {
-    return !!this.bear && this.bear.object.parent === this.holder;
+    return !!this.bear && this.bear.object.parent === this.body;
   }
 
   get position(): THREE.Vector3 {
@@ -130,9 +148,18 @@ export class Actor {
   }
 
   update(dt: number, lookAt: THREE.Vector3 | null): void {
+    // squash spring (semi-implicit, stable at 10 fps too): stretch up = thinner, squash = wider
+    const h = Math.min(dt, 0.05);
+    this.sqV += (-190 * this.sq - 11 * this.sqV) * h;
+    this.sq += this.sqV * h;
+    if (Math.abs(this.sq) < 1e-4 && Math.abs(this.sqV) < 1e-3) { this.sq = 0; this.sqV = 0; }
+    const sq = THREE.MathUtils.clamp(this.sq, -0.3, 0.3);
+    this.body.scale.set(1 - sq * 0.5, 1 + sq, 1 - sq * 0.5);
+    this.body.position.y = Math.max(0, this.hop);
     const b = this.bear;
     if (!b) return;
-    b.lookAt(this.asleep || this.walking || this.scripted ? null : lookAt);
+    const look = this.lookOverride && !this.asleep ? this.lookOverride : this.asleep || this.walking || this.scripted ? null : lookAt;
+    b.lookAt(look);
     // talking while standing: the chatty idle (only switches on change)
     if (!this.asleep && !this.walking && !this.scripted && performance.now() > this.onceUntil) {
       const want: BearClip = b.speaking ? 'talkIdle' : 'idle';

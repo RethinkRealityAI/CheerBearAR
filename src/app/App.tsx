@@ -52,6 +52,32 @@ export default function App() {
   );
 }
 
+/**
+ * Game chip + toasts, centred under the experience's top bar. It measures itself and tells the experience's hint
+ * pill how far to slide down (--cb-top-reserve), so a toast and a hint never sit on top of each other.
+ */
+function TopSlot() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    let last = -1;
+    const apply = () => {
+      const h = Math.round(el.getBoundingClientRect().height);
+      if (h === last) return;
+      last = h;
+      if (h > 0) root.style.setProperty('--cb-top-reserve', `${h + 4}px`);
+      else root.style.removeProperty('--cb-top-reserve');
+    };
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    apply();
+    return () => { ro.disconnect(); root.style.removeProperty('--cb-top-reserve'); };
+  }, []);
+  return <div ref={ref} className="cb-top-slot"><GameChip /><Toast /></div>;
+}
+
 function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>; stageRef: React.RefObject<HTMLDivElement> }) {
   const started = useApp((s) => s.started);
   const isDesktop = useApp((s) => s.isDesktop);
@@ -80,7 +106,7 @@ function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>
           <div className="cb-layer-stage">
             {started && (
               <>
-                <div className="cb-top-slot"><GameChip /><Toast /></div>
+                <TopSlot />
                 <TalkOrb />
               </>
             )}

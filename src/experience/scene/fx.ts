@@ -134,12 +134,21 @@ export interface EmitOptions {
   /** Sideways sway amplitude (snow, notes, Zs). */
   sway?: number;
   delay?: number;
+  /** Bounce on (or land on) a floor at this height (stage space). */
+  floor?: number;
+  /** Floor bounciness 0..1 (0 = lands and stays, like snow). Default 0.45. */
+  bounce?: number;
+  /** Seconds a landed particle stays before it fades (default: the rest of its life). */
+  rest?: number;
+  /** Also land on top of this sphere (snow on her head). The object is read live, keep it. */
+  perch?: THREE.Sphere;
 }
 
 interface P {
   x: number; y: number; z: number; vx: number; vy: number; vz: number;
   age: number; life: number; size: number; glyph: number; r: number; g: number; b: number;
   spin: number; spinV: number; grav: number; drag: number; sway: number; phase: number; alive: boolean;
+  fy: number; bnc: number; restS: number; landed: boolean; perch: THREE.Sphere | null;
 }
 
 /** One pooled particle system, one draw call, one program. Lives in a stage's local space. */
@@ -154,6 +163,8 @@ export class Particles {
   private spin: Float32Array;
   private mat: THREE.ShaderMaterial;
   private col = new THREE.Color();
+  private dir = new THREE.Vector3();
+  private cursor = 0;
   scale = 1; // reduced motion: fewer particles
 
   constructor(readonly capacity = 600) {
@@ -195,7 +206,12 @@ export class Particles {
     const [lo, hi] = o.life ?? [1.2, 2];
     const [s0, s1] = o.size ?? [0.06, 0.12];
     for (let i = 0; i < n; i++) {
-      let p = this.pool.find((q) => !q.alive);
+      let p: P | null = null;
+      // round-robin search for a free slot (no closure per particle)
+      for (let k = 0; k < this.pool.length; k++) {
+        const q = this.pool[(this.cursor + k) % this.pool.length];
+        if (!q.alive) { p = q; this.cursor = (this.cursor + k + 1) % this.pool.length; break; }
+      }
       if (!p) {
         if (this.pool.length >= this.capacity) return;
         p = {} as P;
@@ -211,7 +227,7 @@ export class Particles {
       const vs = o.velSpread ?? [0, 0, 0];
       let vx = (o.vel?.[0] ?? 0) + rnd(vs[0]), vy = (o.vel?.[1] ?? 0) + rnd(vs[1]), vz = (o.vel?.[2] ?? 0) + rnd(vs[2]);
       if (o.burst) {
-        const d = new THREE.Vector3(rnd(1), rnd(1) * 0.8 + 0.2, rnd(1)).normalize().multiplyScalar(o.burst * (0.5 + Math.random() * 0.5));
+        const d = this.dir.set(rnd(1), rnd(1) * 0.8 + 0.2, rnd(1)).normalize().multiplyScalar(o.burst * (0.5 + Math.random() * 0.5));
         vx += d.x; vy += d.y; vz += d.z;
       }
       this.col.setHex(o.colors[Math.floor(Math.random() * o.colors.length)], THREE.LinearSRGBColorSpace); // raw sRGB bytes
@@ -220,8 +236,38 @@ export class Particles {
         size: s0 + Math.random() * (s1 - s0), glyph: GLYPH[glyphs[Math.floor(Math.random() * glyphs.length)]],
         r: this.col.r, g: this.col.g, b: this.col.b, spin: Math.random() * 6.28, spinV: rnd(o.spin ?? 1.5),
         grav: o.gravity ?? 0, drag: o.drag ?? 0.6, sway: o.sway ?? 0, phase: Math.random() * 6.28, alive: true,
+        fy: o.floor ?? NaN, bnc: o.bounce ?? 0.45, restS: o.rest ?? -1, landed: false, perch: o.perch ?? null,
       });
     }
+  }
+
+  /** Floor / perch contact for particles that asked for it (bounce, or land and stay a moment). */
+  private collide(p: P): void {
+    // a point sprite is centred on its position: sit it on the floor, not half through it
+    const lift = p.size * 0.3;
+    let ny = p.fy + lift, hit = p.y < ny;
+    const s = p.perch;
+    if (!hit && s && p.vy < 0) {
+      const dx = p.x - s.center.x, dy = p.y - s.center.y, dz = p.z - s.center.z;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (dy > s.radius * 0.35 && d2 < s.radius * s.radius) {
+        hit = true;
+        ny = s.center.y + Math.sqrt(Math.max(0, s.radius * s.radius - dx * dx - dz * dz)) + lift * 0.5;
+      }
+    }
+    if (!hit) return;
+    // keep where the sway had put it, so landing doesn't jump
+    if (p.sway) { p.x += Math.sin(p.age * 3 + p.phase) * p.sway; p.z += Math.sin(p.age * 3 + p.phase) * p.sway * 0.3; p.sway = 0; }
+    p.y = ny;
+    if (p.bnc > 0 && -p.vy > 0.25) {
+      p.vy = -p.vy * p.bnc;
+      p.vx *= 0.7; p.vz *= 0.7;
+      p.spinV *= 0.6;
+      return;
+    }
+    p.landed = true;
+    p.vx = p.vy = p.vz = 0;
+    if (p.restS >= 0) p.life = p.age + p.restS;
   }
 
   clear(): void {
@@ -236,14 +282,18 @@ export class Particles {
       p.age += dt;
       if (p.age >= p.life) { p.alive = false; continue; }
       if (p.age < 0) continue;
-      const k = Math.exp(-p.drag * dt);
-      p.vx *= k; p.vz *= k; p.vy = p.vy * k - p.grav * dt;
-      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-      p.spin += p.spinV * dt;
+      if (!p.landed) {
+        const k = Math.exp(-p.drag * dt);
+        p.vx *= k; p.vz *= k; p.vy = p.vy * k - p.grav * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        p.spin += p.spinV * dt;
+        if (p.fy === p.fy) this.collide(p);
+      }
       const t = p.age / p.life;
       // pop in fast, fade out over the last 35 %
-      const a = Math.min(1, p.age / 0.12) * Math.min(1, (1 - t) / 0.35);
-      const sw = p.sway ? Math.sin(p.age * 3 + p.phase) * p.sway : 0;
+      // floor particles fade over their last half second (they land, rest, then go); the rest over the last 35 %
+      const a = Math.min(1, p.age / 0.12) * (p.fy === p.fy ? Math.min(1, (p.life - p.age) / 0.5) : Math.min(1, (1 - t) / 0.35));
+      const sw = p.sway && !p.landed ? Math.sin(p.age * 3 + p.phase) * p.sway : 0;
       const sz = p.size * (t < 0.15 ? 0.4 + (t / 0.15) * 0.6 : 1);
       this.pos[n * 3] = p.x + sw; this.pos[n * 3 + 1] = p.y; this.pos[n * 3 + 2] = p.z + sw * 0.3;
       this.tint[n * 4] = p.r; this.tint[n * 4 + 1] = p.g; this.tint[n * 4 + 2] = p.b; this.tint[n * 4 + 3] = a;

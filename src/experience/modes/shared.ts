@@ -23,22 +23,47 @@ export interface Gestures {
   /** Pinch ratio since the last call (> 1 = fingers apart). */
   onPinch?(ratio: number): void;
   onWheel?(deltaY: number): void;
+  /**
+   * A quick upward swipe (throw a heart). When set, fast upward drags are reported here instead of onDrag:
+   * `power` 0..1 from the swipe's length and speed, `side` the lean in radians (+ = to the right).
+   */
+  onFlick?(power: number, side: number, x: number, y: number): void;
+  /** Finger held still for ~0.55 s (a hug). Canvas-relative CSS pixels. Suppresses the tap. */
+  onLongPress?(x: number, y: number): void;
 }
 
+/** Fast-upward test for a drag that just started (px per ms, measured over its first few pixels). */
+const FLICK_SPEED = 0.28;
+const LONG_PRESS_MS = 550;
+
 export function bindGestures(el: HTMLElement, g: Gestures): () => void {
-  const pts = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number }>();
+  const pts = new Map<number, { x: number; y: number; x0: number; y0: number; t0: number; tl: number; xl: number; yl: number; vy: number }>();
   let pinchD = 0;
   let moved = false;
+  let flick = false;
+  let longTimer = 0;
+  let longFired = false;
+  const clearLong = () => { if (longTimer) { window.clearTimeout(longTimer); longTimer = 0; } };
   const dist = () => {
     const [a, b] = [...pts.values()];
     return Math.hypot(a.x - b.x, a.y - b.y);
   };
   const down = (e: PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
+    const t = performance.now();
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: t, tl: t, xl: e.clientX, yl: e.clientY, vy: 0 });
     try { el.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
-    if (pts.size === 1) moved = false;
-    if (pts.size === 2) { pinchD = dist(); moved = true; }
+    if (pts.size === 1) {
+      moved = false;
+      flick = false;
+      longFired = false;
+      clearLong();
+      if (g.onLongPress) {
+        const r = el.getBoundingClientRect(), lx = e.clientX - r.left, ly = e.clientY - r.top;
+        longTimer = window.setTimeout(() => { longTimer = 0; if (!moved && pts.size === 1) { longFired = true; g.onLongPress?.(lx, ly); } }, LONG_PRESS_MS);
+      }
+    }
+    if (pts.size === 2) { pinchD = dist(); moved = true; flick = false; clearLong(); }
   };
   const move = (e: PointerEvent) => {
     const p = pts.get(e.pointerId);
@@ -51,20 +76,39 @@ export function bindGestures(el: HTMLElement, g: Gestures): () => void {
       pinchD = d;
       return;
     }
-    if (Math.hypot(p.x - p.x0, p.y - p.y0) > 8) moved = true;
-    if (moved) g.onDrag?.(dx, dy);
+    // release speed (smoothed over the last few moves) for the flick's power
+    const t = performance.now(), ddt = Math.max(1, t - p.tl);
+    p.vy = p.vy * 0.5 + ((p.yl - e.clientY) / ddt) * 0.5;
+    p.tl = t; p.xl = e.clientX; p.yl = e.clientY;
+    if (!moved && Math.hypot(p.x - p.x0, p.y - p.y0) > 8) {
+      moved = true;
+      clearLong();
+      const up = p.y0 - p.y, side = Math.abs(p.x - p.x0);
+      if (g.onFlick && up > side * 1.2 && up / Math.max(1, t - p.t0) > FLICK_SPEED) flick = true;
+    }
+    if (moved && !flick) g.onDrag?.(dx, dy);
   };
   const up = (e: PointerEvent) => {
     const p = pts.get(e.pointerId);
     if (!p) return;
     pts.delete(e.pointerId);
-    if (pts.size === 0 && !moved && performance.now() - p.t0 < 450) {
-      const r = el.getBoundingClientRect();
+    clearLong();
+    const r = el.getBoundingClientRect();
+    if (pts.size === 0 && flick) {
+      flick = false;
+      const up = p.y0 - e.clientY, dx = e.clientX - p.x0;
+      if (up > 30) {
+        const h = Math.max(320, r.height);
+        // length (how far your finger went) and speed (how hard you flicked) both count
+        const power = THREE_clamp(0.7 * (up / (h * 0.4)) + 0.3 * Math.min(1, Math.max(0, p.vy) / 2.5), 0, 1);
+        g.onFlick?.(power, THREE_clamp(Math.atan2(dx, Math.max(up, 40)), -0.6, 0.6), e.clientX - r.left, e.clientY - r.top);
+      }
+    } else if (pts.size === 0 && !moved && !longFired && performance.now() - p.t0 < 450) {
       g.onTap?.(e.clientX - r.left, e.clientY - r.top);
     }
     if (pts.size < 2) pinchD = 0;
   };
-  const cancel = (e: PointerEvent) => { pts.delete(e.pointerId); moved = true; };
+  const cancel = (e: PointerEvent) => { pts.delete(e.pointerId); moved = true; flick = false; clearLong(); };
   const wheel = (e: WheelEvent) => { e.preventDefault(); g.onWheel?.(e.deltaY); };
   el.addEventListener('pointerdown', down);
   el.addEventListener('pointermove', move);
@@ -72,6 +116,7 @@ export function bindGestures(el: HTMLElement, g: Gestures): () => void {
   el.addEventListener('pointercancel', cancel);
   el.addEventListener('wheel', wheel, { passive: false });
   return () => {
+    clearLong();
     el.removeEventListener('pointerdown', down);
     el.removeEventListener('pointermove', move);
     el.removeEventListener('pointerup', up);
@@ -79,6 +124,8 @@ export function bindGestures(el: HTMLElement, g: Gestures): () => void {
     el.removeEventListener('wheel', wheel);
   };
 }
+
+const THREE_clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
 
 /** Arrow keys / WASD as a joystick on computers (x right, y down). */
 export function keyStick(): { vector: { x: number; y: number }; dispose(): void } {

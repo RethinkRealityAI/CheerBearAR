@@ -1,10 +1,10 @@
 // The call orb: bottom right, 72px, always within thumb reach. Never covers the experience's shutter / joystick
 // (bottom centre) or Move (bottom left).
-//   idle        tap -> (first time: one-line microphone explainer) -> call
-//   connecting  spinner ring; tap opens the conversation
-//   in call     gentle pulse while Cheer Bear speaks; tap opens the conversation; press and hold OR the red
-//               button above it ends the call
-//   error       tap tries again
+//   idle        a slow breathing ring; tap -> (first time: one-line microphone explainer) -> call
+//   connecting  rings ripple out and the phone wiggles (no spinner); tap opens the conversation
+//   in call     green; while Cheer Bear speaks two rings follow her voice level; tap opens the conversation;
+//               press and hold OR the red button above it ends the call
+//   error       a short shake, a red ring; tap tries again
 import { useEffect, useRef, useState } from 'react';
 import { LayoutGrid, MessageCircle, Mic, MicOff, Phone, PhoneOff, RotateCcw } from 'lucide-react';
 import { useApp, useController } from '../context';
@@ -22,14 +22,46 @@ export function TalkOrb() {
   const overlay = useApp((s) => s.overlay);
   const text = useApp((s) => s.ui.text);
   const canCall = useApp((s) => s.ui.show.call);
+  // the first-time nudge only in the 3D view: in camera modes the bottom centre holds Place / shutter pills
+  const quietCorner = useApp((s) => s.expMode !== 'showcase' || s.expBusy);
   const [holding, setHolding] = useState(false);
   const holdTimer = useRef<number | null>(null);
   const held = useRef(false);
+  const orbRef = useRef<HTMLButtonElement>(null);
 
   const inCall = call === 'in-call';
   const busy = call === 'connecting' || call === 'ringing' || call === 'ending';
 
   useEffect(() => () => { if (holdTimer.current) clearTimeout(holdTimer.current); }, []);
+
+  // her voice level drives the rings directly (style writes from a rAF loop, no React renders)
+  useEffect(() => {
+    const orb = orbRef.current;
+    if (!inCall || !orb) return;
+    const [a, b] = orb.querySelectorAll<HTMLElement>('.cb-orb-wave');
+    const core = orb.querySelector<HTMLElement>('.cb-orb-core');
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let wasLive = false;
+    const off = c.level.subscribe((l, live) => {
+      if (live !== wasLive) {
+        orb.classList.toggle('has-level', live);
+        wasLive = live;
+        if (!live) for (const e of [a, b, core]) if (e) { e.style.transform = ''; e.style.opacity = ''; }
+      }
+      if (!live) return;
+      const k = reduced ? 0.35 : 1;
+      a.style.transform = `scale(${1 + l * 0.36 * k})`;
+      a.style.opacity = String(Math.min(0.75, 0.2 + l));
+      b.style.transform = `scale(${1.05 + l * 0.8 * k})`;
+      b.style.opacity = String(Math.min(0.9, l * 1.4));
+      if (core) core.style.transform = `scale(${1 + l * 0.08 * k})`;
+    });
+    return () => {
+      off();
+      orb.classList.remove('has-level');
+      for (const e of [a, b, core]) if (e) { e.style.transform = ''; e.style.opacity = ''; }
+    };
+  }, [inCall, c, sheetOpen]);
 
   if (sheetOpen) return null;
 
@@ -61,7 +93,7 @@ export function TalkOrb() {
 
   const Icon = state === 'chat' ? MessageCircle : state === 'live' ? (muted ? MicOff : Mic) : state === 'error' ? RotateCcw : Phone;
   const bubble = state === 'busy' ? (call === 'ringing' ? 'Ringing…' : call === 'ending' ? 'Hanging up…' : 'Calling…')
-    : state === 'idle' && nudge && !micAsk ? 'Tap to call Cheer Bear'
+    : state === 'idle' && nudge && !micAsk && !quietCorner ? 'Tap to call Cheer Bear'
       : state === 'error' ? 'Tap to try again' : null;
 
   const showMore = (state === 'idle' || state === 'error') && !micAsk;
@@ -70,7 +102,7 @@ export function TalkOrb() {
     <div className="cb-orb-dock">
       {micAsk && !overlay && <MicExplainer />}
       {bubble && !micAsk && (
-        <div className={`cb-orb-bubble${state === 'error' ? ' is-error' : ''}${showMore ? ' is-beside' : ''}`} aria-hidden="true">{bubble}</div>
+        <div key={bubble} className={`cb-orb-bubble${state === 'error' ? ' is-error' : ''}${showMore ? ' is-above-more' : ''}`} aria-hidden="true">{bubble}</div>
       )}
       {inCall ? (
         <button type="button" className="cb-hangup" onClick={() => c.hangUp()} aria-label={text.hangUp}>
@@ -83,8 +115,9 @@ export function TalkOrb() {
         </button>
       )}
       <button
+        ref={orbRef}
         type="button"
-        className={`cb-orb is-${state}${speaking && inCall ? ' is-speaking' : ''}${holding ? ' is-holding' : ''}`}
+        className={`cb-orb is-${state}${call === 'ringing' ? ' is-ringing' : ''}${speaking && inCall ? ' is-speaking' : ''}${holding ? ' is-holding' : ''}`}
         aria-label={label}
         aria-haspopup={state === 'idle' ? undefined : 'dialog'}
         onPointerDown={startHold}
@@ -99,6 +132,9 @@ export function TalkOrb() {
         }}
       >
         <span className="cb-orb-ring" aria-hidden="true" />
+        <span className="cb-orb-ring is-2" aria-hidden="true" />
+        {inCall && <><span className="cb-orb-wave" aria-hidden="true" /><span className="cb-orb-wave is-2" aria-hidden="true" /></>}
+        <span className="cb-orb-face" aria-hidden="true" />
         <span className="cb-orb-core" aria-hidden="true"><Icon size={30} strokeWidth={2.4} /></span>
         {inCall && <span className="cb-orb-hold" aria-hidden="true" />}
       </button>

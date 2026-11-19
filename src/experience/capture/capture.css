@@ -128,3 +128,22 @@
   background: rgba(59, 33, 64, 0.82);
 }
 .cbx .cbc-pl-bar .cbc-btn { flex: 1 1 0; max-width: 220px; }
+
+/* ---------------------------------------------------------------- Selfie: Classic "Tap to play", Smile switch */
+.cbx .cbc-tapplay {
+  position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%); z-index: 14;
+  display: inline-flex; align-items: center; gap: 10px; min-height: 60px; padding: 0 28px; border-radius: 999px; border: 0;
+  background: var(--cb-pink); color: var(--cb-white); font-size: 18px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 5px 0 var(--cb-pink-deep); pointer-events: auto;
+}
+.cbx .cbc-tapplay svg { width: 24px; height: 24px; }
+.cbx .cbc-tapplay:active { transform: translate(-50%, calc(-50% + 3px)); box-shadow: 0 2px 0 var(--cb-pink-deep); }
+.cbx .cbx-tool.cbc-toggle.on { background: var(--cb-white); color: var(--cb-pink-deep); border-color: var(--cb-white); }
+
+/* ---------------------------------------------------------------- 3D Photo: selfie guide oval, selfie thumbnail */
+.cbx .cbc-guide { position: absolute; inset: 0; pointer-events: none !important; }
+.cbx .cbc-guide svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.cbx .cbc-thumb {
+  display: block; width: 56px; height: 68px; object-fit: cover; border-radius: 12px; border: 3px solid var(--cb-white);
+  background: var(--cb-pink-soft); box-shadow: var(--cb-shadow-1); pointer-events: none !important;
+}

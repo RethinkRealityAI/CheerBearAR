@@ -42,13 +42,29 @@ export class Hud implements HudApi {
   private startBtn: HTMLButtonElement;
   private loadBar: HTMLElement;
   private hintEl: HTMLElement;
+  private hintT = 0;
   private toastEl: HTMLElement;
   private bubble: HTMLElement;
+  private bubbleWords: HTMLElement;
+  private bubbleSr: HTMLElement;
+  private speechWords: string[] = [];
+  private speechT = 0;
   private coverEl: HTMLElement;
+  private coverDisc: HTMLElement;
+  private coverIcon: HTMLElement;
   private coverText: HTMLElement;
+  private coverOutT = 0;
+  private coverOnAt = 0;
   private flashEl: HTMLElement;
   private switchEl: HTMLElement;
+  private switchPill: HTMLElement;
   private switchBtns = new Map<ExperienceMode, HTMLButtonElement>();
+  private curMode: ExperienceMode = 'showcase';
+  private busy = false;
+  /** A mode tapped while a switch was running: the last tap wins once the switch ends. */
+  private pending: ExperienceMode | null = null;
+  /** Where the mode-change iris grows from (the tapped tab's centre, in container px). */
+  private irisFrom: { x: number; y: number } | null = null;
   private stick: HTMLElement;
   private stickKnob: HTMLElement;
   private stickState = { vector: new THREE.Vector2(), active: false };
@@ -87,19 +103,28 @@ export class Hud implements HudApi {
     this.hudEl.hidden = true;
     const top = el('div', 'cbx-top');
     top.innerHTML = `<img class="mini" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="76" height="40">`;
+    // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
+    // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
-    this.switchEl.setAttribute('role', 'group');
+    this.switchEl.setAttribute('role', 'tablist');
     this.switchEl.setAttribute('aria-label', 'View');
-    for (const m of MODES) {
+    this.switchPill = el('span', 'cbx-switch-pill', '<i></i>');
+    this.switchPill.setAttribute('aria-hidden', 'true');
+    this.switchEl.appendChild(this.switchPill);
+    MODES.forEach((m, i) => {
       const b = el('button', '', `${m.icon}<span>${m.label}</span>`);
       b.type = 'button';
-      b.setAttribute('aria-pressed', 'false');
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(i === 0));
+      b.tabIndex = i === 0 ? 0 : -1;
       b.setAttribute('aria-label', m.aria);
       b.dataset.mode = m.id;
-      b.addEventListener('click', () => opts.onSwitch(m.id));
+      b.addEventListener('click', () => this.pick(m.id));
       this.switchBtns.set(m.id, b);
       this.switchEl.appendChild(b);
-    }
+    });
+    this.switchEl.style.setProperty('--i', '0');
+    this.switchEl.addEventListener('keydown', (e) => this.onSwitchKey(e));
     top.appendChild(this.switchEl);
     const menuBtn = el('button', 'cbx-ib', ICON.menu);
     menuBtn.type = 'button';
@@ -113,10 +138,10 @@ export class Hud implements HudApi {
     this.hintEl.setAttribute('aria-live', 'polite');
     this.toastEl = el('div', 'cbx-toast');
     this.toastEl.setAttribute('aria-hidden', 'true');
-    this.bubble = el('div', 'cbx-bubble');
-    this.bubble.setAttribute('role', 'status');
-    this.bubble.setAttribute('aria-live', 'polite');
-    const tail = el('div', 'cbx-bubble-tail');
+    // what Cheer Bear says: the words reveal one by one as the transcript grows; screen readers get the plain text
+    this.bubble = el('div', 'cbx-bubble', `<b class="cbx-bubble-name" aria-hidden="true">${esc(opts.title.replace(/\s+(AR|AI)$/i, '') || 'Cheer Bear')}</b><span class="cbx-bubble-text" aria-hidden="true"></span><span class="cbx-sr" role="status" aria-live="polite"></span>`);
+    this.bubbleWords = this.bubble.querySelector('.cbx-bubble-text')!;
+    this.bubbleSr = this.bubble.querySelector('.cbx-sr')!;
     this.above = el('div', 'cbx-above');
     const bottom = el('div', 'cbx-bottom');
     this.left = el('div', 'cbx-slot-left');
@@ -132,13 +157,16 @@ export class Hud implements HudApi {
     this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
 
-    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, tail, this.above, bottom);
+    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom);
     this.layer = el('div', 'cbx-layer');
 
-    this.coverEl = el('div', 'cbx-cover', `<div>${ICON.heart}<p></p></div>`);
+    // the mode-change cover: a flat pink iris grows from the tapped tab, the target mode's badge sits in the middle,
+    // then the whole cover fades off the new view (reduced motion: a plain crossfade)
+    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-in"><span class="cbx-cover-badge"></span><p></p></div>`);
     this.coverEl.setAttribute('role', 'status');
+    this.coverDisc = this.coverEl.querySelector('.cbx-cover-disc')!;
+    this.coverIcon = this.coverEl.querySelector('.cbx-cover-badge')!;
     this.coverText = this.coverEl.querySelector('p')!;
-    this.coverText.style.margin = '0';
     this.flashEl = el('div', 'cbx-flash');
 
     container.append(this.layer, this.hudEl, this.splash, this.coverEl, this.flashEl);
@@ -158,6 +186,7 @@ export class Hud implements HudApi {
     this.loadBar.classList.add('done');
     this.startBtn.disabled = false;
     this.startBtn.textContent = 'Start';
+    this.startBtn.classList.add('ready');
   }
   starting(): void {
     this.startBtn.disabled = true;
@@ -170,6 +199,7 @@ export class Hud implements HudApi {
   }
   hideSplash(): void {
     this.splash.classList.add('gone');
+    this.irisFrom = null;
     this.hudEl.hidden = false;
     this.hudEl.classList.add('off');
     requestAnimationFrame(() => this.hudEl.classList.remove('off'));
@@ -185,11 +215,71 @@ export class Hud implements HudApi {
 
   // ------------------------------------------------------------------ mode switcher
   setMode(mode: ExperienceMode, busy: boolean): void {
+    const prev = this.curMode;
+    this.curMode = mode;
+    this.busy = busy;
+    const i = MODES.findIndex((m) => m.id === mode);
+    const focused = this.switchEl.contains(document.activeElement);
     for (const [id, b] of this.switchBtns) {
-      b.setAttribute('aria-pressed', String(id === mode));
-      b.disabled = busy;
+      const on = id === mode;
+      b.setAttribute('aria-selected', String(on));
+      // aria-disabled (not disabled) while a camera starts, so keyboard focus stays where it is
+      if (busy && !on) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+      if (!focused) b.tabIndex = on ? 0 : -1;
+      b.classList.toggle('queued', busy && id === this.pending);
+    }
+    if (i >= 0 && this.switchEl.style.getPropertyValue('--i') !== String(i)) {
+      this.switchEl.style.setProperty('--i', String(i));
+      if (prev !== mode) this.squish();
     }
     this.switchEl.classList.toggle('busy', busy);
+    this.switchEl.setAttribute('aria-busy', String(busy));
+    if (!busy && this.pending) {
+      const next = this.pending;
+      this.pending = null;
+      this.switchBtns.get(next)?.classList.remove('queued');
+      if (next !== mode && !this.sheetOpen) window.setTimeout(() => this.pick(next), 0);
+    }
+  }
+
+  private squish(): void {
+    const p = this.switchPill.firstElementChild as HTMLElement;
+    p.classList.remove('moving');
+    void p.offsetWidth; // restart the keyframes
+    p.classList.add('moving');
+  }
+
+  /** A tab was tapped (or Enter / Space). */
+  private pick(id: ExperienceMode): void {
+    if (this.busy) {
+      // a camera is starting: remember the last tap and do it when this switch ends
+      this.pending = id === this.curMode ? null : id;
+      for (const [m, b] of this.switchBtns) b.classList.toggle('queued', m === this.pending);
+      return;
+    }
+    if (id === this.curMode) return;
+    try { navigator.vibrate?.(8); } catch { /* not allowed here */ }
+    const b = this.switchBtns.get(id);
+    if (b) {
+      const r = b.getBoundingClientRect(), box = this.root.getBoundingClientRect();
+      this.irisFrom = { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top };
+    }
+    this.opts.onSwitch(id);
+  }
+
+  private onSwitchKey(e: KeyboardEvent): void {
+    const btns = [...this.switchBtns.values()];
+    const i = btns.indexOf(document.activeElement as HTMLButtonElement);
+    if (i < 0) return;
+    let n = -1;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = (i + 1) % btns.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = (i - 1 + btns.length) % btns.length;
+    else if (e.key === 'Home') n = 0;
+    else if (e.key === 'End') n = btns.length - 1;
+    if (n < 0) return;
+    e.preventDefault();
+    btns.forEach((b, k) => { b.tabIndex = k === n ? 0 : -1; });
+    btns[n].focus();
   }
   setReserved(px: number): void {
     this.root.style.setProperty('--cbx-reserved', Math.max(0, px) + 'px');
@@ -198,24 +288,68 @@ export class Hud implements HudApi {
   // ------------------------------------------------------------------ HudApi
   hint(text: string): void {
     text = text || '';
-    if (text !== this.hintText) {
-      this.hintText = text;
-      this.hintEl.textContent = text;
+    if (text === this.hintText) return;
+    const shown = this.hintEl.classList.contains('on');
+    this.hintText = text;
+    clearTimeout(this.hintT);
+    const h = this.hintEl;
+    if (!text) {
+      // fade and sink away, then clear (the pill keeps its width while it fades)
+      h.classList.remove('on', 'swap');
+      this.hintT = window.setTimeout(() => { if (!this.hintText) h.textContent = ''; }, 320);
+    } else if (!shown) {
+      h.classList.remove('swap');
+      h.textContent = text;
+      void h.offsetWidth;
+      h.classList.add('on'); // rise and fade in
+    } else {
+      // new words while showing: a quick lift-out, then the new text rises in
+      h.classList.add('swap');
+      this.hintT = window.setTimeout(() => { h.textContent = this.hintText; h.classList.remove('swap'); }, 170);
     }
   }
   toast(text: string, ms = 1500): void {
     this.toastEl.textContent = text;
+    this.toastEl.classList.remove('on');
+    void this.toastEl.offsetWidth;
     this.toastEl.classList.add('on');
     clearTimeout(this.toastT);
     this.toastT = window.setTimeout(() => this.toastEl.classList.remove('on'), ms);
   }
+  /**
+   * Cheer Bear's words. Text that continues what is showing (a growing transcript) only reveals the new words; other
+   * text replaces it, revealed word by word. Long speech keeps its latest words.
+   */
   speech(text: string | null): void {
-    if (text && text.trim()) {
-      let t = text.trim();
-      if (t.length > 160) t = '…' + t.slice(-158).replace(/^\S*\s/, '');
-      this.bubble.textContent = t;
-      this.bubble.classList.add('on');
-    } else this.bubble.classList.remove('on');
+    clearTimeout(this.speechT);
+    const t = (text ?? '').replace(/\s+/g, ' ').trim();
+    if (!t) {
+      this.bubble.classList.remove('on');
+      this.bubbleSr.textContent = '';
+      this.speechT = window.setTimeout(() => { this.bubbleWords.textContent = ''; this.speechWords = []; }, 300);
+      return;
+    }
+    let words = t.split(' ');
+    let clipped = false;
+    if (words.length > 26) { words = words.slice(-24); clipped = true; }
+    const prev = this.bubble.classList.contains('on') ? this.speechWords : [];
+    let keep = 0;
+    while (keep < prev.length && keep < words.length && prev[keep] === words[keep]) keep++;
+    // a partial word that grew ("Hel" -> "Hello") is replaced, not re-revealed from the start
+    if (clipped || keep === 0 || keep < prev.length - 1) keep = 0;
+    const spans = this.bubbleWords.children;
+    while (spans.length > keep) spans[spans.length - 1].remove();
+    const fresh = words.slice(keep);
+    const step = Math.min(70, 1100 / Math.max(1, fresh.length));
+    fresh.forEach((w, k) => {
+      const s = document.createElement('span');
+      s.textContent = (keep + k === 0 && clipped ? '…' : '') + w + ' ';
+      s.style.animationDelay = `${Math.round(k * step)}ms`;
+      this.bubbleWords.appendChild(s);
+    });
+    this.speechWords = words;
+    this.bubbleSr.textContent = t;
+    this.bubble.classList.add('on');
   }
   toolButton(o: { label: string; icon: string; aria?: string; onClick: () => void }): HTMLButtonElement {
     const b = el('button', 'cbx-tool', `${o.icon}<span>${esc(o.label)}</span>`);
@@ -283,11 +417,46 @@ export class Hud implements HudApi {
   }
 
   // ------------------------------------------------------------------ cover
-  cover(text: string | null): void {
+  /**
+   * The flat cover while the camera switches. With text: a pink iris grows from the tapped tab (or the top centre)
+   * and the target mode's badge appears; null: the cover fades off the new view. Resolves once fully covered, so a
+   * caller may await it before tearing the old view down (optional).
+   */
+  cover(text: string | null): Promise<void> {
+    clearTimeout(this.coverOutT);
+    const c = this.coverEl;
     if (text) {
       this.coverText.textContent = text;
-      this.coverEl.classList.add('on');
-    } else this.coverEl.classList.remove('on');
+      const m = MODES.find((x) => x.id === this.curMode);
+      this.coverIcon.innerHTML = m ? m.icon : ICON.heart;
+      if (c.classList.contains('on')) return Promise.resolve();
+      const box = this.root.getBoundingClientRect();
+      const o = this.irisFrom ?? { x: box.width / 2, y: Math.min(60, box.height / 2) };
+      const R = Math.ceil(Math.hypot(Math.max(o.x, box.width - o.x), Math.max(o.y, box.height - o.y))) + 2;
+      Object.assign(this.coverDisc.style, { width: `${2 * R}px`, height: `${2 * R}px`, left: `${o.x - R}px`, top: `${o.y - R}px` });
+      const wasOut = c.classList.contains('out');
+      c.classList.remove('out');
+      if (!wasOut) void c.offsetWidth; // start the iris from nothing
+      c.classList.add('on');
+      this.coverOnAt = performance.now();
+      this.hudEl.classList.add('covering'); // the top bar stays above the cover; the rest of the HUD fades
+      this.irisFrom = null;
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      // (never cancelled: a caller awaiting this must always go on)
+      return new Promise((r) => { window.setTimeout(r, wasOut ? 0 : reduced ? 180 : 340); });
+    }
+    if (!c.classList.contains('on')) return Promise.resolve();
+    // a fast swap still gets the whole wipe: the iris finishes covering before the cover fades off the new view
+    const minOn = matchMedia('(prefers-reduced-motion: reduce)').matches ? 220 : 460;
+    const out = () => {
+      c.classList.remove('on');
+      c.classList.add('out');
+      this.hudEl.classList.remove('covering');
+      this.coverOutT = window.setTimeout(() => c.classList.remove('out'), 420);
+    };
+    const wait = minOn - (performance.now() - this.coverOnAt);
+    if (wait > 0) this.coverOutT = window.setTimeout(out, wait); else out();
+    return Promise.resolve();
   }
 
   // ------------------------------------------------------------------ sheets

@@ -102,7 +102,13 @@ function ModeSwitch() {
   const uiMode = useApp((s) => s.uiMode);
   const options: UiMode[] = uiMode === 'call_debug' ? ['calm', 'chat', 'call_debug'] : ['calm', 'chat'];
   return (
-    <div className="cb-seg" role="radiogroup" aria-label="How do you want to talk?">
+    <div
+      className="cb-seg"
+      role="radiogroup"
+      aria-label="How do you want to talk?"
+      style={{ '--n': options.length, '--i': Math.max(0, options.indexOf(uiMode)) } as React.CSSProperties}
+    >
+      <span className="cb-seg-pill" aria-hidden="true" />
       {options.map((m) => (
         <button
           key={m}
@@ -142,6 +148,29 @@ function isVisible(m: ChatMessage, mode: UiMode, callVisible: boolean): boolean 
   return m.final || mode === 'call_debug';
 }
 
+const REPLY_WAIT_MS = 12000;
+
+/**
+ * Cheer Bear is "typing": her words are streaming in (a partial transcript), or you just said or wrote something
+ * during a call and she has not answered yet (up to 12 s).
+ */
+function useThinking(visible: ChatMessage[], all: ChatMessage[], staff: boolean, callVisible: boolean): boolean {
+  const inCall = useApp((s) => s.call === 'in-call');
+  const [, setTick] = useState(0);
+  const lastTalk = [...visible].reverse().find((m) => m.kind === 'user' || m.kind === 'bear');
+  // (only when her answer will show up in the chat: typed messages get chat replies; spoken ones need transcripts)
+  const answerShows = lastTalk?.kind === 'user' && (lastTalk.source === 'typed' || callVisible);
+  const waitingFor = inCall && answerShows ? REPLY_WAIT_MS - (Date.now() - lastTalk!.at) : 0;
+  useEffect(() => {
+    if (waitingFor <= 0) return;
+    const t = window.setTimeout(() => setTick((n) => n + 1), waitingFor + 50);
+    return () => clearTimeout(t);
+  }, [waitingFor]);
+  if (!inCall) return false;
+  const streaming = callVisible && !staff && all.some((m) => m.kind === 'bear' && !m.final && m.source === 'call');
+  return streaming || waitingFor > 0;
+}
+
 function MessageList() {
   const uiMode = useApp((s) => s.uiMode);
   const callVisible = useApp((s) => transcriptsVisible(s.ui.transcriptVisibility, s.uiMode, s.staffTranscripts));
@@ -149,13 +178,15 @@ function MessageList() {
   const transcription = useApp((s) => s.transcription);
   const listRef = useRef<HTMLOListElement>(null);
   const stick = useRef(true);
+  const mountedAt = useRef(Date.now());
   const visible = messages.filter((m) => isVisible(m, uiMode, callVisible));
   const staff = uiMode === 'call_debug';
+  const thinking = useThinking(visible, messages, staff, callVisible);
 
   useLayoutEffect(() => {
     const el = listRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [visible.length, visible[visible.length - 1]?.text]);
+  }, [visible.length, visible[visible.length - 1]?.text, thinking]);
 
   return (
     <>
@@ -182,18 +213,32 @@ function MessageList() {
               : 'Write a message and Cheer Bear will read it during your call.'}
           </li>
         )}
-        {visible.map((m) => <Message key={m.id} m={m} staff={staff} />)}
+        {visible.map((m, i) => {
+          // messenger grouping: consecutive lines from the same side join up; her avatar sits on the last one
+          const side = (x?: ChatMessage) => (x && (x.kind === 'user' || x.kind === 'bear') ? x.kind : null);
+          const k = side(m);
+          const first = !k || side(visible[i - 1]) !== k;
+          const last = !k || (side(visible[i + 1]) !== k && !(k === 'bear' && thinking && i === visible.length - 1));
+          return <Message key={m.id} m={m} staff={staff} first={first} last={last} fresh={m.at > mountedAt.current} />;
+        })}
+        {thinking && (
+          <li className="cb-msg is-bear is-typing is-last" aria-hidden="true">
+            <span className="cb-msg-avatar"><Heart size={14} strokeWidth={2.6} /></span>
+            <span className="cb-typing"><i /><i /><i /></span>
+          </li>
+        )}
       </ol>
     </>
   );
 }
 
-function Message({ m, staff }: { m: ChatMessage; staff: boolean }) {
+function Message({ m, staff, first, last, fresh }: { m: ChatMessage; staff: boolean; first: boolean; last: boolean; fresh: boolean }) {
+  const anim = fresh ? ' is-new' : '';
   if (m.kind === 'action') {
     const look = actionLook(m.text);
     const t = m.trigger;
     return (
-      <li className={`cb-msg is-action${t && !t.played ? ' is-muted' : ''}`}>
+      <li className={`cb-msg is-action${t && !t.played ? ' is-muted' : ''}${t?.counted ? ' is-found' : ''}${anim}`}>
         <span className="cb-msg-action-icon" style={{ background: look.color }} aria-hidden="true"><look.icon size={14} /></span>
         <span>{look.label}{t?.counted ? ' · found!' : ''}</span>
         {staff && t && <small>{t.speaker} · {t.via} · {t.played ? 'played' : m.note ?? 'not played'}</small>}
@@ -201,11 +246,12 @@ function Message({ m, staff }: { m: ChatMessage; staff: boolean }) {
     );
   }
   if (m.kind === 'system') {
-    return <li className="cb-msg is-system">{m.text}{staff && m.note ? <small> ({m.note})</small> : null}</li>;
+    return <li className={`cb-msg is-system${anim}`}>{m.text}{staff && m.note ? <small> ({m.note})</small> : null}</li>;
   }
   const who = m.kind === 'bear' ? 'Cheer Bear' : 'You';
   return (
-    <li className={`cb-msg is-${m.kind}${m.final ? '' : ' is-partial'}`}>
+    <li className={`cb-msg is-${m.kind}${m.final ? '' : ' is-partial'}${first ? ' is-first' : ''}${last ? ' is-last' : ''}${anim}`}>
+      {m.kind === 'bear' && last && <span className="cb-msg-avatar" aria-hidden="true"><Heart size={14} strokeWidth={2.6} /></span>}
       <span className="cb-sr-only">{who}: </span>
       <span className="cb-msg-text">{m.text}{m.final ? '' : '…'}</span>
       {(m.note || (staff && m.source === 'call')) && (

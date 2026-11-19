@@ -356,7 +356,8 @@ class Experience implements ExperienceApi {
     this.ev.emit('mode', { mode: id, busy: true });
     hud.setMode(id, true);
     const camera = to.camera !== 'none';
-    if (from) hud.cover(camera ? (to.camera === 'face' ? 'Turning the camera round…' : 'Opening the camera…') : 'Back to Care-a-Lot…');
+    // (awaited: the hud's iris finishes covering the old view before it is torn down; ~0.35 s)
+    if (from) await hud.cover(camera ? (to.camera === 'face' ? 'Turning the camera round…' : 'Opening the camera…') : 'Back to Care-a-Lot…');
     this.entered = false;
     try {
       if (from) await from.exit(id);

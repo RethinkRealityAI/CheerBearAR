@@ -56,10 +56,24 @@ export function createMockVoice(opts: { getConfig(): AppConfig }): VoiceSession 
     em.emit('trigger', { keyword, speaker, via, transcriptId, at: now });
   };
 
+  /** Fake loudness while Cheer Bear "talks" (syllable-like bumps), as viseme frames. */
+  const talk = (ms: number) => {
+    const t0 = performance.now();
+    const step = () => {
+      const t = performance.now() - t0;
+      if (status !== 'in-call' || t > ms) { em.emit('visemes', { weights: {}, amplitude: 0, speaking: false }); return; }
+      const a = Math.max(0, Math.sin(t / 95) * 0.5 + Math.sin(t / 37) * 0.25 + 0.25);
+      em.emit('visemes', { weights: { aa: a * 0.8 }, amplitude: a, speaking: true });
+      later(step, 33);
+    };
+    step();
+  };
+
   /** Stream a line: a few partials, then the final, then its triggers. */
   const say = (speaker: Speaker, text: string, triggers: string[] = []) => {
     const id = nextId(speaker);
     const words = text.split(' ');
+    if (speaker === 'cheer_bear') later(() => talk(600 + words.length * 260), 200);
     const steps = Math.min(3, words.length);
     for (let i = 1; i <= steps; i++) {
       later(() => {
@@ -115,7 +129,8 @@ export function createMockVoice(opts: { getConfig(): AppConfig }): VoiceSession 
       setStatus('ringing');
       await new Promise((r) => later(() => r(null), 700));
       setStatus('in-call');
-      em.emit('remoteStream', typeof MediaStream === 'function' ? new MediaStream() : null);
+      // no fake audio track (lip sync would try to analyse it): the mock drives the mouth and the UI with visemes
+      em.emit('remoteStream', null);
       em.emit('transcription', { speaker: 'cheer_bear', state: 'live' });
       em.emit('transcription', { speaker: 'user', state: opts.getConfig().allowUserAudioToOpenAI ? 'live' : 'off' });
       line = 0;

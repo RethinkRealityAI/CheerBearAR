@@ -1,4 +1,4 @@
-import { Check, Lightbulb, RotateCcw } from 'lucide-react';
+import { Check, Gamepad2, Lightbulb, MessageCircleHeart, RotateCcw, Sparkles } from 'lucide-react';
 import { useApp, useController } from '../context';
 import { CHAT_TIME_ID, gameWords } from '../state/game';
 import { actionLabel } from '../actions';
@@ -27,15 +27,25 @@ export function GamesPanel() {
               className="cb-game"
               onClick={() => c.selectGame(m.id)}
             >
-              <span className="cb-game-name">{m.name}</span>
-              {m.description && <span className="cb-game-desc">{m.description}</span>}
-              <span className="cb-game-meta">{m.id === CHAT_TIME_ID ? 'All the magic words' : `${n} word${n === 1 ? '' : 's'} to find`}</span>
+              <span className="cb-game-icon" aria-hidden="true">
+                {m.id === CHAT_TIME_ID ? <MessageCircleHeart size={22} strokeWidth={2.2} /> : <Gamepad2 size={22} strokeWidth={2.2} />}
+              </span>
+              <span className="cb-game-body">
+                <span className="cb-game-name">{m.name}</span>
+                {m.description && <span className="cb-game-desc">{m.description}</span>}
+                <span className="cb-game-meta">{m.id === CHAT_TIME_ID ? 'All the magic words' : `${n} word${n === 1 ? '' : 's'} to find`}</span>
+              </span>
+              <span className="cb-game-check" aria-hidden="true"><Check size={16} strokeWidth={3} /></span>
             </button>
           );
         })}
         <button type="button" role="radio" aria-checked={game.modeId === null} className="cb-game" onClick={() => c.selectGame(null)}>
-          <span className="cb-game-name">Free play</span>
-          <span className="cb-game-desc">No game, just chat and have fun.</span>
+          <span className="cb-game-icon is-free" aria-hidden="true"><Sparkles size={22} strokeWidth={2.2} /></span>
+          <span className="cb-game-body">
+            <span className="cb-game-name">Free play</span>
+            <span className="cb-game-desc">No game, just chat and have fun.</span>
+          </span>
+          <span className="cb-game-check" aria-hidden="true"><Check size={16} strokeWidth={3} /></span>
         </button>
       </div>
       {current && (

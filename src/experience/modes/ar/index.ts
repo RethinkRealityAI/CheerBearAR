@@ -16,11 +16,16 @@ import { PAL } from '../../scene/fx';
 import { angleTo, damp, ease } from '../../core/timeline';
 import { ICON } from '../../hud/icons';
 import { bindGestures, type Shared } from '../shared';
+import { HeartToss, hugBear } from '../../physics/toss';
+
+/** The "throw hearts" hint shows once per visit. */
+let tossHinted = false;
 
 const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tall, her house 1.2 m
 const REACH = { min: 0.8, max: 3.6 }; // metres from the phone the reticle may sit
 const AREA = 3.0; // stage units she may walk from the stage centre
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
+const TOSS_HINT = 'Swipe up to throw hearts';
 
 type State = 'placing' | 'placed';
 
@@ -64,8 +69,15 @@ export class ArMode implements Mode {
   private camFwd = new THREE.Vector3();
   private ndc = new THREE.Vector2(0, -0.12);
   private inv = new THREE.Matrix4();
+  private tapRay = new THREE.Ray();
+  private box = new THREE.Box3();
+  private lp = new THREE.Vector2();
+  /** Swipe up to throw hearts at her (src/experience/physics/toss.ts). */
+  readonly toss: HeartToss;
 
   constructor(private sh: Shared, readonly stage: Stage, private runner: MomentRunner) {
+    stage.actor.soft = sh.reduced;
+    this.toss = new HeartToss({ stage, runner, layer: sh.hud.layer, reduced: sh.reduced, constrain: (p) => this.constrain(p, false) });
     this.root.name = 'ar-root';
     this.root.visible = false;
     this.anchor.name = 'ar-anchor';
@@ -115,13 +127,21 @@ export class ArMode implements Mode {
     this.active = true;
     this.live = true;
     this.root.visible = true;
-    this.unbind = bindGestures(this.sh.ctx.engine.canvas, {
+    const canvas = this.sh.ctx.engine.canvas;
+    this.unbind = bindGestures(canvas, {
       onPinch: (k) => {
         if (this.state !== 'placing') return;
         this.scale = THREE.MathUtils.clamp(this.scale * k, SCALE.min, SCALE.max);
         this.stage.root.scale.setScalar(this.scale);
       },
+      onFlick: (power, side) => { this.throwHeart(power, side); },
+      onLongPress: (x, y) => {
+        if (!this.active || this.state !== 'placed' || this.restoring) return;
+        this.lp.set((x / canvas.clientWidth) * 2 - 1, -(y / canvas.clientHeight) * 2 + 1);
+        if (this.hitsBear(this.lp)) hugBear(this.stage, this.runner, this.sh.reduced);
+      },
     });
+    this.toss.show(true);
     this.limitedT = 0;
     if (this.resumePlaced) {
       this.restoring = true;
@@ -135,6 +155,9 @@ export class ArMode implements Mode {
     this.active = false;
     this.live = false;
     this.runner.cancel();
+    this.toss.show(false);
+    this.toss.reset();
+    this.stage.play.clear();
     if (this.inside) this.collapseNow();
     this.remember();
     this.resumePlaced = this.state === 'placed' && !!this.saved;
@@ -160,12 +183,12 @@ export class ArMode implements Mode {
       return true;
     }
     if (this.restoring) return false;
-    const ray = this.sh.ctx.engine.ray(ndc).ray.clone();
-    this.stage.root.updateMatrixWorld();
-    ray.applyMatrix4(this.inv.copy(this.stage.root.matrixWorld).invert());
+    // party balloons pop first
+    if (this.stage.play.popRay(this.stageRay(ndc))) return true;
     const a = this.stage.actor;
-    const box = new THREE.Box3(new THREE.Vector3(-0.32, 0, -0.32).add(a.position), new THREE.Vector3(0.32, 1.02, 0.32).add(a.position));
-    if (ray.intersectsBox(box)) {
+    if (this.hitsBear(ndc)) {
+      // a poke: she always jiggles; a reaction plays when she's free
+      a.jiggle(0.14);
       const name = a.asleep ? 'WakeUp' : TAP_REACTIONS[Math.floor(Math.random() * TAP_REACTIONS.length)];
       if ((!this.runner.busy || a.asleep) && this.runner.trigger(name)) this.sh.tapAction(name);
       return true;
@@ -177,7 +200,30 @@ export class ArMode implements Mode {
     return false;
   }
 
+  /** A ray through NDC in stage-local space. */
+  private stageRay(ndc: THREE.Vector2): THREE.Ray {
+    const r = this.tapRay.copy(this.sh.ctx.engine.ray(ndc).ray);
+    this.stage.root.updateMatrixWorld();
+    return r.applyMatrix4(this.inv.copy(this.stage.root.matrixWorld).invert());
+  }
+
+  private hitsBear(ndc: THREE.Vector2): boolean {
+    const p = this.stage.actor.position;
+    this.box.min.set(p.x - 0.32, 0, p.z - 0.32);
+    this.box.max.set(p.x + 0.32, 1.02, p.z + 0.32);
+    return this.stageRay(ndc).intersectsBox(this.box);
+  }
+
+  /** Throw a heart at her (swipe up, tests). Only once she's placed. */
+  throwHeart(power: number, side = 0): boolean {
+    if (!this.active || this.state !== 'placed' || this.restoring || this.houseT < 1) return false;
+    const ok = this.toss.throw(power, side);
+    if (ok && this.lastHint === TOSS_HINT) { this.hintT = 0; tossHinted = true; }
+    return ok;
+  }
+
   reset(): void {
+    this.toss.reset();
     this.runner.reset();
     if (this.inside) this.collapseNow();
     const a = this.stage.actor;
@@ -394,6 +440,7 @@ export class ArMode implements Mode {
 
     this.runner.update(dt);
     this.animateHouse(dt);
+    if (this.state === 'placed' && !this.restoring) this.toss.update(dt);
     st.root.updateMatrixWorld();
     st.update(dt, xr.camera);
     a.update(dt, xr.camera.getWorldPosition(this.w));
@@ -401,7 +448,7 @@ export class ArMode implements Mode {
   }
 
   /** Keep her in the play area and out of the house walls; the doorway takes her inside. */
-  private constrain(p: THREE.Vector3): void {
+  private constrain(p: THREE.Vector3, door = true): void {
     const st = this.stage, h = st.house;
     if (this.inside) {
       // inside: stay within the (grown) room, in house-local space
@@ -419,7 +466,7 @@ export class ArMode implements Mode {
     const dx = p.x - h.position.x, dz = p.z - h.position.z;
     if (Math.abs(dx) < hx && Math.abs(dz) < hz) {
       // walked into the house: through the door = go inside; anywhere else = slide along the wall
-      if (dz > 0 && Math.abs(dx) < 0.45 && this.state === 'placed') {
+      if (door && dz > 0 && Math.abs(dx) < 0.45 && this.state === 'placed') {
         p.z = h.position.z + hz;
         this.enterHouse();
         return;
@@ -487,12 +534,20 @@ export class ArMode implements Mode {
     else if (this.hintT > 0) {
       this.hintT -= dt;
       text = this.hintT > 0 ? this.lastHint : '';
+      // after the first hint: once, how to throw hearts
+      if (this.hintT <= 0 && !tossHinted && this.lastHint !== TOSS_HINT && this.toss.thrown === 0) {
+        tossHinted = true;
+        this.lastHint = TOSS_HINT;
+        this.hintT = 5;
+        text = TOSS_HINT;
+      }
     }
     this.sh.hud.hint(text);
   }
 
   dispose(): void {
     this.unbind?.();
+    this.toss.show(false);
     this.placeBtn.remove();
     this.moveBtn.remove();
     this.leaveBtn.remove();

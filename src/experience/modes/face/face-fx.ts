@@ -13,7 +13,7 @@ const WHITE = 0xffffff;
 const NOSE_TIP = new THREE.Vector3(0, -0.26, -0.74);
 const CHEEKS = { left: new THREE.Vector3(0.36, -0.26, -0.5), right: new THREE.Vector3(-0.36, -0.26, -0.5) };
 
-function heartShape(size: number): THREE.ShapeGeometry {
+export function heartShape(size: number): THREE.ShapeGeometry {
   // classic two-lobe heart, point down, centred, `size` wide
   const s = new THREE.Shape();
   const k = size / 2;
