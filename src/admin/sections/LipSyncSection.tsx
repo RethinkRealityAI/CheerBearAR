@@ -10,6 +10,9 @@ import type { FieldMeta } from '../ui/AutoFields';
 export const LIPSYNC_META: Record<string, FieldMeta> = {
   showControlsPanel: { label: 'Tuning panel on the lab page', hint: 'Shows the live sliders on /lab/lipsync.' },
   showDebugHud: { label: 'Debug overlay on the lab page', hint: 'Shows the current mouth shape, loudness meter and weights.' },
+  intensity: { label: 'Mouth size', hint: '1 is the tuned default. Lower is subtler, higher opens wider.', min: 0.3, max: 1.5, step: 0.05 },
+  attackMs: { label: 'Reaction time (ms)', hint: 'How fast the mouth reaches a new shape. Lower is snappier.', min: 15, max: 200, step: 5 },
+  releaseMs: { label: 'Relax time (ms)', hint: 'How fast the mouth relaxes out of a shape.', min: 20, max: 300, step: 5 },
   // Old fields with no effect in the new build (the model and backdrop are static files); hidden if an old config has them.
   backgroundImageUrl: { hidden: true },
   modelUrl: { hidden: true },

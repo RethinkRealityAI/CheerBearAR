@@ -42,7 +42,7 @@ await check('unknown and obsolete keys are dropped (arIframeUrl, twilioPhoneNumb
   assert.equal('arIframeUrl' in c, false);
   assert.equal('twilioPhoneNumber' in c, false);
   assert.equal('hacker' in c, false);
-  assert.deepEqual(c.lipSync, { showControlsPanel: true, showDebugHud: false });
+  assert.deepEqual(c.lipSync, { showControlsPanel: true, showDebugHud: false, intensity: 1, attackMs: 55, releaseMs: 95 });
 });
 await check('synonyms are replaced (so a synonym can be deleted), keys lower-cased', () => {
   const c = applyConfigPatch(defaultConfig(), { localClassifier: { synonyms: { House: ['home'] } } });

@@ -125,11 +125,11 @@ export class Hud implements HudApi {
     bottom.append(this.left, this.centre, right);
 
     // joystick (bottom centre, walking modes)
-    this.stick = el('div', 'cbx-stick pe', '<span></span>');
+    this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M51 17l7-7 7 7"/><path d="M51 99l7 7 7-7"/><path d="M17 51l-7 7 7 7"/><path d="M99 51l7 7-7 7"/></g></svg><span><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></g></svg></span>`);
     this.stick.setAttribute('role', 'application');
     this.stick.setAttribute('aria-label', 'Joystick: walk Cheer Bear');
     this.stick.hidden = true;
-    this.stickKnob = this.stick.firstElementChild as HTMLElement;
+    this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
 
     this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, tail, this.above, bottom);

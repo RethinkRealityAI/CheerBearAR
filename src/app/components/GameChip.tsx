@@ -1,5 +1,6 @@
 // Game progress chip, centred under the experience's top bar while a game is on. Tap opens the game details
 // (words, hints). Chat Time hides the total, as in the old app.
+import { useEffect } from 'react';
 import { Gamepad2 } from 'lucide-react';
 import { useApp, useController } from '../context';
 import { CHAT_TIME_ID, gameWords } from '../state/game';
@@ -10,6 +11,14 @@ export function GameChip() {
   const modes = useApp((s) => s.ui.gameModes);
   const keywords = useApp((s) => s.ui.keywords);
   const mode = modes.find((m) => m.id === game.modeId && m.enabled);
+  const shown = !!mode;
+  // The experience's hint pill sits under the top bar too: tell it to move down while the chip is there.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (shown) root.style.setProperty('--cb-top-reserve', '50px');
+    else root.style.removeProperty('--cb-top-reserve');
+    return () => { root.style.removeProperty('--cb-top-reserve'); };
+  }, [shown]);
   if (!mode) return null;
   const words = gameWords(mode, keywords);
   const found = game.found.length;

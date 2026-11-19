@@ -129,6 +129,12 @@ export interface LipSyncDisplayConfig {
   showControlsPanel: boolean;
   /** Show the lip sync debug HUD. */
   showDebugHud: boolean;
+  /** Mouth size: 1 is the tuned default, lower is subtler, higher is bigger. */
+  intensity: number;
+  /** Time to reach a new mouth shape, in milliseconds (lower is snappier). */
+  attackMs: number;
+  /** Time to relax out of a mouth shape, in milliseconds. */
+  releaseMs: number;
 }
 
 export interface UiPrefs {
@@ -264,7 +270,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       },
     },
   },
-  lipSync: { showControlsPanel: true, showDebugHud: true },
+  lipSync: { showControlsPanel: true, showDebugHud: true, intensity: 1, attackMs: 55, releaseMs: 95 },
   gameModes: [
     {
       id: 'chat-time',
@@ -440,6 +446,9 @@ class Checker {
   oneOf(v: unknown, values: readonly string[], path: string) {
     if (typeof v !== 'string' || !values.includes(v)) this.fail(path, `must be one of ${values.join(', ')}`);
   }
+  num(v: unknown, min: number, max: number, path: string) {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) this.fail(path, `must be a number from ${min} to ${max}`);
+  }
   int(v: unknown, min: number, max: number, path: string) {
     if (typeof v !== 'number' || !Number.isInteger(v) || v < min || v > max) this.fail(path, `must be a whole number from ${min} to ${max}`);
   }
@@ -584,6 +593,9 @@ export function validateConfig(config: unknown): string[] {
   else {
     c.bool(cfg.lipSync.showControlsPanel, 'lipSync.showControlsPanel');
     c.bool(cfg.lipSync.showDebugHud, 'lipSync.showDebugHud');
+    c.num(cfg.lipSync.intensity, 0.3, 1.5, 'lipSync.intensity');
+    c.num(cfg.lipSync.attackMs, 15, 200, 'lipSync.attackMs');
+    c.num(cfg.lipSync.releaseMs, 20, 300, 'lipSync.releaseMs');
   }
 
   if (!Array.isArray(cfg.gameModes)) c.fail('gameModes', 'must be a list');

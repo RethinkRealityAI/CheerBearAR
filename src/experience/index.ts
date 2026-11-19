@@ -150,6 +150,7 @@ class Experience implements ExperienceApi {
     if (this.disposed) return;
     this.bear = bear;
     if (bear && this.speech) bear.setSpeechStream(this.speech);
+    this.applyLipTuning();
 
     this.build(sky);
     // the splash frames the bear in its hero window; compile everything before the first frame
@@ -200,6 +201,19 @@ class Experience implements ExperienceApi {
   setSpeechStream(stream: MediaStream | null): void {
     this.speech = stream;
     this.bear?.setSpeechStream(stream);
+  }
+
+  private lipTuning: { intensity?: number; attackMs?: number; releaseMs?: number } | null = null;
+  setLipSync(tuning: { intensity?: number; attackMs?: number; releaseMs?: number }): void {
+    this.lipTuning = tuning;
+    this.applyLipTuning();
+  }
+  private applyLipTuning(): void {
+    const engine = (this.bear as unknown as { lipSync?: { setConfig(p: Record<string, number>): void } } | null)?.lipSync;
+    if (!engine || !this.lipTuning) return;
+    const patch: Record<string, number> = {};
+    for (const [k, v] of Object.entries(this.lipTuning)) if (typeof v === 'number' && Number.isFinite(v)) patch[k] = v;
+    engine.setConfig(patch);
   }
 
   setSpeechText(text: string | null): void {

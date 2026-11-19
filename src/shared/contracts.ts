@@ -102,6 +102,8 @@ export interface ExperienceApi {
   say(audioUrl: string, caption?: string): Promise<void>;
   /** Keep this many CSS pixels free at the bottom right for the app's talk button (default 88). */
   setReservedCorner(px: number): void;
+  /** Lip sync tuning from the admin config (mouth size and timing). Optional: mocks may leave it out. */
+  setLipSync?(tuning: { intensity?: number; attackMs?: number; releaseMs?: number }): void;
   on<K extends keyof ExperienceEvents>(event: K, cb: (payload: ExperienceEvents[K]) => void): () => void;
   dispose(): void;
 }

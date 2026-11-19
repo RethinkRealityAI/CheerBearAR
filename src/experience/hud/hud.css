@@ -138,13 +138,15 @@
 
 /* the shared AR hint look (medialife vendor/ar-kit/hint.css): white on translucent black glass, ~5 words */
 .cbx .ml-hint {
-  position: absolute; left: 50%; top: calc(var(--cbx-top) + 64px); transform: translateX(-50%);
+  /* --cb-top-reserve: set by the app while its game chip sits under the top bar, so the two never overlap */
+  position: absolute; left: 50%; top: calc(var(--cbx-top) + 64px + var(--cb-top-reserve, 0px)); transform: translateX(-50%);
+  transition: opacity 0.3s ease, top 0.25s ease;
   box-sizing: border-box; width: max-content; max-width: min(340px, calc(100% - 48px)); margin: 0;
   padding: 9px 16px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(8, 8, 10, 0.56); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   color: #fff; font-size: 13px; font-weight: 500; line-height: 1.3; letter-spacing: 0.01em; text-align: center;
-  white-space: normal; pointer-events: none; transition: opacity 0.3s ease;
+  white-space: normal; pointer-events: none;
 }
 .cbx .ml-hint:empty { opacity: 0; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .cbx .ml-hint { background: rgba(8, 8, 10, 0.8); } }
@@ -207,10 +209,14 @@
   position: relative; width: 116px; height: 116px; border-radius: 50%; touch-action: none; cursor: grab;
   background: var(--cb-glass); border: 2px solid rgba(255, 255, 255, 0.5); -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur);
 }
+.cbx-stick-ring { position: absolute; inset: 0; width: 100%; height: 100%; color: rgba(255, 255, 255, 0.85); pointer-events: none; }
+/* White knob with a four-way glyph: a pink disc in a ring reads as a record button. */
 .cbx-stick span {
-  position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%;
-  background: var(--cb-pink); border: 3px solid var(--cb-white); pointer-events: none; transition: transform 0.12s;
+  position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%;
+  background: var(--cb-white); color: var(--cb-pink-deep); pointer-events: none; transition: transform 0.12s;
+  display: flex; align-items: center; justify-content: center;
 }
+.cbx-stick span svg { width: 26px; height: 26px; }
 .cbx-stick.on span { transition: none; }
 
 .cbx-shutter {

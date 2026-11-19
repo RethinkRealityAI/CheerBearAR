@@ -146,6 +146,7 @@ export class AppController {
   applyConfig(c: AppConfig) {
     if (!c) return;
     this.config = c;
+    if (c.lipSync) this.experience?.setLipSync?.({ intensity: c.lipSync.intensity, attackMs: c.lipSync.attackMs, releaseMs: c.lipSync.releaseMs });
     const s = this.s;
     const prev = s.ui;
     const ui = normaliseConfig(c);

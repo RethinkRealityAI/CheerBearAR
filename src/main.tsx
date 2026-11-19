@@ -19,6 +19,10 @@ function lazyPage(path: string, name: string) {
   });
 }
 
+// Coming back through the browser's back-forward cache restores a page whose call session and camera were shut down
+// when it was hidden. Start clean instead of showing a scene that cannot talk.
+window.addEventListener('pageshow', (e) => { if (e.persisted) window.location.reload(); });
+
 const AdminPage = lazyPage('./admin/AdminPage.tsx', 'The admin panel');
 const LipSyncLab = lazyPage('./bear/lab/LipSyncLab.tsx', 'The lip sync lab');
 
