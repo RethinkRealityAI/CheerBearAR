@@ -214,20 +214,20 @@ export function buildRoom(kit: PropKit, media: Media, mats: RoomMats): Room {
     [[-1.3, -1.6, 0.2, 1.3], [1.2, -2.2, -0.4, 1.1], [-0.4, -3.4, 0.5, 1.5], [1.5, -3.9, 0.1, 0.9], [-1.9, -3.9, -0.3, 0.8], [0.3, -1.0, 0.2, 0.8]].forEach(([x, z, r, s2]) => {
       G.add(new THREE.ShapeGeometry(cloudShape(0.9 * s2, 0.42 * s2, 3), 10), 0xffffff, M(x, H - 0.004, z, Math.PI / 2, 0, r));
     });
-    // cloud trim along the top of the walls
+    // cloud trim along the top of the walls (unlit: lit from the room's single sun their bellies went grey)
     let acc = 0;
     for (let i = 1; i < out.length; i++) {
       const a = out[i - 1], b = out[i], seg = a.distanceTo(b);
       const nx = -(b.y - a.y) / seg, nz = (b.x - a.x) / seg;
       for (let s3 = (0.17 - (acc % 0.17)) % 0.17; s3 < seg; s3 += 0.17) {
         const k = Math.round((acc + s3) / 0.17);
-        L.add(puff(0.105 + (k % 2) * 0.03, 0.85, 8), k % 3 ? 0xffffff : 0xf3ebff, M(a.x + (b.x - a.x) * (s3 / seg) + nx * 0.03, H - 0.07, a.y + (b.y - a.y) * (s3 / seg) + nz * 0.03));
+        G.add(puff(0.105 + (k % 2) * 0.03, 0.85, 8), k % 2 ? 0xfbf8ff : 0xece4fa, M(a.x + (b.x - a.x) * (s3 / seg) + nx * 0.03, H - 0.07, a.y + (b.y - a.y) * (s3 / seg) + nz * 0.03));
       }
       acc += seg;
     }
     for (let x = -halfW; x <= halfW + 0.01; x += 0.17) {
       if (Math.abs(x) < DOOR_R + 0.05) continue;
-      L.add(puff(0.11, 0.85, 8), 0xffffff, M(x, H - 0.07, zFront - 0.03));
+      G.add(puff(0.11, 0.85, 8), Math.round(x / 0.17) % 2 ? 0xfbf8ff : 0xece4fa, M(x, H - 0.07, zFront - 0.03));
     }
     // the heart rug (points towards the door)
     L.add(extrude(heart(2.5), 0.008), 0xff9fcb, M(0, 0.001, -2.55, -Math.PI / 2));
@@ -387,9 +387,13 @@ export function buildRoom(kit: PropKit, media: Media, mats: RoomMats): Room {
   BB.add(box(bw + 0.02, 0.07, bl * 0.58), 0xc4b0ff, M(0, 0.47, bl * 0.2));
   for (let k = 0; k < 6; k++) BB.add(box(bw + 0.03, 0.072, 0.035), RAINBOW[k], M(0, 0.472, bl * 0.2 - bl * 0.29 + 0.05 + k * 0.035));
   for (const [x, z] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) BB.add(cyl(0.035, 0.03, 0.06, 8), 0xffc6de, M(x * (bw / 2 - 0.06), 0.03, z * (bl / 2 - 0.06)));
-  BB.add(extrude(cloudShape(1.15, 0.95, 3), 0.08, 0.03, 14), 0xffffff, M(0, 0.12, -bl / 2 - 0.02, 0, -Math.PI / 2 * 0 , 0));
+  BB.add(extrude(cloudShape(1.15, 0.95, 3), 0.08, 0.03, 14), 0xffffff, M(0, 0.12, -bl / 2 - 0.02));
   BB.add(extrude(heart(0.5), 0.12, 0.05), 0xff4f8b, M(0, 0.62, -bl / 2 + 0.3, -1.15));
   BB.add(extrude(heart(0.18), 0.03, 0.01), 0xffffff, M(0.06, 0.66, -bl / 2 + 0.36, -1.15));
+  // little hearts and stars scattered on the quilt
+  [[-0.24, 0.42, PAL.pink], [0.2, 0.62, PAL.yellow], [-0.12, 0.84, PAL.blue], [0.26, 0.28, PAL.white]].forEach(([x, z, c], i) => {
+    BB.add(extrude(i % 2 ? starShape(0.07, 0.032) : heart(0.13), 0.006), c, M(x, 0.506, z, -Math.PI / 2, 0, i * 0.7));
+  });
   bed.add(new THREE.Mesh(BB.build(), mats.lam));
   bed.rotation.y = 0;
   hits.bed = hitOf(bed);

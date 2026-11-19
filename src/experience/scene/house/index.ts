@@ -30,7 +30,7 @@ export type HouseItem = RoomItem | 'door' | 'house';
 /** Showcase: stage units per metre (she is 1 unit tall there; the door comes to about 1.5 of her). */
 export const SHOW_K = 0.72;
 /** Theme users (src/experience/scene/media.ts). */
-const T_INSIDE = 'inside', T_JUKE = 'jukebox';
+const T_INSIDE = 'inside', T_JUKE = 'jukebox', T_TOUR = 'tour';
 
 const V = new THREE.Vector3(), V2 = new THREE.Vector3(), W = new THREE.Vector3();
 const MX = new THREE.Matrix4(), INV = new THREE.Matrix4();
@@ -87,9 +87,11 @@ export class HouseSet {
     this.root.name = 'house-set';
     const clip = this.clip;
     // ---- materials (one set per stage; the room's are all patched with the doorway clip)
-    const extLam = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const extLam = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x1a141c });
     const extGlow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-    const lam = clip.apply(new THREE.MeshLambertMaterial({ vertexColors: true }));
+    // the room only has the stage's sun and sky: a small emissive lift keeps its whites from going grey
+    const LIFT = 0x221b25;
+    const lam = clip.apply(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: LIFT }));
     const glow = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
     const tint = (hex: number) => {
       const m = glow.clone();
@@ -98,15 +100,15 @@ export class HouseSet {
     };
     clip.apply(glow);
     const RT = roomTextures();
-    const wallM = clip.apply(new THREE.MeshLambertMaterial({ map: RT.wall }));
-    const floorM = clip.apply(new THREE.MeshLambertMaterial({ map: RT.floor }));
+    const wallM = clip.apply(new THREE.MeshLambertMaterial({ map: RT.wall, emissive: LIFT }));
+    const floorM = clip.apply(new THREE.MeshLambertMaterial({ map: RT.floor, emissive: LIFT }));
     const screen = (map: THREE.Texture) => clip.apply(new THREE.MeshBasicMaterial({ map, toneMapped: false }));
 
     // ---- outside
     const ext = buildExterior();
     this.front = new THREE.Mesh(ext.front, extLam);
     this.front.name = 'house-front';
-    const bodyMesh = new THREE.Mesh(ext.body, clip.applyCut(new THREE.MeshLambertMaterial({ vertexColors: true })));
+    const bodyMesh = new THREE.Mesh(ext.body, clip.applyCut(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x1a141c })));
     bodyMesh.name = 'house-body';
     this.body = new THREE.Group();
     this.body.add(bodyMesh);
@@ -500,8 +502,15 @@ export class HouseSet {
     cam.updateMatrixWorld();
   }
 
+  /** The showcase tour: the TV is already playing as the camera glides in (the theme's 'tour' user). */
+  tourTv(on: boolean): void {
+    if (on) this.media.playTheme(T_TOUR);
+    else this.media.stopTheme(T_TOUR);
+  }
+
   /** Everything back to rest (Start again, Move): outside, door shut, no party. */
   reset(): void {
+    this.tourTv(false);
     if (this.inside) this.setInside(false);
     this.endParty();
     this.squash = 1;

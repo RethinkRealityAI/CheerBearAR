@@ -499,7 +499,7 @@ function houseShowcase(c: Ctx): MomentDef {
     [3.0, [0, 1.25, -1.15], [0, 0.95, -4.5]],
     [5.0, [0.1, 1.2, -1.55], [-0.15, 0.95, -4.5]],
     [6.4, [-0.25, 1.22, -1.7], [-1.2, 0.95, -4.3]],
-    [7.9, [-0.2, 1.22, -1.75], [0.6, 0.55, -2.5]],
+    [7.9, [-0.2, 1.22, -1.75], [0.8, 0.6, -3.1]],
     [9.2, [0, 1.3, -0.9], [0, 1.0, -3.5]],
     [10.6, [0, 1.45, 3.0], [0, 1.3, 0]],
   ];
@@ -534,7 +534,7 @@ function houseShowcase(c: Ctx): MomentDef {
     .tween(1.2, 2.6, carDrive(c, start, park), ease.out)
     .at(3.6, () => c.play('cheer'))
     // the glide in: blend from the follow camera, then along the path through the door
-    .at(TOUR, () => sample(0))
+    .at(TOUR, () => { sample(0); hs.tourTv(true); })
     .tween(TOUR, TL, (_k, t) => {
       sample(t);
       tour.k = Math.min(1, t / 1.4);
@@ -543,7 +543,7 @@ function houseShowcase(c: Ctx): MomentDef {
     .at(TOUR + 2.4, () => {
       if (c.cut()) return;
       c.emit({ count: 16, glyph: ['sparkle', 'star'], colors: [PAL.pink, PAL.yellow, PAL.white], at: a.position.clone().setY(0.5), burst: 0.7, drag: 1.5, life: [0.6, 1], size: [0.06, 0.1] });
-      a.position.copy(L(0.65, 0, -2.45)).setY(0);
+      a.position.copy(L(0.85, 0, -3.1)).setY(0); // on the rug, clear of the camera's path (she's big next to the 0.72 house)
       const cam = L(0, 0, -1.2);
       a.setHeading(Math.atan2(cam.x - a.position.x, cam.z - a.position.z));
       inRoom = true;
@@ -562,6 +562,7 @@ function houseShowcase(c: Ctx): MomentDef {
       c.play('idle', false);
       c.play('cheer');
     })
+    .at(TOUR + TL, () => hs.tourTv(false))
     .tween(TOUR + TL, 1.3, (k) => { tour.k = 1 - k; }, ease.inOut)
     .at(OUT, () => { c.play('wave'); hs.setOpen(false); })
     .tween(OUT, 1.6, carDrive(c, park, gone), ease.in)

@@ -10,7 +10,7 @@ const modeIs = (page, m) => waitFor(page, (m) => { const d = window.__cb.debug()
 const pose = (page, p) => page.evaluate((p) => { window.__cb.internals().modes.get('ar').walk.testPose = p; }, p);
 const fps = (page, ms = 3000) => page.evaluate((ms) => new Promise((r) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < ms) requestAnimationFrame(f); else r(+(n * 1000 / (performance.now() - t0)).toFixed(1)); }; requestAnimationFrame(f); }), ms);
 const progs = async (page) => (await dbg(page)).enginePrograms;
-const state = (page) => page.evaluate(() => { const hs = window.__cb.internals().stages.ar.houseSet; const m = window.__cb.internals().modes.get('ar'); return { inside: hs.inside, open: +hs.open.toFixed(2), roomVis: hs.room.group.visible, bodyVis: hs.body.visible, k: +hs.k.toFixed(3), theme: window.__cb.debug().themeOn, busy: m.walk.busy }; });
+const state = (page) => page.evaluate(() => { const hs = window.__cb.internals().stages.ar.houseSet; const m = window.__cb.internals().modes.get('ar'); return { inside: hs.inside, open: +hs.open.toFixed(2), roomVis: hs.room.group.visible, bodyVis: hs.body.visible, k: +hs.k.toFixed(3), theme: window.__cb.debug().themeOn, busy: m.walk.busy, cam: [hs.cam.x, hs.cam.y, hs.cam.z].map((v) => +v.toFixed(2)) }; });
 const only = process.argv[3] || 'all';
 
 (async () => {
@@ -91,7 +91,7 @@ const only = process.argv[3] || 'all';
   await sleep(2000);
   await shot(page, 'ar-08-photo-wall');
   // jukebox party
-  await pose(page, { x: 0.3, y: 1.4, z: -2.3, yaw: 0.32, pitch: -0.12 });
+  await pose(page, { x: 0.3, y: 1.4, z: -2.3, yaw: 0.64, pitch: -0.1 });
   await page.evaluate(() => window.__cb.internals().stages.ar.houseSet.interact('jukebox'));
   await sleep(2500);
   await shot(page, 'ar-09-jukebox-party');
@@ -100,7 +100,8 @@ const only = process.argv[3] || 'all';
   log('taps done; programs', await progs(page));
   // walk out
   for (const z of [-1.5, -0.8, -0.3, 0.2, 0.8, 1.6, 2.6]) { await pose(page, { x: 0, y: 1.4, z, yaw: Math.PI, pitch: -0.1 }); await sleep(1300); }
-  await sleep(1200);
+  await pose(page, { x: 0.4, y: 1.45, z: 2.8, yaw: 0.1, pitch: -0.1 });
+  await sleep(2500);
   await shot(page, 'ar-10-walked-out');
   log('walked out', JSON.stringify(await state(page)), 'programs', await progs(page));
   // release the test camera, then Step inside / Leave
@@ -111,11 +112,13 @@ const only = process.argv[3] || 'all';
   log('step inside pill', hasStep);
   if (hasStep) await click(page, '[data-cmd=step-inside]'); else await page.evaluate(() => window.__cb.internals().modes.get('ar').enterHouse());
   await waitFor(page, () => window.__cb.debug().ar.inside, null, T);
-  await sleep(4000);
+  await waitFor(page, () => !window.__cb.internals().modes.get('ar').walk.busy, null, T);
+  await sleep(2000);
   await shot(page, 'ar-12-stepped-inside');
   log('stepped inside', JSON.stringify(await state(page)), 'programs', await progs(page));
-  await click(page, '.cbx-slot-left .cbx-tool:last-child');
-  await sleep(5000);
+  await click(page, '.cbx-slot-left .cbx-tool:last-child'); // Leave (mid-glide on purpose: it must turn round)
+  await waitFor(page, () => !window.__cb.debug().ar.inside, null, 180000).catch(() => log('still inside after Leave'));
+  await sleep(3000);
   await shot(page, 'ar-13-left');
   log('left', JSON.stringify(await state(page)), JSON.stringify((await dbg(page)).ar), 'programs', await progs(page));
   // Move keeps state
