@@ -11,7 +11,8 @@ import * as THREE from 'three';
 import '../shared/theme.css';
 import type {
   VisemeFrame,
-  ActionName, BearCharacter, ExperienceApi, ExperienceEvents, ExperienceMode, ExperienceOptions,
+  ActionName, BearCharacter, ExperienceApi, ExperienceCommand, ExperienceEvents, ExperienceMode, ExperienceOptions,
+  PlayGameId, PlayGameInfo,
 } from '../shared/contracts';
 import { loadBear, unlockAudio } from '@/bear';
 import { Emitter } from './core/emitter';
@@ -22,6 +23,7 @@ import { Hud } from './hud/hud';
 import { PropKit } from './scene/props';
 import { Media } from './scene/media';
 import { Stage } from './scene/stage';
+import { addHousePhoto } from './scene/house';
 import { MOMENT_NAMES, MomentRunner, canonicalMoment } from './scene/moments';
 import { ShowcaseMode } from './modes/showcase';
 import { ArMode } from './modes/ar';
@@ -29,6 +31,8 @@ import { bindGestures, type Shared } from './modes/shared';
 import { createFacePlaceholder } from './placeholders/face-placeholder';
 import { createPhotoPlaceholder } from './placeholders/photo-placeholder';
 import type { FaceEvent, Mode, ModeContext, ModeFactory, XrScene } from './types';
+import { modeCanCommand, runModeCommand } from './commands';
+import { PLAY_GAMES, PLAY_SVG, PlayDirector, type PlayMode } from './play';
 
 export type { Mode, ModeContext, ModeFactory } from './types';
 
@@ -77,6 +81,9 @@ class Experience implements ExperienceApi {
   private unbindTap: (() => void) | null = null;
   private offResize: (() => void) | null = null;
   private ctx: ModeContext | null = null;
+  /** Mini games (Heart Run, Heart Hoops) in 3D and AR: src/experience/play. */
+  private play = new PlayDirector((s) => this.ev.emit('play', s), !IS_PHONE);
+  private offVis: (() => void) | null = null;
   started = false;
 
   constructor(opts: ExperienceOptions = {}) {
@@ -199,6 +206,17 @@ class Experience implements ExperienceApi {
     return ok;
   }
 
+  /** Voice / app commands (shutter, Place, Move, hug...): src/experience/commands.ts. */
+  command(name: ExperienceCommand): boolean {
+    if (!this.loaded || !this.entered || !this.cur || !this.box) return false;
+    return runModeCommand(name, this.cur, this.box, { stages: this.stages, runners: this.runners, reduced: reducedMotion() });
+  }
+
+  canCommand(name: ExperienceCommand): boolean {
+    if (!this.loaded || !this.entered || !this.cur || !this.box) return false;
+    return modeCanCommand(name, this.box);
+  }
+
   setSpeechStream(stream: MediaStream | null): void {
     this.speech = stream;
     this.bear?.setSpeechStream(stream);
@@ -240,9 +258,50 @@ class Experience implements ExperienceApi {
     else this.box?.style.setProperty('--cbx-reserved', this.reserved + 'px');
   }
 
+  // ------------------------------------------------------------------ mini games (round 3, src/experience/play)
+  get playGames(): readonly PlayGameInfo[] {
+    return PLAY_GAMES;
+  }
+
+  /** Start Heart Run / Heart Hoops in the current mode. False in Selfie / Photo (switch to 3D first). */
+  async startPlay(id: PlayGameId): Promise<boolean> {
+    if (!this.started || !this.loaded || this.disposed) return false;
+    await this.chain; // a mode switch in progress finishes first
+    const m = this.cur as (Mode & Partial<PlayMode>) | null;
+    if (!m || !this.entered || (m.id !== 'showcase' && m.id !== 'ar') || !m.playHost || !m.setGame) return false;
+    this.hud?.closeAllSheets();
+    return this.play.start(id, m as unknown as PlayMode);
+  }
+
+  stopPlay(): void {
+    this.play.stop();
+  }
+
+  /** (games-3) The app's sheet is over the scene: hold the round without a pause card; let go when it closes (3-2-1). */
+  holdPlay(on: boolean): boolean {
+    return on ? this.play.pause('sheet') : this.play.resume('sheet');
+  }
+
+  /** The Games button (bottom left in 3D, above Move in AR): a small chooser sheet. */
+  private pickGame(): void {
+    const hud = this.hud;
+    if (!hud || hud.sheetOpen) return;
+    const icon = { 'heart-run': PLAY_SVG.run, 'heart-hoops': PLAY_SVG.hoops } as const;
+    const html = `<div class="cbp-pick">${PLAY_GAMES.map((g) => `<button type="button" data-game="${g.id}"><span class="ic${g.id === 'heart-hoops' ? ' hoops' : ''}">${icon[g.id]}</span><span><b>${g.label}</b><span>${g.lead}</span></span></button>`).join('')}</div>`;
+    void hud.sheet({ title: 'Play with Cheer Bear', body: '', html, buttons: ['Not now'] });
+    const wraps = this.box?.querySelectorAll<HTMLElement>('.cbx-sheet-wrap');
+    const wrap = wraps?.[wraps.length - 1];
+    wrap?.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) => b.addEventListener('click', () => {
+      (wrap.querySelector('.row .btn') as HTMLButtonElement | null)?.click(); // closes the sheet
+      void this.startPlay(b.dataset.game as PlayGameId);
+    }));
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.play.stop();
+    this.offVis?.();
     try { this.cur?.exit('showcase'); } catch { /* ignore */ }
     this.runners?.showcase.cancel();
     this.runners?.ar.cancel();
@@ -277,7 +336,7 @@ class Experience implements ExperienceApi {
       engine: this.engine!,
       get bear() { return self.bear; },
       emit: (event, payload) => this.ev.emit(event, payload),
-      capture: (blob) => this.ev.emit('photo', { blob, mode: this.mode }),
+      capture: (blob) => { addHousePhoto(blob); this.ev.emit('photo', { blob, mode: this.mode }); },
       get mode() { return self.mode; },
       setMode: (m) => this.setMode(m),
       reducedMotion: reduced,
@@ -293,6 +352,11 @@ class Experience implements ExperienceApi {
     arMode.m = new ArMode(shared, ar, this.runners.ar);
     this.modes.set('showcase', this.showcase);
     this.modes.set('ar', arMode.m);
+    this.showcase.onPickGame = arMode.m.onPickGame = () => this.pickGame();
+    // a hidden tab holds the round (the pause card waits for you)
+    const onVis = () => { if (document.hidden) this.play.pause('hidden'); };
+    document.addEventListener('visibilitychange', onVis);
+    this.offVis = () => document.removeEventListener('visibilitychange', onVis);
     this.engine!.addRoot(arMode.m.root);
     // placeholders until the real face/photo modules load
     this.addMode(createFacePlaceholder(ctx));
@@ -352,6 +416,7 @@ class Experience implements ExperienceApi {
     const to = this.modes.get(id);
     const from = this.cur;
     if (!to || (from === to && this.entered)) return;
+    this.play.stop(); // a mini game belongs to the mode it started in
     const hud = this.hud!, engine = this.engine!;
     this.ev.emit('mode', { mode: id, busy: true });
     hud.setMode(id, true);
@@ -398,6 +463,7 @@ class Experience implements ExperienceApi {
 
   private restart(): void {
     if (!this.started) return;
+    this.play.stop();
     for (const m of this.modes.values()) { try { m.reset?.(); } catch (e) { console.warn(e); } }
     this.media?.reset();
     this.hud?.speech(null);
@@ -452,11 +518,12 @@ class Experience implements ExperienceApi {
       asleep: { showcase: this.stages?.showcase.actor.asleep, ar: this.stages?.ar.actor.asleep },
       ar: ar ? { placed: ar.placed, inside: ar.inside, restoring: ar.waitingToRestore, visible: ar.stageVisible } : null,
       themeOn: this.media?.themeOn,
+      play: this.play.status(),
     };
   }
   /** Internals for tests. */
   get internals(): Record<string, unknown> {
-    return { stages: this.stages, runners: this.runners, modes: this.modes, engine: this.engine, showcase: this.showcase, media: this.media, bear: this.bear };
+    return { stages: this.stages, runners: this.runners, modes: this.modes, engine: this.engine, showcase: this.showcase, media: this.media, bear: this.bear, play: this.play };
   }
 }
 

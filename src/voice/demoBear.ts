@@ -78,6 +78,14 @@ export class DemoBear {
     }, { chat: opts.chat, claimed: opts.claimed ?? [] });
   }
 
+  /**
+   * Says a fixed line (voice mode's canned answers). `claimed`: keywords that must not fire from it (voice mode
+   * passes every keyword, so her answer can never start a moment).
+   */
+  say(text: string, opts: { chat: boolean; claimed: string[] }): Promise<void> {
+    return this.enqueue(async () => text, opts);
+  }
+
   private enqueue(getText: () => Promise<string>, opts: { chat: boolean; claimed: string[] }): Promise<void> {
     const gen = this.gen;
     this.pending += 1;

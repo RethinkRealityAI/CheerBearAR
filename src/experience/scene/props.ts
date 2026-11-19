@@ -1,16 +1,17 @@
-// The props from the old House scene (house, TV, car, mailbox, tub, mirror, shelf) plus the rainbow and the disco
+// The props from the old House scene (TV, car, mailbox, tub, mirror, shelf) plus the rainbow and the disco
 // ball, optimised for phones (public/models/props/*.glb: a few thousand triangles each, 1024 webp, meshopt).
 // Each `make()` returns a fresh clone (geometry and textures shared) fitted to a height, standing on y = 0, centred,
 // facing +z.
 import * as THREE from 'three';
 import type { Assets } from '../core/assets';
 
-export type PropName = 'house' | 'tv' | 'car' | 'mailbox' | 'tub' | 'mirror' | 'shelf' | 'rainbow' | 'discoball';
+export type PropName = 'tv' | 'car' | 'mailbox' | 'tub' | 'mirror' | 'shelf' | 'rainbow' | 'discoball';
 const FILES: Record<PropName, string> = {
-  house: 'house', tv: 'tv', car: 'car', mailbox: 'mailbox', tub: 'tub', mirror: 'mirror', shelf: 'shelf',
+  tv: 'tv', car: 'car', mailbox: 'mailbox', tub: 'tub', mirror: 'mirror', shelf: 'shelf',
   rainbow: 'rainbow', discoball: 'discoball',
 };
 /** Turn so the prop's front faces +z (the car model drives along -x). */
+// house.glb is no longer loaded: her house is built in code (scene/house). The file stays on disk.
 const YAW: Partial<Record<PropName, number>> = { car: Math.PI / 2 };
 
 export class PropKit {

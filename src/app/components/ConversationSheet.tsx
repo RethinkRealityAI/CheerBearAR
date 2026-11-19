@@ -38,7 +38,7 @@ export function ConversationSheet() {
 
   const tabs = TABS.filter((t) =>
     t.id === 'actions' ? ui.show.quickActions
-      : t.id === 'games' ? ui.gameModes.some((g) => g.enabled)
+      : t.id === 'games' ? true // the mini games (Heart Run, Heart Hoops) are always there (games-3)
         : t.id === 'settings' ? ui.show.settings : true);
   const activeTab = tabs.some((t) => t.id === tab) ? tab : 'talk';
 

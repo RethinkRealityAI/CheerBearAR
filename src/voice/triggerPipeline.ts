@@ -125,11 +125,11 @@ export class TriggerPipeline {
   }
 
   /** Quick actions / command mode. Unknown names pass through (the experience plays a generic cheer). */
-  fire(keyword: string, speaker: TriggerSpeaker = 'quick-action'): void {
+  fire(keyword: string, speaker: TriggerSpeaker = 'quick-action', via: TriggerEvent['via'] = 'manual'): void {
     const k = String(keyword || '').trim().slice(0, 50);
     if (!k) return;
     const canonical = canonicalKeyword(k, this.config.localClassifier.keywords) ?? k;
-    this.enqueue({ keyword: canonical, speaker, via: 'manual' });
+    this.enqueue({ keyword: canonical, speaker, via });
   }
 
   private key(item: Pick<QueueItem, 'speaker' | 'keyword'>) {

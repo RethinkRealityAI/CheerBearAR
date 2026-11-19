@@ -99,7 +99,9 @@ export interface PlayStatus {
   timeLeft: number | null;
 }
 /** Things you can tell the experience to do by voice (hold-to-talk) or from the app. */
-export type ExperienceCommand = 'capture' | 'place' | 'move' | 'pause' | 'resume' | 'again';
+export type ExperienceCommand = 'capture' | 'place' | 'move' | 'pause' | 'resume' | 'again'
+  /** (voice-3) a hug from Cheer Bear in 3D / placed AR: the same squeeze + ring of hearts as a long press on her. */
+  | 'hug';
 
 export interface ExperienceApi {
   /** Build the DOM (canvas, splash, in-camera HUD) inside `container` and start loading. */
@@ -135,6 +137,8 @@ export interface ExperienceApi {
   stopPlay?(): void;
   /** Run a command if the current mode supports it (shutter, Place, Move, pause...). False when it does not apply. */
   command?(name: ExperienceCommand): boolean;
+  /** Whether `command(name)` would do something right now (e.g. a usable shutter on screen), without running it. */
+  canCommand?(name: ExperienceCommand): boolean;
   on<K extends keyof ExperienceEvents>(event: K, cb: (payload: ExperienceEvents[K]) => void): () => void;
   dispose(): void;
 }

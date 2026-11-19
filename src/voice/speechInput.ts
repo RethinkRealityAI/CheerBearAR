@@ -24,6 +24,8 @@ export interface RecognitionLike {
   onerror: ((e: { error: string; message?: string }) => void) | null;
   onend: (() => void) | null;
   onstart: (() => void) | null;
+  /** The microphone is capturing (voice mode's hold-to-talk waits for it). Optional: not every browser has it. */
+  onaudiostart?: (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;

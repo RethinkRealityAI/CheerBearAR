@@ -137,6 +137,7 @@ export class PhotoMode implements Mode {
     this.placeBtn.disabled = true;
     this.placeBtn.addEventListener('click', (e) => { e.stopPropagation(); this.place(); });
     this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Cheer Bear somewhere else', onClick: () => this.move() });
+    this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
     this.flipBtn = hud.toolButton({ label: 'Selfie', icon: ICON.selfie, aria: 'Flip the camera for a new selfie', onClick: () => this.flipTo('face') });
     this.meetBtn = el('button', 'cbx-pill', 'Meet Cheer Bear');
     this.meetBtn.type = 'button';

@@ -8,6 +8,7 @@ import { createAppStore } from './state/appState';
 import { ErrorBoundary } from './ErrorBoundary';
 import { TalkOrb } from './components/TalkOrb';
 import { GameChip } from './components/GameChip';
+import { PlayBridge } from './components/GamesPanel'; // mini games pause while the sheet is open (games-3)
 import { Toast } from './components/Toast';
 import { ConversationSheet } from './components/ConversationSheet';
 import { Overlays } from './components/Overlays';
@@ -108,6 +109,7 @@ function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>
               <>
                 <TopSlot />
                 <TalkOrb />
+                <PlayBridge />
               </>
             )}
             {import.meta.env.DEV && sources.voice === 'mock' && started && (

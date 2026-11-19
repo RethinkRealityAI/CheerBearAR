@@ -120,4 +120,17 @@ await check('demoVoice: defaults, validation, an old stored config without it ge
   delete old.demoVoice;
   assert.deepEqual(coerceConfig(old).demoVoice, defaultConfig().demoVoice);
 });
+await check('voiceMode: safe defaults, validation, an old stored config without it gets the defaults', () => {
+  assert.deepEqual(defaultConfig().voiceMode, { enabled: true, holdToTalk: true, spokenReplies: true });
+  rejects({ voiceMode: { enabled: 'yes' } }, 'voiceMode.enabled');
+  rejects({ voiceMode: { holdToTalk: 1 } }, 'voiceMode.holdToTalk');
+  rejects({ voiceMode: { spokenReplies: null } }, 'voiceMode.spokenReplies');
+  const c = applyConfigPatch(defaultConfig(), { voiceMode: { spokenReplies: false } });
+  assert.deepEqual(c.voiceMode, { enabled: true, holdToTalk: true, spokenReplies: false });
+  const old = defaultConfig() as unknown as Record<string, unknown>;
+  delete old.voiceMode;
+  assert.deepEqual(coerceConfig(old).voiceMode, defaultConfig().voiceMode);
+  const bad = { ...defaultConfig(), voiceMode: { enabled: 'nope' } };
+  assert.deepEqual(coerceConfig(bad).voiceMode, defaultConfig().voiceMode, 'a bad stored section falls back alone');
+});
 console.log(`config: ${passed} passed${process.exitCode ? ', SOME FAILED' : ''}`);

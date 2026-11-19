@@ -8,11 +8,12 @@
 import * as THREE from 'three';
 import type { PropKit } from './props';
 import { Actor } from './actor';
-import { DiscoFloor, Particles, chromaKeyMaterial, contactShadow } from './fx';
+import { DiscoFloor, Particles, contactShadow } from './fx';
 import { damp } from '../core/timeline';
 import type { Media } from './media';
 import { Playground } from '../physics/playground';
 import { StareBeam } from './stare';
+import { HouseSet } from './house';
 
 /** Gravity for the toys, in metres per second squared (soft: hearts float a little). */
 const TOY_G = 6.4;
@@ -30,7 +31,7 @@ const MOODS: Record<MoodName, Mood> = {
   party: { hemi: 0.85, sun: 1.6, sky: 0xffffff, ground: 0x6a3c8a, sunCol: 0xff389b, bg: 0.6, tint: 0x2a0a40, tintA: 0.22 },
 };
 
-/** House set dimensions (stage units). */
+/** Old house height (stage units). The house is now built in code (scene/house/) and sized in metres. */
 export const HOUSE_H = 2.4;
 
 export class Stage {
@@ -49,13 +50,14 @@ export class Stage {
   catchY = 0.6;
   readonly hemi = new THREE.HemisphereLight(0xffffff, 0xc8a8bc, 1.25);
   readonly sun = new THREE.DirectionalLight(0xfff3e6, 1.7);
-  // house set
-  readonly house = new THREE.Group();     // origin = floor centre of the house; scaled when you go inside
-  readonly houseModel: THREE.Group;
-  readonly houseSize: THREE.Vector3;
-  readonly door = new THREE.Vector3();    // stage-local point in front of the door (house at rest)
+  // house set (scene/house/): a code-built cottage whose door is a walk-through portal into a life-size room
+  readonly house = new THREE.Group();     // origin = floor centre of the cottage's footprint (stage units)
+  readonly houseSet: HouseSet;
+  readonly houseModel: THREE.Group;       // the cottage outside (taps)
+  readonly houseSize = new THREE.Vector3(); // footprint size in stage units (kept up to date every frame)
+  readonly door = new THREE.Vector3();    // stage-local point in front of the door
   readonly portal: THREE.Mesh | null = null;
-  readonly interior = new THREE.Group();
+  readonly interior: THREE.Group;         // the room behind the door
   readonly mailbox: THREE.Group;
   readonly car = new THREE.Group();
   readonly carModel: THREE.Group;
@@ -80,7 +82,7 @@ export class Stage {
   private inv = new THREE.Matrix4();
   private camW = new THREE.Vector3();
   private sunOff = new THREE.Vector3(2.2, 5, 3.2);
-  private pw = new THREE.Vector3();
+  private hbBox = new THREE.Box3();
 
   constructor(readonly variant: Variant, kit: PropKit, readonly media: Media) {
     this.root.name = `stage-${variant}`;
@@ -98,42 +100,21 @@ export class Stage {
     this.actor.holder.add(this.shadow);
     this.content.add(this.actor.holder);
 
-    // ---- the house set
-    this.houseModel = kit.make('house', HOUSE_H);
-    this.houseSize = kit.size(this.houseModel);
-    this.house.add(this.houseModel);
-    const hs = contactShadow(Math.max(this.houseSize.x, this.houseSize.z) * 0.62, 0.3);
-    this.house.add(hs);
+    // ---- the house set (scene/house/): built in code, the door is a portal into the room
+    this.houseSet = new HouseSet(this, kit, media);
+    this.houseModel = this.houseSet.exterior;
+    this.interior = this.houseSet.room.group;
+    this.house.add(this.houseSet.root);
     this.content.add(this.house);
-    const front = this.houseSize.z / 2;
-    if (variant === 'ar') {
-      // the portal: chroma-keyed swirl in the doorway (Mattercraft AR scene: portal-vid.mp4, keyed green)
-      const pm = chromaKeyMaterial(media.portal);
-      const portal = new THREE.Mesh(new THREE.PlaneGeometry(0.98, 0.98), pm);
-      portal.position.set(0, 0.62, front + 0.04);
-      portal.renderOrder = 2;
-      (this as { portal: THREE.Mesh | null }).portal = portal;
-      this.house.add(portal);
-      this.house.position.set(0, 0, -2.1);
-      // inside: furniture along the walls and the TV on the back wall (House.zcomp), shown only when you are in
-      const W = this.houseSize.x, D = this.houseSize.z;
-      const tv = this.tvSet(kit, 1.05, media.themeTexture);
-      tv.position.set(0, 0, -D / 2 + 0.42);
-      const tub = kit.make('tub', 0.42); tub.position.set(-W * 0.3, 0, D * 0.12); tub.rotation.y = 0.5;
-      const mirror = kit.make('mirror', 0.95); mirror.position.set(W * 0.32, 0, -D * 0.18); mirror.rotation.y = -1.1;
-      const shelf = kit.make('shelf', 1.05); shelf.position.set(-W * 0.33, 0, -D * 0.22); shelf.rotation.y = 0.9;
-      this.interior.add(tv, tub, mirror, shelf);
-      this.interior.visible = false;
-      this.house.add(this.interior);
-    } else {
+    if (variant === 'showcase') {
       this.house.position.set(0, 0, -3.6);
       this.house.visible = false;
     }
-    this.door.set(this.house.position.x, 0, this.house.position.z + front + 0.32);
+    this.houseSet.update(0, null);
 
     this.mailbox = kit.make('mailbox', 0.78);
     this.mailbox.add(contactShadow(0.36, 0.3));
-    this.mailbox.position.set(variant === 'ar' ? -2.15 : -2.6, 0, this.house.position.z + front * 0.55);
+    this.mailbox.position.set(-2.6, 0, this.house.position.z + this.houseSize.z * 0.3);
     this.mailbox.rotation.y = 0.5;
     this.mailbox.visible = variant === 'ar';
     this.content.add(this.mailbox);
@@ -252,9 +233,14 @@ export class Stage {
     this.sun.position.copy(this.actor.position).add(this.sunOff);
     this.discoFloor.update(dt);
     if (this.discoBall.visible) this.discoBall.rotation.y += dt * 1.2;
+    this.houseSet.update(dt, camWorld);
     this.updateToys(dt);
     this.fx.update(dt);
-    if (this.portal && this.portal.visible) this.portal.lookAt(this.root.localToWorld(this.camW.copy(this.cam)).setY(this.portal.getWorldPosition(this.pw).y));
+  }
+
+  /** The cottage's footprint in stage-local space (null while the house is hidden). Games keep pickups out of it. */
+  houseBounds(out: THREE.Box3): THREE.Box3 | null {
+    return this.houseSet.bounds(out);
   }
 
   /** The toys' physics: her body, the house walls (AR, house at rest), gravity in stage units. */
@@ -267,12 +253,12 @@ export class Stage {
     play.sensor.x += Math.sin(a.heading) * 0.15;
     play.sensor.z += Math.cos(a.heading) * 0.15;
     this.headPerch.center.set(a.position.x, 0.76, a.position.z);
-    const hb = play.houseBox, h = this.house;
-    hb.on = this.variant === 'ar' && h.visible && !this.interior.visible && Math.abs(h.scale.x - 1) < 0.2;
+    // the cottage's walls (outside only: inside, the toys fly round the room)
+    const hb = play.houseBox, hs = this.houseSet;
+    hb.on = this.house.visible && !hs.inside && !hs.posed && !!hs.bounds(this.hbBox);
     if (hb.on) {
-      const hw = this.houseSize.x / 2, hd = this.houseSize.z / 2;
-      hb.min.set(h.position.x - hw, 0, h.position.z - hd);
-      hb.max.set(h.position.x + hw, this.houseSize.y * 0.62, h.position.z + hd);
+      hb.min.copy(this.hbBox.min);
+      hb.max.copy(this.hbBox.max);
     }
     play.update(dt);
   }
@@ -289,6 +275,7 @@ export class Stage {
     this.orb.visible = false;
     this.car.visible = false;
     this.mood = 'normal';
+    this.houseSet.reset();
     if (this.variant === 'showcase') {
       this.house.visible = false;
       this.mailbox.visible = false;

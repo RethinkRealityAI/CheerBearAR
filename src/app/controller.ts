@@ -19,6 +19,7 @@ import { normaliseConfig, settingOn, transcriptsVisible } from './state/uiConfig
 import { loadExperience, loadVoice, preloadAudioUnlock, unlockAudio } from './loaders';
 import { actionLabel } from './actions';
 import { VoiceLevel } from './state/voiceLevel';
+import { VoiceModeUi } from './voiceMode';
 
 const MAX_MESSAGES = 200;
 let msgSeq = 0;
@@ -45,6 +46,8 @@ export class AppController {
   voice: VoiceSession | null = null;
   /** Cheer Bear's voice level for the talk button (subscribe; no React state). */
   readonly level = new VoiceLevel();
+  /** Voice mode (hold the talk button and say what should happen; no call). src/app/voiceMode.ts */
+  readonly voiceUi: VoiceModeUi;
   private configClient: ConfigClient | null = null;
   private config: AppConfig = DEFAULT_CONFIG;
   private configLoaded = false;
@@ -54,7 +57,18 @@ export class AppController {
   private timers = new Map<string, number>();
   private bootToken = 0;
 
-  constructor(readonly store: AppStore) {}
+  constructor(readonly store: AppStore) {
+    const app = this; // eslint-disable-line @typescript-eslint/no-this-alias
+    this.voiceUi = new VoiceModeUi({
+      store: this.store,
+      get experience() { return app.experience; },
+      get voice() { return app.voice; },
+      showToast: (kind, text, ms) => this.showToast(kind, text, ms),
+      openSheet: (tab) => this.openSheet(tab),
+      updatePrefs: (patch) => this.updatePrefs(patch),
+      logSaid: (text) => { this.addMessage({ kind: 'user', text, final: true, source: 'typed', note: 'Said out loud' }); },
+    });
+  }
 
   // ------------------------------------------------------------------ helpers
   private get s(): AppState { return this.store.get(); }
@@ -120,6 +134,7 @@ export class AppController {
     this.wireConfig(configClient);
     this.wireExperience(experience);
     this.wireVoice(voice);
+    this.voiceUi.attach(voice, experience);
 
     experience.setReservedCorner(88);
     try {
@@ -135,6 +150,14 @@ export class AppController {
 
   private wireConfig(client: ConfigClient) {
     this.applyConfig(client.current);
+    // the small phone button shows only where a call can connect (Twilio set up, or the demo call)
+    const calls = () => {
+      const services = (client as ConfigClient & { services?: { calls?: boolean } }).services;
+      const demo = typeof location !== 'undefined' && new URLSearchParams(location.search).has('mockVoice');
+      this.set({ callsAvailable: !!services?.calls || demo || this.s.sources.voice === 'mock' });
+    };
+    calls();
+    this.offs.push(client.subscribe(calls));
     this.offs.push(client.subscribe((c) => { this.configLoaded = true; this.applyConfig(c); this.maybeReady(); }));
     client.load()
       .then((c) => { this.configLoaded = true; this.applyConfig(c); this.maybeReady(); })
@@ -331,6 +354,7 @@ export class AppController {
   startCall() {
     const v = this.voice;
     if (!v) return;
+    this.voiceUi.cancel();
     unlockAudio();
     if (!this.s.prefs.orbNudgeDone) this.updatePrefs({ orbNudgeDone: true });
     this.set({ call: 'connecting', callMessage: null });
@@ -452,6 +476,7 @@ export class AppController {
     this.timers.clear();
     this.voice?.endCall().catch(() => {});
     this.voice?.dispose();
+    this.voiceUi.dispose();
     this.experience?.dispose();
     this.level.setStream(null);
     this.voice = null;

@@ -2,21 +2,24 @@
 //
 //   placing  the stage follows a reticle on the floor; pinch to size it; Place is enabled once tracking has settled
 //   placed   joystick walks her (camera-relative); Move (bottom left) goes back to placing and keeps everything;
-//            tap her for a reaction; walk her to the door or tap the house and it grows around you (you're inside,
-//            the TV plays the theme), "Leave house" or Move shrinks it back
+//            tap her for a reaction; her house stands behind her, life size, and its door is a portal: walk in through
+//            it with your phone (or tap "Step inside" / the house and the room comes to you), the TV plays the theme;
+//            walk back out or tap Leave (./house-walk.ts, scene/house/)
 //
 // Leaving AR remembers where the stage stood relative to the phone; coming back (from 3D or Selfie) puts it back in
 // the same place in front of you once tracking has settled again (a new run has a new world origin).
 import * as THREE from 'three';
 import type { ExperienceMode } from '../../../shared/contracts';
 import type { Mode, XrScene } from '../../types';
-import { HOUSE_H, type Stage } from '../../scene/stage';
+import type { Stage } from '../../scene/stage';
+import { HouseWalk } from './house-walk';
 import type { MomentRunner } from '../../scene/moments';
 import { PAL } from '../../scene/fx';
-import { angleTo, damp, ease } from '../../core/timeline';
+import { angleTo, damp } from '../../core/timeline';
 import { ICON } from '../../hud/icons';
 import { bindGestures, type Shared } from '../shared';
 import { HeartToss, hugBear } from '../../physics/toss';
+import { PlayKit, type PlayGame, type PlayHost } from '../../play';
 
 /** The "throw hearts" hint shows once per visit. */
 let tossHinted = false;
@@ -43,14 +46,16 @@ export class ArMode implements Mode {
   private restoring = false;
   private active = false;
   private live = false; // enter() has run for this activation
-  // house expansion
-  inside = false;
-  private houseK = 0;
-  private houseFrom = { pos: new THREE.Vector3(), yaw: 0, scale: 1 };
-  private houseTo = { pos: new THREE.Vector3(), yaw: 0, scale: 1 };
-  private houseT = 1;
-  private houseRest = new THREE.Vector3();
-  private bearHop: { at: number; to: THREE.Vector3; yaw: number; done: boolean } | null = null;
+  // her house: walk in through the door (./house-walk.ts)
+  readonly walk: HouseWalk;
+  /** You're inside her house. */
+  get inside(): boolean {
+    return this.walk.inside;
+  }
+  /** 1 when the house is still (0 while it glides to you or back home). */
+  private get houseT(): number {
+    return this.walk.busy ? 0 : 1;
+  }
   // HUD bits
   private placeBtn: HTMLButtonElement;
   private moveBtn: HTMLButtonElement;
@@ -74,6 +79,13 @@ export class ArMode implements Mode {
   private lp = new THREE.Vector2();
   /** Swipe up to throw hearts at her (src/experience/physics/toss.ts). */
   readonly toss: HeartToss;
+  /** Mini games (src/experience/play): this stage's game pieces, the running game, the Games button. */
+  readonly kit: PlayKit;
+  game: PlayGame | null = null;
+  /** Set by the experience: open the game chooser (the Games button, above Move). */
+  onPickGame: (() => void) | null = null;
+  private gamesBtn: HTMLButtonElement | null = null;
+  private pv = new THREE.Vector3();
 
   constructor(private sh: Shared, readonly stage: Stage, private runner: MomentRunner) {
     stage.actor.soft = sh.reduced;
@@ -85,13 +97,19 @@ export class ArMode implements Mode {
     stage.root.scale.setScalar(this.scale);
     this.anchor.visible = false;
     this.root.add(this.anchor, this.reticle);
-    this.houseRest.copy(stage.house.position);
     this.buildReticle();
+    this.kit = new PlayKit(stage);
 
     const hud = sh.hud;
     this.placeBtn = hud.pill('Place Cheer Bear', () => this.place());
     this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Cheer Bear somewhere else', onClick: () => this.move() });
+    this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
     this.leaveBtn = hud.toolButton({ label: 'Leave', icon: ICON.leave, aria: 'Leave the house', onClick: () => this.leaveHouse() });
+    this.walk = new HouseWalk(sh, stage, runner, {
+      hint: (t, sec) => this.flashHint(t, sec),
+      syncHud: () => this.syncHud(),
+      tapAction: (n) => sh.tapAction(n),
+    });
   }
 
   get placed(): boolean {
@@ -138,7 +156,7 @@ export class ArMode implements Mode {
       onLongPress: (x, y) => {
         if (!this.active || this.state !== 'placed' || this.restoring) return;
         this.lp.set((x / canvas.clientWidth) * 2 - 1, -(y / canvas.clientHeight) * 2 + 1);
-        if (this.hitsBear(this.lp)) hugBear(this.stage, this.runner, this.sh.reduced);
+        if (this.hitsBear(this.lp) && !this.game) hugBear(this.stage, this.runner, this.sh.reduced);
       },
     });
     this.toss.show(true);
@@ -158,7 +176,7 @@ export class ArMode implements Mode {
     this.toss.show(false);
     this.toss.reset();
     this.stage.play.clear();
-    if (this.inside) this.collapseNow();
+    this.collapseNow();
     this.remember();
     this.resumePlaced = this.state === 'placed' && !!this.saved;
     this.unbind?.();
@@ -167,13 +185,70 @@ export class ArMode implements Mode {
     this.placeBtn.remove();
     this.moveBtn.remove();
     this.leaveBtn.remove();
+    this.walk.syncHud(false);
+    this.gamesBtn?.remove();
     this.sh.hud.joystick(false);
     this.sh.hud.hint('');
     this.stick = null;
   }
 
   trigger(name: string): boolean {
+    // while a mini game runs, her moments wait (they would walk her off the field)
+    if (this.game && this.game.state !== 'won' && this.game.state !== 'over') return false;
     return this.runner.trigger(name);
+  }
+
+  // ------------------------------------------------------------------ mini games (src/experience/play)
+  /** What a game needs from this mode (a game may start before she is placed: it waits for Place). */
+  playHost(): PlayHost | null {
+    if (!this.active || !this.stage.actor.bear) return null;
+    const self = this;
+    return {
+      variant: 'ar', stage: this.stage, runner: this.runner, kit: this.kit, reduced: this.sh.reduced,
+      layer: this.sh.hud.layer, root: this.sh.container,
+      hint: (t) => this.sh.hud.hint(t),
+      project: (p, out) => this.project(p, out),
+      constrain: (p) => this.constrain(p, false),
+      // the placed stage's floor around her spot (about 1.5 m across each way at the default size), away from the house
+      field: (o) => { o.x = 0; o.z = 0.35; o.r = Math.min(AREA - 0.45, 2.6); },
+      get unitsPerM() { return 1 / Math.max(0.05, self.scale); },
+      get ready() { return self.state === 'placed' && !self.restoring && self.houseT >= 1 && !self.inside; },
+      sync: () => this.syncHud(),
+    };
+  }
+
+  setGame(g: PlayGame | null): void {
+    this.game = g;
+    if (g) {
+      this.runner.cancel();
+      if (this.inside) this.collapseNow();
+      this.toss.reset();
+      this.toss.show(false);
+      this.hintT = 0;
+    } else if (this.active) this.toss.show(true);
+    this.syncHud();
+  }
+
+  /** Voice / app commands for a running game (pause, resume, again). Place / Move press the buttons as usual. */
+  command(name: string): boolean {
+    const g = this.game;
+    if (!g) return false;
+    if (name === 'pause') return g.pause('user');
+    if (name === 'resume') return g.resume('all');
+    if (name === 'again') return g.again();
+    return false;
+  }
+
+  private project(p: THREE.Vector3, out: THREE.Vector2): boolean {
+    const xr = this.sh.ctx.engine.xr;
+    if (!xr) return false;
+    const v = this.stage.root.localToWorld(this.pv.copy(p));
+    v.applyMatrix4(xr.camera.matrixWorldInverse);
+    if (v.z > -0.02) return false;
+    v.applyMatrix4(xr.camera.projectionMatrix);
+    const w = this.sh.container.clientWidth, h = this.sh.container.clientHeight;
+    out.set((v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h);
+    return true;
   }
 
   onTap(_x: number, _y: number, ndc: THREE.Vector2): boolean {
@@ -189,14 +264,12 @@ export class ArMode implements Mode {
     if (this.hitsBear(ndc)) {
       // a poke: she always jiggles; a reaction plays when she's free
       a.jiggle(0.14);
+      if (this.game) return true; // a game is on: just the jiggle
       const name = a.asleep ? 'WakeUp' : TAP_REACTIONS[Math.floor(Math.random() * TAP_REACTIONS.length)];
       if ((!this.runner.busy || a.asleep) && this.runner.trigger(name)) this.sh.tapAction(name);
       return true;
     }
-    if (!this.inside && this.houseHit(ndc)) {
-      this.enterHouse();
-      return true;
-    }
+    if (!this.game && this.walk.tap(this.sh.ctx.engine.ray(ndc).ray)) return true;
     return false;
   }
 
@@ -217,6 +290,7 @@ export class ArMode implements Mode {
   /** Throw a heart at her (swipe up, tests). Only once she's placed. */
   throwHeart(power: number, side = 0): boolean {
     if (!this.active || this.state !== 'placed' || this.restoring || this.houseT < 1) return false;
+    if (this.game) return this.game.flicks ? this.game.flick(power, side) : false;
     const ok = this.toss.throw(power, side);
     if (ok && this.lastHint === TOSS_HINT) { this.hintT = 0; tossHinted = true; }
     return ok;
@@ -225,7 +299,7 @@ export class ArMode implements Mode {
   reset(): void {
     this.toss.reset();
     this.runner.reset();
-    if (this.inside) this.collapseNow();
+    this.walk.reset();
     const a = this.stage.actor;
     a.position.set(0, 0, 0);
     a.setHeading(0);
@@ -252,15 +326,23 @@ export class ArMode implements Mode {
     const first = !this.everPlaced;
     this.everPlaced = true;
     this.stage.fx.emit({ count: 30, glyph: ['sparkle', 'star'], colors: [PAL.pink, PAL.yellow, PAL.white, PAL.blue], at: this.stage.actor.position.clone().setY(0.1), ring: 0.5, vel: [0, 0.6, 0], velSpread: [0.2, 0.2, 0.2], life: [0.8, 1.3], size: [0.06, 0.12] });
+    if (this.game) {
+      // a game was waiting (Move, or started before Place): carry on with a fresh 3-2-1
+      this.syncHud();
+      this.game.placed();
+      return;
+    }
     if (first) this.runner.trigger('Wave');
     this.syncHud();
-    this.flashHint('Walk her to her house', 5);
+    this.walk.placed();
+    this.flashHint('Walk in through her door', 5);
   }
 
   private move(): void {
     if (this.state !== 'placed' || this.restoring) return;
     this.runner.cancel();
-    if (this.inside) this.collapseNow();
+    this.collapseNow();
+    this.game?.pause('move'); // the round waits; Place carries on (the game keeps its state)
     this.state = 'placing';
     this.syncHud();
   }
@@ -295,104 +377,20 @@ export class ArMode implements Mode {
   }
 
   // ------------------------------------------------------------------ house
-  private houseHit(ndc: THREE.Vector2): boolean {
-    const r = this.sh.ctx.engine.ray(ndc);
-    return r.intersectObject(this.stage.houseModel, true).length > 0;
-  }
-
-  /** The house grows around you: you're inside, facing the TV. */
+  /** Bring the room to you (tap on the house, "Step inside", tests): you end up inside, facing the TV. */
   enterHouse(): void {
-    const xr = this.sh.ctx.engine.xr;
-    if (this.inside || this.state !== 'placed' || this.restoring || !xr) return;
-    this.runner.cancel();
-    const st = this.stage, h = st.house;
-    st.root.updateMatrixWorld();
-    // camera in stage space
-    st.update(0, xr.camera);
-    const c = st.cam.clone().setY(0);
-    const look = st.camDir.clone().setY(0);
-    if (look.lengthSq() < 1e-6) look.set(0, 0, -1);
-    look.normalize();
-    const E = Math.max(1.2, 2.9 / (HOUSE_H * this.scale));
-    const D = st.houseSize.z * E;
-    this.houseFrom = { pos: h.position.clone(), yaw: h.rotation.y, scale: h.scale.x };
-    // you stand in the front half of the room, facing the TV on the back wall
-    this.houseTo = { pos: c.clone().addScaledVector(look, D * 0.3), yaw: Math.atan2(-look.x, -look.z), scale: E };
-    this.houseT = 0;
-    this.inside = true;
-    st.interior.visible = true;
-    if (st.portal) st.portal.visible = false;
-    st.mailbox.visible = false;
-    st.car.visible = false;
-    // she pops over to stand in front of you, inside
-    const to = c.clone().addScaledVector(look, 1.0 / this.scale); // a metre in front of you
-    this.bearHop = { at: 0.55, to, yaw: Math.atan2(-look.x, -look.z), done: false };
-    st.actor.scripted++;
-    this.sh.media.playTheme('inside', true);
-    this.syncHud();
-    this.flashHint("You're in her house!", 4);
+    if (this.inside || this.state !== 'placed' || this.restoring || !this.sh.ctx.engine.xr) return;
+    this.walk.stepInside();
   }
 
   leaveHouse(): void {
-    if (!this.inside || this.houseT < 1) return;
-    const st = this.stage, h = st.house;
-    this.houseFrom = { pos: h.position.clone(), yaw: h.rotation.y, scale: h.scale.x };
-    this.houseTo = { pos: this.houseRest.clone(), yaw: 0, scale: 1 };
-    this.houseT = 0;
-    this.inside = false;
-    const door = st.door.clone().add(new THREE.Vector3(0, 0, 0.35));
-    this.bearHop = { at: 0.45, to: door, yaw: 0, done: false };
-    st.actor.scripted++;
-    this.sh.media.stopTheme('inside');
-    this.syncHud();
+    this.walk.leave();
   }
 
-  /** Instantly back to the small house (Move, leaving AR, Start again). */
+  /** Instantly back outside, the house home (Move, leaving AR, Start again, a game starting). */
   private collapseNow(): void {
-    const st = this.stage, h = st.house;
-    h.position.copy(this.houseRest);
-    h.rotation.set(0, 0, 0);
-    h.scale.setScalar(1);
-    st.interior.visible = false;
-    if (st.portal) st.portal.visible = true;
-    st.mailbox.visible = true;
-    if (this.bearHop && !this.bearHop.done) st.actor.scripted = Math.max(0, st.actor.scripted - 1);
-    this.bearHop = null;
-    if (this.inside) st.actor.position.copy(st.door).add(new THREE.Vector3(0, 0, 0.35));
-    this.inside = false;
-    this.houseT = 1;
-    this.sh.media.stopTheme('inside');
+    this.walk.collapse();
     if (this.live) this.syncHud();
-  }
-
-  private animateHouse(dt: number): void {
-    if (this.houseT >= 1) return;
-    const st = this.stage, h = st.house;
-    this.houseT = Math.min(1, this.houseT + dt / (this.sh.reduced ? 0.5 : 1.3));
-    const k = ease.inOut(this.houseT);
-    h.position.lerpVectors(this.houseFrom.pos, this.houseTo.pos, k);
-    h.rotation.y = this.houseFrom.yaw + angleTo(this.houseFrom.yaw, this.houseTo.yaw) * k;
-    h.scale.setScalar(this.houseFrom.scale + (this.houseTo.scale - this.houseFrom.scale) * k);
-    const hop = this.bearHop;
-    if (hop && !hop.done && this.houseT >= hop.at) {
-      hop.done = true;
-      const a = st.actor;
-      st.fx.emit({ count: 18, glyph: ['sparkle', 'star'], colors: [PAL.pink, PAL.yellow, PAL.white], at: a.position.clone().setY(0.5), burst: 0.7, drag: 1.5, life: [0.6, 1], size: [0.06, 0.1] });
-      a.position.copy(hop.to);
-      a.setHeading(hop.yaw);
-      st.fx.emit({ count: 22, glyph: ['sparkle', 'star', 'heart'], colors: [PAL.pink, PAL.yellow, PAL.white], at: hop.to.clone().setY(0.5), burst: 0.8, drag: 1.5, life: [0.7, 1.1], size: [0.06, 0.11] });
-      a.scripted = Math.max(0, a.scripted - 1);
-      a.settle();
-      a.face('happy', 2);
-    }
-    if (this.houseT >= 1) {
-      this.bearHop = null;
-      if (!this.inside) {
-        st.interior.visible = false;
-        if (st.portal) st.portal.visible = true;
-        st.mailbox.visible = true;
-      }
-    }
   }
 
   // ------------------------------------------------------------------ per frame
@@ -401,6 +399,7 @@ export class ArMode implements Mode {
     if (!this.active || !xr) return;
     const eng = this.sh.ctx.engine, st = this.stage, a = st.actor;
     const settled = eng.settled();
+    this.walk.applyTestPose(xr.camera); // ?test only: walk the camera through the door in the simulator
 
     if (this.restoring && settled) this.restore(xr.camera);
 
@@ -435,46 +434,29 @@ export class ArMode implements Mode {
       this.v.copy(right).multiplyScalar(sv.x).addScaledVector(this.camFwd, -sv.y);
       this.v.applyAxisAngle(THREE.Object3D.DEFAULT_UP, -this.anchor.rotation.y); // world -> stage-local
       if (this.v.lengthSq() > 0.01 && a.asleep) this.runner.nudge();
-      if (this.houseT >= 1) a.drive(this.v, dt, (p) => this.constrain(p));
-    } else a.drive(this.v.set(0, 0, 0), dt);
+      if (this.game && !this.game.stickWalk) this.game.walk(dt);
+      else if (this.houseT >= 1) a.drive(this.v, dt, (p) => this.constrain(p, !this.game));
+    } else if (this.game && this.state === 'placed' && !this.restoring) this.game.walk(dt);
+    else a.drive(this.v.set(0, 0, 0), dt);
 
     this.runner.update(dt);
-    this.animateHouse(dt);
-    if (this.state === 'placed' && !this.restoring) this.toss.update(dt);
+    this.walk.update(dt);
+    if (this.game) this.game.update(dt);
+    else if (this.state === 'placed' && !this.restoring) this.toss.update(dt);
+    this.kit.tick(dt);
     st.root.updateMatrixWorld();
     st.update(dt, xr.camera);
     a.update(dt, xr.camera.getWorldPosition(this.w));
     this.hints(dt, eng.tracking, settled);
   }
 
-  /** Keep her in the play area and out of the house walls; the doorway takes her inside. */
+  /** Keep her in the play area and out of the house walls; the open doorway lets her in (./house-walk.ts). */
   private constrain(p: THREE.Vector3, door = true): void {
-    const st = this.stage, h = st.house;
-    if (this.inside) {
-      // inside: stay within the (grown) room, in house-local space
-      const local = h.worldToLocal(st.root.localToWorld(p.clone()));
-      const hw = st.houseSize.x / 2 - 0.12, hd = st.houseSize.z / 2 - 0.12;
-      local.x = THREE.MathUtils.clamp(local.x, -hw, hw);
-      local.z = THREE.MathUtils.clamp(local.z, -hd, hd);
-      local.y = 0;
-      p.copy(st.root.worldToLocal(h.localToWorld(local))).setY(0);
-      return;
+    if (!this.inside && !this.walk.bearIn) {
+      const l = Math.hypot(p.x, p.z);
+      if (l > AREA) { p.x *= AREA / l; p.z *= AREA / l; }
     }
-    const l = Math.hypot(p.x, p.z);
-    if (l > AREA) { p.x *= AREA / l; p.z *= AREA / l; }
-    const hx = st.houseSize.x / 2 + 0.22, hz = st.houseSize.z / 2 + 0.22;
-    const dx = p.x - h.position.x, dz = p.z - h.position.z;
-    if (Math.abs(dx) < hx && Math.abs(dz) < hz) {
-      // walked into the house: through the door = go inside; anywhere else = slide along the wall
-      if (door && dz > 0 && Math.abs(dx) < 0.45 && this.state === 'placed') {
-        p.z = h.position.z + hz;
-        this.enterHouse();
-        return;
-      }
-      const px = hx - Math.abs(dx), pz = hz - Math.abs(dz);
-      if (px < pz) p.x = h.position.x + Math.sign(dx || 1) * hx;
-      else p.z = h.position.z + Math.sign(dz || 1) * hz;
-    }
+    this.walk.constrain(p, door && this.state === 'placed');
   }
 
   private floorHit(): boolean {
@@ -509,14 +491,22 @@ export class ArMode implements Mode {
       this.placeBtn.disabled = !this.reticle.visible; // update() enables it once the reticle is on the floor
       hud.centre.appendChild(this.placeBtn);
     } else this.placeBtn.remove();
-    this.stick = walking ? hud.joystick(true) : null;
-    if (!walking) hud.joystick(false);
+    const stick = walking && (!this.game || this.game.showStick);
+    this.stick = stick ? hud.joystick(true) : null;
+    if (!stick) hud.joystick(false);
     // Move: bottom left, always there once placed; Leave stacks above it while you're inside
     // (the left slot stacks bottom-up: first child sits at the bottom)
     if (walking) hud.left.appendChild(this.moveBtn);
     else this.moveBtn.remove();
     if (walking && this.inside) hud.left.appendChild(this.leaveBtn);
     else this.leaveBtn.remove();
+    this.walk.syncHud(walking && !this.game);
+    // Games (above Move) once she is placed, while no game runs and you're not inside the house
+    if (walking && !this.inside && !this.game && this.onPickGame) {
+      this.gamesBtn ??= hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Cheer Bear', onClick: () => this.onPickGame?.() });
+      this.gamesBtn.dataset.cmd = 'games';
+      hud.left.appendChild(this.gamesBtn);
+    } else this.gamesBtn?.remove();
   }
 
   private flashHint(text: string, s: number): void {
@@ -527,6 +517,8 @@ export class ArMode implements Mode {
 
   private hints(dt: number, tracking: string, settled: boolean): void {
     let text = '';
+    // a game owns the hint pill while she is placed (it shows its own short hints)
+    if (this.game && this.state === 'placed' && !this.restoring && tracking !== 'LIMITED') { this.limitedT = 0; return; }
     this.limitedT = tracking === 'LIMITED' ? this.limitedT + dt : 0;
     if (this.limitedT > 1.5) text = 'Move your phone slowly';
     else if (this.restoring || (this.state === 'placing' && !settled)) text = 'Point at the floor';
@@ -551,5 +543,10 @@ export class ArMode implements Mode {
     this.placeBtn.remove();
     this.moveBtn.remove();
     this.leaveBtn.remove();
+    this.gamesBtn?.remove();
+    this.walk.dispose();
   }
 }
+
+/** The Games button's icon: a heart with speed lines (flat, currentColor). */
+const GAMES_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 20.5 7.6 14.3a4.1 4.1 0 0 1 6.4-5.1 4.1 4.1 0 0 1 6.4 5.1Z"/><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5h3M2 13h2.5M3 16.5h2.5"/></g></svg>';

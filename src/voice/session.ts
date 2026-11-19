@@ -20,6 +20,7 @@ import type { SpeechInputState } from './speechInput';
 import { RealtimeTranscriber } from './transcriber';
 import { TriggerPipeline } from './triggerPipeline';
 import { TwilioCaller } from './twilioCall';
+import { VoiceMode, type VoiceModeApi } from './voiceMode';
 
 export type VoiceStatusCode = 'not_configured' | 'mic_denied' | 'token_failed' | 'call_failed' | 'demo';
 
@@ -52,6 +53,8 @@ export interface VoiceSessionExt extends VoiceSession {
   /** `replied`: the demo Cheer Bear will answer this message out loud (demo call, or no call live). */
   sendText(text: string): Promise<{ triggers: string[]; smsSent: boolean; replied: boolean }>;
   readonly transcriptionState: Record<Speaker, VoiceEvents['transcription']['state']>;
+  /** Voice mode (hold to talk, no call): created on first use. See voiceMode.ts and docs/handoff/voice-3.md. */
+  readonly voiceMode: VoiceModeApi;
   // `status` payloads are VoiceStatusEvent at runtime (extra `code` and `mock`): `(e as VoiceStatusEvent).code`.
 }
 
@@ -76,6 +79,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
   private bear: DemoBear | null = null;
   /** A "can't listen, type instead" message from before the demo call connected (shown once it has). */
   private listenNotice: string | null = null;
+  private _voiceMode: VoiceMode | null = null;
   transcriptionState: Record<Speaker, VoiceEvents['transcription']['state']> = { cheer_bear: 'off', user: 'off' };
 
   constructor(private opts: CreateVoiceSessionOptions) {
@@ -354,6 +358,25 @@ class VoiceSessionImpl implements VoiceSessionExt {
     this.pipeline.fire(keyword, speaker);
   }
 
+  /**
+   * Voice mode: what the child says while holding the talk button. Trigger words go through the same pipeline as a
+   * call (speaker 'user', via 'local': cooldown, dispatch spacing, the app's game rules). Her canned answers are
+   * DemoBear lines that claim every keyword, so they never fire a moment.
+   */
+  get voiceMode(): VoiceModeApi {
+    this._voiceMode ||= new VoiceMode({
+      getConfig: () => this.opts.getConfig(),
+      fireTrigger: (keyword) => !this.disposed && this.pipeline.fire(keyword, 'user', 'local'),
+      say: (line) => {
+        if (this.disposed || (this._status !== 'idle' && this._status !== 'error')) return; // a call owns her voice
+        void this.demoBear().say(line, { chat: true, claimed: [...this.opts.getConfig().localClassifier.keywords] });
+      },
+      hush: () => this.bear?.cancel(),
+      unlock: () => this.demoBear().unlock(),
+    });
+    return this._voiceMode;
+  }
+
   private async sendSms(message: string): Promise<boolean> {
     try {
       await api('/api/sms', { body: { message: message.slice(0, MAX_TEXT) } });
@@ -392,6 +415,8 @@ class VoiceSessionImpl implements VoiceSessionExt {
     this.disposed = true;
     this.callSeq += 1;
     this.pipeline.dispose();
+    this._voiceMode?.dispose();
+    this._voiceMode = null;
     this.bear?.dispose();
     this.bear = null;
     this.caller?.destroy();

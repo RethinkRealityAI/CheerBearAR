@@ -29,6 +29,9 @@ export function SettingsPanel() {
     commandMode: st.commandMode,
     allowUserTriggers: st.allowUserTriggers,
     isDesktop: st.isDesktop,
+    voiceMode: st.ui.voiceMode.enabled,
+    tapToTalk: st.prefs.tapToTalk ?? !st.ui.voiceMode.holdToTalk,
+    spokenReplies: st.prefs.spokenReplies ?? st.ui.voiceMode.spokenReplies,
   }));
   const on = (id: string) => settingOn(s.ui, id);
   const anyAdmin = Object.keys(s.ui.settingsItems).some((k) => k.startsWith('admin_') && on(k))
@@ -54,6 +57,24 @@ export function SettingsPanel() {
               onChange={(v) => c.setStaffTranscripts(v)}
             />
           )}
+        </Group>
+      )}
+
+      {s.voiceMode && (
+        <Group title="Talking to Cheer Bear">
+          <Switch
+            label="Tap to talk"
+            desc="Tap the talk button once to start and once to stop, instead of holding it."
+            checked={s.tapToTalk}
+            onChange={(v) => c.voiceUi.setTapToTalk(v)}
+          />
+          <Switch
+            label="Cheer Bear answers out loud"
+            desc="She says a few happy words back when you ask for something."
+            checked={s.spokenReplies}
+            onChange={(v) => c.voiceUi.setSpokenReplies(v)}
+          />
+          <p className="cb-settings-note">Your browser turns your words into text (Chrome uses Google’s speech service, Safari uses Apple’s). Cheer Bear only listens while the talk button is white.</p>
         </Group>
       )}
 

@@ -16,6 +16,7 @@ import { damp, ease } from '../../core/timeline';
 import { IS_PHONE } from '../../core/device';
 import { bindGestures, keyStick, type Shared } from '../shared';
 import { HeartToss, hugBear } from '../../physics/toss';
+import { PlayKit, type PlayGame, type PlayHost } from '../../play';
 
 /** The "throw hearts" hint shows once per visit (after the look-around hint). */
 let tossHinted = false;
@@ -64,11 +65,26 @@ export class ShowcaseMode implements Mode {
   /** Swipe up to throw hearts at her (src/experience/physics/toss.ts). */
   readonly toss: HeartToss;
   private hintNext = '';
+  /** Mini games (src/experience/play): this stage's game pieces, the running game, the HUD's Games button. */
+  readonly kit: PlayKit;
+  game: PlayGame | null = null;
+  /** Set by the experience: open the game chooser (the Games button, bottom left). */
+  onPickGame: (() => void) | null = null;
+  private gamesBtn: HTMLButtonElement | null = null;
+  private spaceAt = 0;
   private onKey = (e: KeyboardEvent): void => {
     if (e.code !== 'Space' || !this.active || e.repeat) return;
     if ((e.target as HTMLElement)?.closest?.('input,textarea,select,button,[contenteditable]')) return;
     e.preventDefault();
+    // a game that throws: hold Space to wind up, let go to throw (keyup)
+    if (this.game?.flicks) { this.spaceAt = performance.now(); return; }
     this.throwHeart(0.42 + Math.random() * 0.16, (Math.random() - 0.5) * 0.2);
+  };
+  private onKeyUp = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space' || !this.active || !this.spaceAt) return;
+    const held = (performance.now() - this.spaceAt) / 1000;
+    this.spaceAt = 0;
+    if (this.game?.flicks) this.game.flick(Math.min(1.1, held / 1.1), 0);
   };
 
   constructor(private sh: Shared, readonly stage: Stage, private runner: MomentRunner, backdrop: THREE.Texture) {
@@ -86,6 +102,7 @@ export class ShowcaseMode implements Mode {
     this.scene.backgroundRotation.set(0, Math.PI / 2, 0);
     this.scene.add(stage.root);
     this.scene.add(cloudFloor());
+    this.kit = new PlayKit(stage);
   }
 
   // ------------------------------------------------------------------ renderer life cycle
@@ -197,6 +214,8 @@ export class ShowcaseMode implements Mode {
     this.hintNext = tossHinted ? '' : IS_PHONE ? 'Swipe up to throw hearts' : 'Press Space to throw hearts';
     this.toss.show(true);
     window.addEventListener('keydown', this.onKey);
+    window.addEventListener('keyup', this.onKeyUp);
+    this.syncPlay();
   }
 
   exit(_to: ExperienceMode): void {
@@ -206,6 +225,8 @@ export class ShowcaseMode implements Mode {
     this.toss.reset();
     this.stage.play.clear();
     window.removeEventListener('keydown', this.onKey);
+    window.removeEventListener('keyup', this.onKeyUp);
+    this.gamesBtn?.remove();
     this.sh.hud.joystick(false);
     this.sh.hud.hint('');
     this.stick = null;
@@ -218,12 +239,92 @@ export class ShowcaseMode implements Mode {
   }
 
   trigger(name: string): boolean {
+    // while a mini game runs, her moments wait (they would walk her off the field)
+    if (this.game && this.game.state !== 'won' && this.game.state !== 'over') return false;
     return this.runner.trigger(name);
+  }
+
+  // ------------------------------------------------------------------ mini games (src/experience/play)
+  /** What a game needs from this mode. */
+  playHost(): PlayHost | null {
+    if (!this.active || !this.stage.actor.bear) return null;
+    const self = this;
+    return {
+      variant: 'showcase', stage: this.stage, runner: this.runner, kit: this.kit, reduced: this.sh.reduced,
+      layer: this.sh.hud.layer, root: this.sh.container,
+      hint: (t) => this.sh.hud.hint(t),
+      project: (p, out) => this.project(p, out),
+      constrain: (p) => {
+        const l = Math.hypot(p.x, p.z);
+        if (l > LIM.area) { p.x *= LIM.area / l; p.z *= LIM.area / l; }
+      },
+      field: (o) => { o.x = 0; o.z = 0; o.r = LIM.area - 0.75; },
+      unitsPerM: 1 / 0.9,
+      get ready() { return self.active; },
+      sync: () => this.syncPlay(),
+      // where the camera settles for a game that holds it on the court (Heart Hoops)
+      court: (pos, dir) => {
+        const wide = this.game?.view?.wide ?? 0;
+        const pitch = Math.max(this.pitch, this.game?.view?.pitch ?? 0), dist = this.dist + wide;
+        const tgt = this.tmp2.set(0, PLAY.targetY + wide * 0.18, 0);
+        pos.set(tgt.x + Math.sin(this.yaw) * Math.cos(pitch) * dist, tgt.y + Math.sin(pitch) * dist, tgt.z + Math.cos(this.yaw) * Math.cos(pitch) * dist);
+        dir.subVectors(tgt, pos).normalize();
+      },
+    };
+  }
+
+  setGame(g: PlayGame | null): void {
+    this.game = g;
+    this.spaceAt = 0;
+    if (g) {
+      this.runner.cancel();
+      this.toss.reset();
+      this.toss.show(false);
+      this.hintNext = '';
+      this.hintT = 0;
+    } else if (this.active) this.toss.show(true);
+    this.syncPlay();
+  }
+
+  /** Voice / app commands for a running game (pause, resume, again). */
+  command(name: string): boolean {
+    const g = this.game;
+    if (!g) return false;
+    if (name === 'pause') return g.pause('user');
+    if (name === 'resume') return g.resume('all');
+    if (name === 'again') return g.again();
+    return false;
+  }
+
+  /** Joystick and the Games button follow the game. */
+  private syncPlay(): void {
+    if (!this.active) return;
+    const g = this.game;
+    const stick = !g || g.showStick;
+    this.stick = this.sh.hud.joystick(stick);
+    if (!stick) this.stick = null;
+    if (!g && this.onPickGame) {
+      this.gamesBtn ??= this.sh.hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Cheer Bear', onClick: () => this.onPickGame?.() });
+      this.gamesBtn.dataset.cmd = 'games';
+      if (this.gamesBtn.parentElement !== this.sh.hud.left) this.sh.hud.left.appendChild(this.gamesBtn);
+    } else this.gamesBtn?.remove();
+  }
+
+  private pv = new THREE.Vector3();
+  private tmp2 = new THREE.Vector3();
+  private project(p: THREE.Vector3, out: THREE.Vector2): boolean {
+    const v = this.pv.copy(p).applyMatrix4(this.cam.matrixWorldInverse);
+    if (v.z > -0.05) return false;
+    v.applyMatrix4(this.cam.projectionMatrix);
+    const w = this.sh.container.clientWidth, h = this.sh.container.clientHeight;
+    out.set((v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h);
+    return true;
   }
 
   /** Throw a heart at her (swipe up, Space, tests). */
   throwHeart(power: number, side = 0): boolean {
     if (!this.active || !this.stage.actor.bear) return false;
+    if (this.game) return this.game.flicks ? this.game.flick(power, side) : false;
     const ok = this.toss.throw(power, side);
     if (ok && this.hintNext) { tossHinted = true; this.hintNext = ''; this.hintT = 0; this.sh.hud.hint(''); }
     return ok;
@@ -263,26 +364,32 @@ export class ShowcaseMode implements Mode {
       const right = this.tmp.set(-this.dir.z, 0, this.dir.x);
       this.v.copy(right).multiplyScalar(sv.x).addScaledVector(this.dir, -sv.y);
       if (this.v.lengthSq() > 0.01 && a.asleep) this.runner.nudge();
-      a.drive(this.v, dt, (p) => {
+      if (this.game && !this.game.stickWalk) this.game.walk(dt);
+      else a.drive(this.v, dt, (p) => {
         const l = Math.hypot(p.x, p.z);
         if (l > LIM.area) { p.x *= LIM.area / l; p.z *= LIM.area / l; }
       });
-      if (this.hintT > 0 && (this.hintT -= dt) <= 0) {
+      if (this.hintT > 0 && !this.game && (this.hintT -= dt) <= 0) {
         // then, once: how to throw hearts
         if (this.hintNext) { this.sh.hud.hint(this.hintNext); this.hintNext = ''; tossHinted = true; this.hintT = 5; }
         else this.sh.hud.hint('');
       }
     }
     this.runner.update(dt);
-    if (this.active) this.toss.update(dt);
-    // camera follows her
-    this.target.x += (a.position.x - this.target.x) * damp(3.5, dt);
-    this.target.z += (a.position.z - this.target.z) * damp(3.5, dt);
+    if (this.active) { if (this.game) this.game.update(dt); else this.toss.update(dt); }
+    this.kit.tick(dt);
+    // camera follows her (a game may hold it on the court instead, pull back and look down a little)
+    const view = this.game?.view;
+    const fx = view?.focus ? 0 : a.position.x, fz = view?.focus ? 0 : a.position.z;
+    this.target.x += (fx - this.target.x) * damp(3.5, dt);
+    this.target.z += (fz - this.target.z) * damp(3.5, dt);
+    this.playPitch += ((view?.pitch ?? -1) - this.playPitch) * damp(2.5, dt);
     this.framing += (this.framingTo - this.framing) * (this.framingTo < this.framing ? damp(3.2, dt) : 1);
     // pull back a little while a big moment plays (the house, the party set, the rainbow, a lap)
-    const wantWide = WIDE[this.runner.current ?? ''] ?? 0;
+    const wantWide = (WIDE[this.runner.current ?? ''] ?? 0) + (this.game?.view?.wide ?? 0);
     this.wide += (wantWide - this.wide) * damp(wantWide > this.wide ? 2.2 : 1.2, dt);
     this.placeCamera(dt);
+    st.houseSet.applyTour(this.cam); // House moment: the camera glides into her house (scene/house)
     st.root.updateMatrixWorld();
     st.update(dt, this.cam);
     this.scene.backgroundIntensity = st.bg;
@@ -293,7 +400,9 @@ export class ShowcaseMode implements Mode {
   private placeCamera(_dt: number): void {
     const k = ease.inOut(this.framing);
     // play framing
-    const yaw = this.yaw * (1 - k), pitch = this.pitch * (1 - k) + 0.08 * k;
+    // a game's camera pitch blends in (playPitch < 0 = none)
+    const pp = this.playPitch > 0 ? Math.max(this.pitch, this.playPitch) : this.pitch;
+    const yaw = this.yaw * (1 - k), pitch = pp * (1 - k) + 0.08 * k;
     let dist = this.dist + this.wide;
     let ty = PLAY.targetY + this.wide * 0.18;
     const W = Math.max(1, this.sh.container.clientWidth), H = Math.max(1, this.sh.container.clientHeight);
@@ -315,6 +424,8 @@ export class ShowcaseMode implements Mode {
     this.cam.lookAt(tgt);
     this.cam.updateMatrixWorld();
   }
+
+  private playPitch = -1;
 
   /** Halve the pixel ratio once if frames are slow (phones with big screens). */
   private adapt(dt: number): void {
@@ -340,6 +451,7 @@ export class ShowcaseMode implements Mode {
     if (!a.bear || !this.hitsBear(this.ray.ray)) return;
     // a poke: she always jiggles; a reaction plays when she's free
     a.jiggle(0.14);
+    if (this.game) return; // a game is on: just the jiggle
     const name = a.asleep ? 'WakeUp' : TAP_REACTIONS[Math.floor(Math.random() * TAP_REACTIONS.length)];
     if (this.runner.busy && !a.asleep) return;
     if (this.runner.trigger(name)) this.sh.tapAction(name);
@@ -359,7 +471,7 @@ export class ShowcaseMode implements Mode {
     if (!this.active || !this.canvas) return;
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     this.ray.setFromCamera(new THREE.Vector2((x / w) * 2 - 1, -(y / h) * 2 + 1), this.cam);
-    if (!this.stage.actor.bear || !this.hitsBear(this.ray.ray)) return;
+    if (!this.stage.actor.bear || !this.hitsBear(this.ray.ray) || this.game) return;
     hugBear(this.stage, this.runner, this.sh.reduced);
   }
 
@@ -367,11 +479,15 @@ export class ShowcaseMode implements Mode {
     this.releaseRenderer();
     this.keys.dispose();
     this.toss.show(false);
+    this.gamesBtn?.remove();
     window.removeEventListener('keydown', this.onKey);
+    window.removeEventListener('keyup', this.onKeyUp);
   }
 }
 
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
+/** The Games button's icon: a heart with speed lines (flat, currentColor). */
+const GAMES_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 20.5 7.6 14.3a4.1 4.1 0 0 1 6.4-5.1 4.1 4.1 0 0 1 6.4 5.1Z"/><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5h3M2 13h2.5M3 16.5h2.5"/></g></svg>';
 const WIDE: Record<string, number> = { House: 3.4, Party: 1.6, Rainbow: 1.0, Running: 1.2, Magic: 0.8, Cold: 0.6, Stare: 0.9 };
 
 

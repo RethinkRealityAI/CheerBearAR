@@ -33,6 +33,20 @@ export interface Toast {
 
 export type TranscriptionState = 'off' | 'connecting' | 'live' | 'error';
 
+/** Voice mode (hold to talk): what the talk button is doing. */
+export type VoiceUiState = 'idle' | 'starting' | 'listening' | 'finishing' | 'unsupported' | 'denied' | 'error';
+
+/** The bubble above the talk button in voice mode. */
+export interface VoiceBubble {
+  id: number;
+  kind: 'nudge' | 'hint' | 'caption' | 'unknown' | 'camera' | 'info';
+  text: string;
+  /** "Try saying…" chips (unknown speech). */
+  examples?: Array<{ say: string; label: string }>;
+  /** 'camera': the mode the chip's tap opens. */
+  mode?: ExperienceMode;
+}
+
 export interface AppState {
   started: boolean;
   sources: { experience: Source | 'loading'; voice: Source | 'loading' };
@@ -68,6 +82,13 @@ export interface AppState {
   game: GameState;
   prefs: Prefs;
   isDesktop: boolean;
+  /** Voice mode: the talk button is a hold-to-talk mic (config on, no call live). */
+  voice: VoiceUiState;
+  /** Live words while you hold (interim), the final words after. */
+  voiceText: string;
+  voiceBubble: VoiceBubble | null;
+  /** Calling can actually connect here (Twilio set up, or the demo call): show the small phone button. */
+  callsAvailable: boolean;
 }
 
 export function createAppStore() {
@@ -102,6 +123,10 @@ export function createAppStore() {
     game: newGame(null),
     prefs,
     isDesktop: typeof matchMedia === 'function' ? matchMedia('(min-width: 901px)').matches : false,
+    voice: 'idle',
+    voiceText: '',
+    voiceBubble: null,
+    callsAvailable: false,
   });
 }
 

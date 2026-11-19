@@ -15,6 +15,7 @@ import { Timeline, ease, sampleKeys } from '../core/timeline';
 import type { EmitOptions } from './fx';
 import { PAL, RAINBOW } from './fx';
 import type { Stage } from './stage';
+import { COT } from './house/dims';
 
 // 'Stare' (the Care Bear Stare, round 2) is a core action, so the admin keyword list and the voice synonyms
 // ("care bear stare") fire it. 'Cheer' is experience-only.
@@ -474,18 +475,51 @@ function carDrive(c: Ctx, from: THREE.Vector3, to: THREE.Vector3): (k: number) =
   };
 }
 
-/** Showcase: her house pops up behind her (elastic), the car drives in and parks, the mailbox pops up. */
+/**
+ * Showcase: her house pops up behind her (elastic), the mailbox pops up, the door swings open and the car drives in
+ * and parks. Then the camera glides through the door into the room (scene/house/: the same room AR walks into):
+ * she pops in to wave, a look at the TV playing the theme, a little jukebox party, and back out again. The house
+ * shrinks away at the end.
+ */
 function houseShowcase(c: Ctx): MomentDef {
-  const st = c.st, h = st.house, mb = st.mailbox, a = st.actor;
-  const hp = c.A.clone().addScaledVector(c.f, -2.7);
-  const park = hp.clone().addScaledVector(c.s, 1.75).addScaledVector(c.f, 0.85);
-  const start = park.clone().addScaledVector(c.s, 3.2).addScaledVector(c.f, 0.2);
-  const gone = park.clone().addScaledVector(c.s, -6);
-  const mbp = hp.clone().addScaledVector(c.s, -1.7).addScaledVector(c.f, 1.0);
+  const st = c.st, h = st.house, hs = st.houseSet, mb = st.mailbox, a = st.actor;
+  const K = hs.k, D = COT.d * K, Wd = COT.w * K;
+  const hp = c.A.clone().addScaledVector(c.f, -(1.9 + D / 2));
+  const park = hp.clone().addScaledVector(c.s, Wd / 2 + 0.85).addScaledVector(c.f, D / 2 + 0.75);
+  const start = park.clone().addScaledVector(c.s, 3.4).addScaledVector(c.f, 0.3);
+  const gone = park.clone().addScaledVector(c.s, -7);
+  const mbp = hp.clone().addScaledVector(c.s, -(Wd / 2 + 0.55)).addScaledVector(c.f, D / 2 + 0.6);
+  const L = (x: number, y: number, z: number) => hs.toStage(v3(x, y, z));
+  const tour = hs.tour;
+  let inRoom = false;
+  // waypoints in door-local metres: [time, position, look-at]
+  const path: Array<[number, [number, number, number], [number, number, number]]> = [
+    [0, [0, 1.45, 3.4], [0, 1.15, -2]],
+    [1.6, [0, 1.3, 1.2], [0, 1.0, -4.5]],
+    [3.0, [0, 1.25, -1.15], [0, 0.95, -4.5]],
+    [5.0, [0.1, 1.2, -1.55], [-0.15, 0.95, -4.5]],
+    [6.4, [-0.25, 1.22, -1.7], [-1.2, 0.95, -4.3]],
+    [7.9, [-0.2, 1.22, -1.75], [0.6, 0.55, -2.5]],
+    [9.2, [0, 1.3, -0.9], [0, 1.0, -3.5]],
+    [10.6, [0, 1.45, 3.0], [0, 1.3, 0]],
+  ];
+  const P = v3(), LK = v3(), PA = v3(), PB = v3();
+  const sample = (u: number) => {
+    let i = 0;
+    while (i < path.length - 2 && u > path[i + 1][0]) i++;
+    const [t0, p0, l0] = path[i], [t1, p1, l1] = path[i + 1];
+    const k = ease.inOut(THREE.MathUtils.clamp((u - t0) / (t1 - t0), 0, 1));
+    P.lerpVectors(PA.set(...p0), PB.set(...p1), k);
+    LK.lerpVectors(PA.set(...l0), PB.set(...l1), k);
+    hs.toStage(P, tour.pos);
+    hs.toStage(LK, tour.look);
+  };
+  const TOUR = 4.4, TL = path[path.length - 1][0];
+  const OUT = TOUR + TL + 1.4;
   const tl = new Timeline();
-  const OUT = 9.2;
   tl.at(0, () => {
     h.visible = true; h.position.copy(hp); h.rotation.set(0, c.yawCam, 0); h.scale.setScalar(0.07);
+    hs.setOpen(false, true);
     mb.visible = false; mb.position.copy(mbp); mb.rotation.set(0, c.yawCam + 0.4, 0);
     st.car.visible = false;
     c.emit({ count: 45, glyph: ['sparkle', 'star'], colors: [0xe6ccff, PAL.pink, PAL.yellow, PAL.white], at: hp.clone().setY(0.4), spread: [0.9, 0.3, 0.6], burst: 0.9, drag: 1.4, life: [1, 1.6], size: [0.07, 0.14] });
@@ -494,17 +528,52 @@ function houseShowcase(c: Ctx): MomentDef {
     .tween(0, 0.9, (k) => h.scale.setScalar(0.07 + 0.93 * k), ease.elasticOut)
     .at(0.7, () => { mb.visible = true; mb.scale.setScalar(0.001); })
     .tween(0.7, 0.6, (k) => mb.scale.setScalar(Math.max(0.001, k)), ease.backOut)
-    .at(0.9, () => { c.play('present'); a.face('happy', 6); })
+    .at(0.9, () => { c.play('present'); a.face('happy', 6); hs.puffHearts(c.reduced ? 4 : 10); })
+    .at(1.1, () => hs.setOpen(true))
     .at(1.2, () => { st.car.visible = true; })
     .tween(1.2, 2.6, carDrive(c, start, park), ease.out)
-    .at(4.0, () => c.play('cheer'))
-    .at(OUT, () => c.play('wave'))
+    .at(3.6, () => c.play('cheer'))
+    // the glide in: blend from the follow camera, then along the path through the door
+    .at(TOUR, () => sample(0))
+    .tween(TOUR, TL, (_k, t) => {
+      sample(t);
+      tour.k = Math.min(1, t / 1.4);
+    }, ease.linear)
+    // she pops into the room to wave at you
+    .at(TOUR + 2.4, () => {
+      if (c.cut()) return;
+      c.emit({ count: 16, glyph: ['sparkle', 'star'], colors: [PAL.pink, PAL.yellow, PAL.white], at: a.position.clone().setY(0.5), burst: 0.7, drag: 1.5, life: [0.6, 1], size: [0.06, 0.1] });
+      a.position.copy(L(0.65, 0, -2.45)).setY(0);
+      const cam = L(0, 0, -1.2);
+      a.setHeading(Math.atan2(cam.x - a.position.x, cam.z - a.position.z));
+      inRoom = true;
+      c.emit({ count: 22, glyph: ['sparkle', 'star', 'heart'], colors: [PAL.pink, PAL.yellow, PAL.white], at: a.position.clone().setY(0.5), burst: 0.8, drag: 1.5, life: [0.7, 1.1], size: [0.06, 0.11] });
+      c.play('wave');
+    })
+    // a little jukebox party
+    .at(TOUR + 6.0, () => { if (!c.cut() && hs.interact('jukebox') === 'dance') c.play('dance', false); })
+    // back out with you
+    .at(TOUR + 9.4, () => {
+      if (!inRoom) return;
+      inRoom = false;
+      c.emit({ count: 16, glyph: ['sparkle', 'star'], colors: [PAL.pink, PAL.yellow, PAL.white], at: a.position.clone().setY(0.5), burst: 0.7, drag: 1.5, life: [0.6, 1], size: [0.06, 0.1] });
+      a.position.copy(c.A);
+      a.setHeading(c.yawCam);
+      c.play('idle', false);
+      c.play('cheer');
+    })
+    .tween(TOUR + TL, 1.3, (k) => { tour.k = 1 - k; }, ease.inOut)
+    .at(OUT, () => { c.play('wave'); hs.setOpen(false); })
     .tween(OUT, 1.6, carDrive(c, park, gone), ease.in)
     .tween(OUT + 1.2, 0.5, (k) => { h.scale.setScalar(Math.max(0.001, 1 - k)); mb.scale.setScalar(Math.max(0.001, 1 - k)); }, ease.in)
     .hold(OUT + 1.9);
   return {
-    tl, outro: OUT, minT: 4,
+    tl, outro: OUT, minT: 4, faceCam: false,
     tidy: () => {
+      tour.k = 0;
+      hs.reset();
+      hs.setOpen(false, true);
+      if (inRoom) { a.position.copy(c.A); inRoom = false; }
       h.visible = false; h.scale.setScalar(1);
       mb.visible = false; mb.scale.setScalar(1);
       st.car.visible = false;
@@ -512,24 +581,30 @@ function houseShowcase(c: Ctx): MomentDef {
   };
 }
 
-/** AR: the house is already there. It bounces with sparkles, the car drives up and parks beside it, then drives off. */
+/**
+ * AR: the house is already there, life size. It bounces with sparkles and puffs hearts from its chimney, the door
+ * swings open, the mailbox wobbles, a little cloud car drives up and parks in the garden, then drives off.
+ */
 function houseAr(c: Ctx): MomentDef {
-  const st = c.st, h = st.house, a = st.actor, mb = st.mailbox;
-  const front = st.houseSize.z / 2;
-  const park = v3(h.position.x + st.houseSize.x / 2 + 0.55, 0, h.position.z + front * 0.4);
-  const start = park.clone().add(v3(3, 0, 0.6));
-  const gone = park.clone().add(v3(-0.4, 0, 3.5));
+  const st = c.st, hs = st.houseSet, a = st.actor;
+  const K = hs.k;
+  const L = (x: number, y: number, z: number) => hs.toStage(v3(x, y, z)).setY(0);
+  const park = L(COT.w / 2 + 0.95, 0, 1.25);
+  const start = L(COT.w / 2 + 4.2, 0, 2.2);
+  const gone = L(COT.w / 2 + 0.2, 0, 6.5);
   const OUT = 7.5;
-  const mbRot = mb.rotation.y;
   const tl = new Timeline();
   tl.at(0, () => {
     st.car.visible = false;
-    c.emit({ count: 45, glyph: ['sparkle', 'star'], colors: [0xe6ccff, PAL.pink, PAL.yellow, PAL.white], at: h.position.clone().setY(1.6), spread: [0.8, 0.3, 0.5], burst: 1, drag: 1.4, life: [1, 1.6], size: [0.07, 0.14] });
+    st.car.scale.setScalar((0.85 * K) / 0.68);
+    c.emit({ count: 45, glyph: ['sparkle', 'star'], colors: [0xe6ccff, PAL.pink, PAL.yellow, PAL.white], at: hs.toStage(v3(0, COT.peak * 0.7, 0.3)), spread: [1.2 * K, 0.6 * K, 0.3 * K], burst: 0.5 * K, drag: 1.4, life: [1, 1.6], size: [0.07 * K, 0.14 * K] });
     c.play('present');
     a.face('happy', 6);
+    hs.setOpen(true);
   })
-    .tween(0, 0.9, (k) => { const s = 1 + Math.sin(k * Math.PI) * 0.12 * (1 - k * 0.5); h.scale.set(s, 2 - s, s); }, ease.linear)
-    .tween(0.3, 1.2, (k) => { mb.rotation.y = mbRot + Math.sin(k * Math.PI * 4) * 0.25 * (1 - k); }, ease.linear)
+    .tween(0, 0.9, (k) => { hs.squash = 1 + Math.sin(k * Math.PI) * 0.07 * (1 - k * 0.5); }, ease.linear)
+    .at(0.25, () => hs.puffHearts(c.reduced ? 5 : 12))
+    .tween(0.3, 1.2, (k) => { hs.mailTilt = Math.sin(k * Math.PI * 4) * 0.2 * (1 - k); }, ease.linear)
     .at(0.8, () => { st.car.visible = true; })
     .tween(0.8, 2.6, carDrive(c, start, park), ease.out)
     .at(3.6, () => c.play('cheer'))
@@ -537,7 +612,7 @@ function houseAr(c: Ctx): MomentDef {
     .hold(OUT + 1.9);
   return {
     tl, outro: OUT, minT: 3.5,
-    tidy: () => { h.scale.setScalar(1); mb.rotation.y = mbRot; st.car.visible = false; },
+    tidy: () => { hs.squash = 1; hs.mailTilt = 0; st.car.visible = false; st.car.scale.setScalar(1); },
   };
 }
 

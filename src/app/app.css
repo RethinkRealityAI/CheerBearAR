@@ -81,7 +81,8 @@
 .cb-orb {
   pointer-events: auto; position: relative; width: 72px; height: 72px; padding: 0; border: 0; border-radius: 50%;
   background: transparent; color: var(--app-on-primary, var(--cb-white));
-  cursor: pointer; touch-action: manipulation; -webkit-user-select: none; user-select: none;
+  /* iOS long press (hold to talk, hold to hang up): no callout, no text selection, no pan/zoom stealing the pointer */
+  cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none; transition: transform var(--cb-dur-2) var(--cb-ease-spring);
 }
 .cb-orb:active { transform: scale(.92); }
@@ -137,6 +138,53 @@
   border: 1px solid var(--cb-glass-line); background: var(--cb-glass-strong); color: var(--cb-white); box-shadow: var(--cb-shadow-1);
   -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur);
 }
+/* voice mode (voice-3): the talk button is a mic. Hold = listening: it grows, turns white with a pink mic, and two
+   pink rings follow your mic level. Flat colours only. */
+.cb-orb.is-voice .cb-orb-ring { animation: cb-ring 2.8s var(--cb-ease) infinite; }
+/* a hold must survive a finger drifting a little: no panning / zoom gestures may cancel the pointer */
+.cb-orb.is-voice, .cb-holdbtn { touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.cb-orb.is-listening { transform: scale(1.12); color: var(--app-primary, var(--cb-pink-deep)); }
+.cb-orb.is-listening:active { transform: scale(1.08); }
+.cb-orb.is-listening .cb-orb-face { background: var(--cb-white); box-shadow: var(--cb-shadow-3), inset 0 0 0 4px var(--app-primary, var(--cb-pink-deep)); }
+.cb-orb.is-listening .cb-orb-ring { animation: none; opacity: 0; }
+.cb-orb.is-listening .cb-orb-wave { background: var(--app-primary, var(--cb-pink-deep)); opacity: .3; }
+.cb-orb.is-listening .cb-orb-wave.is-2 { background: transparent; border-color: var(--cb-white); }
+.cb-orb.is-listening:not(.has-level) .cb-orb-wave { animation: cb-fade 1.2s ease-in-out infinite; }
+.cb-orb.is-voice-off .cb-orb-face { background: var(--cb-glass-strong); box-shadow: var(--cb-shadow-2), inset 0 0 0 3px var(--cb-glass-line); }
+.cb-orb.is-voice-off .cb-orb-ring { animation: none; }
+.cb-more:focus-visible, .cb-vchip:focus-visible { outline: none; box-shadow: var(--cb-focus); }
+/* the bubble above it: what you are saying (live), hints, "try saying" chips, the camera chip */
+.cb-vbubble {
+  /* bottom: clear of the bottom row's tallest control (the joystick / shutter, bottom centre: never overlapped).
+     This is the floor: TalkOrb measures the experience's bottom controls (Place, Move, shutter, joystick...) under
+     the bubble and lifts it above them (inline style). */
+  position: absolute; right: 0; bottom: 146px; width: max-content; max-width: min(300px, calc(100vw - 32px));
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; pointer-events: none;
+  background: var(--cb-white); color: var(--cb-ink); font: var(--cb-w-strong) 16px/1.3 var(--cb-font);
+  padding: 11px 15px; border-radius: var(--cb-r-md); box-shadow: var(--cb-shadow-2);
+  transform-origin: calc(100% - 34px) 100%; animation: cb-chip-in var(--cb-dur-3) var(--cb-ease-spring) both;
+}
+.cb-vbubble::after {
+  content: ''; position: absolute; right: 30px; bottom: -5px; width: 12px; height: 12px;
+  background: inherit; transform: rotate(45deg); border-radius: 0 0 3px 0;
+}
+/* the first-time nudge: nothing between it and the mic (the panel button waits), so its tail points at the mic */
+.cb-vbubble.is-nudge { font-size: 18px; padding: 12px 18px; }
+.cb-vbubble.is-caption.is-live { font-size: 19px; }
+.cb-vbubble.is-unknown, .cb-vbubble.is-camera { pointer-events: auto; }
+.cb-vbubble.is-info, .cb-vbubble.is-hint { background: var(--cb-yellow); }
+.cb-vbubble-text { min-width: 0; overflow-wrap: anywhere; }
+.cb-vbubble-rec { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--cb-red); animation: cb-rec 1s ease-in-out infinite alternate; }
+@keyframes cb-rec { from { opacity: 1; } to { opacity: .35; } }
+.cb-vbubble-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.cb-vchip {
+  min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--cb-r-pill); cursor: pointer;
+  background: var(--cb-pink-soft); color: var(--cb-ink); font: var(--cb-w-strong) 16px/1 var(--cb-font);
+  transition: transform var(--cb-dur-1) var(--cb-ease);
+}
+.cb-vchip:active { transform: scale(.94); }
+.cb-vchip.is-primary { width: 100%; background: var(--cb-pink-deep); color: var(--cb-white); }
+
 /* the nudge: above the talk button (or above the panel button), right-aligned so it never reaches the bottom centre */
 .cb-orb-bubble {
   position: absolute; right: 0; bottom: 86px; white-space: nowrap; pointer-events: none;
@@ -282,6 +330,28 @@
 }
 .cb-callcard-actions { display: flex; gap: 8px; }
 .cb-callcard > .cb-btn.is-wide { flex-basis: 100%; }
+/* voice mode in the Talk tab (voice-3): one big hold-to-talk button, what to say, then the call as a second choice */
+.cb-voicecard {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px;
+  border-radius: var(--cb-r-md); background: var(--cb-fill-1); border: 1px solid var(--cb-fill-1);
+}
+.cb-holdbtn {
+  display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; min-height: 64px; padding: 8px 18px;
+  border: 0; border-radius: var(--cb-r-pill); cursor: pointer; touch-action: manipulation;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  background: var(--app-primary, var(--cb-pink-deep)); color: var(--app-on-primary, var(--cb-white));
+  font: var(--cb-w-heavy) 19px/1.2 var(--cb-font); box-shadow: var(--cb-shadow-1);
+  transition: transform var(--cb-dur-2) var(--cb-ease-spring), background-color var(--cb-dur-2);
+}
+.cb-holdbtn:active { transform: scale(.97); }
+.cb-holdbtn:focus-visible { outline: none; box-shadow: var(--cb-focus); }
+.cb-holdbtn-icon { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--cb-white); color: var(--app-primary, var(--cb-pink-deep)); }
+.cb-holdbtn.is-live { background: var(--cb-white); color: var(--cb-ink); box-shadow: var(--cb-shadow-2), inset 0 0 0 4px var(--app-primary, var(--cb-pink-deep)); }
+.cb-holdbtn.is-live .cb-holdbtn-icon { background: var(--app-primary, var(--cb-pink-deep)); color: var(--cb-white); animation: cb-bob .5s ease-in-out infinite alternate; }
+.cb-voicecard-line { margin: 0; font-size: 15px; line-height: 1.4; color: var(--cb-on-glass-soft); text-align: center; }
+.cb-voicecard-line b { color: var(--cb-white); font-weight: var(--cb-w-strong); }
+.cb-voicecard-call { min-height: 44px; }
+.cb-settings-note { margin: 8px 2px 0; font-size: 13px; line-height: 1.4; color: var(--cb-on-glass-soft); }
 
 .cb-calm { text-align: center; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .cb-calm p { margin: 0; font-size: 15px; line-height: 1.4; color: var(--cb-on-glass-soft); }

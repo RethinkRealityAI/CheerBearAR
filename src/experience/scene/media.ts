@@ -1,11 +1,10 @@
-// The two videos: the swirling portal in Cheer Bear's doorway (keyed green, silent, loops) and the theme song that
-// plays on the TVs (party, inside the house). Video elements live in the document with playsinline set before src
-// (iOS shows off-document videos black). The theme is "primed" inside the Start tap so it may play with sound later.
+// The theme song video that plays on the TVs (party, inside the house). The old keyed-green portal swirl
+// (public/media/portal.mp4) is no longer loaded: her doorway is a real walk-through room now (scene/house).
+// Video elements live in the document with playsinline set before src (iOS shows off-document videos black). The theme is "primed" inside the Start tap so it may play with sound later.
 import * as THREE from 'three';
 import { makeVideo } from './fx';
 
 export class Media {
-  readonly portal: HTMLVideoElement;
   readonly theme: HTMLVideoElement;
   readonly themeTexture: THREE.VideoTexture;
   private primed = false;
@@ -16,7 +15,6 @@ export class Media {
   soundOk = false;
 
   constructor() {
-    this.portal = makeVideo('/media/portal.mp4', { loop: true, muted: true });
     this.theme = makeVideo('/media/theme.mp4', { loop: true, muted: true });
     this.theme.volume = 0.6;
     this.themeTexture = new THREE.VideoTexture(this.theme);
@@ -28,7 +26,7 @@ export class Media {
     this.themeTexture.offset.set(0.125, 0);
   }
 
-  /** Resolves when both videos can show a first frame (or after `ms`). For the loading bar. */
+  /** Resolves when the theme can show a first frame (or after `ms`). For the loading bar. */
   ready(ms = 8000): Promise<void> {
     const one = (v: HTMLVideoElement) =>
       v.readyState >= 2
@@ -38,16 +36,15 @@ export class Media {
             v.addEventListener('error', () => r(), { once: true });
           });
     return Promise.race([
-      Promise.all([one(this.portal), one(this.theme)]).then(() => undefined),
+      one(this.theme),
       new Promise<void>((r) => window.setTimeout(r, ms)),
     ]);
   }
 
-  /** Call inside the Start tap: unlocks both videos (and the theme's sound) for later play() without a gesture. */
+  /** Call inside the Start tap: unlocks the theme (and its sound) for later play() without a gesture. */
   prime(): void {
     if (this.primed) return;
     this.primed = true;
-    this.portal.play().catch(() => undefined);
     // play() unmuted inside the gesture marks the element as allowed to make sound later; pausing at once keeps it
     // silent (iOS ignores volume, so a volume-0 trick would blip). An AbortError just means "paused before it began".
     const t = this.theme;
@@ -107,11 +104,9 @@ export class Media {
 
   /** Pause everything (page hidden, leaving to a camera mode that does not show them). */
   pauseAll(): void {
-    this.portal.pause();
     this.theme.pause();
   }
   resumeAll(): void {
-    if (this.primed) this.portal.play().catch(() => undefined);
     if (this.themeUsers.size) this.theme.play().catch(() => undefined);
   }
   get themeOn(): boolean {
@@ -128,7 +123,7 @@ export class Media {
   dispose(): void {
     window.clearInterval(this.fadeTimer);
     this.themeTexture.dispose();
-    for (const v of [this.portal, this.theme]) {
+    for (const v of [this.theme]) {
       v.pause();
       v.removeAttribute('src');
       v.load();

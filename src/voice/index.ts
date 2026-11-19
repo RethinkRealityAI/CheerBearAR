@@ -14,3 +14,6 @@ export { ApiError } from './api';
 export { mockFlagsFromUrl } from './mock';
 export { CheerBrain } from './cheerBrain';
 export { buildVisemeTimeline, sampleTimeline } from './textVisemes';
+export type { VoiceModeApi, VoiceModeEvents, VoiceModePhase } from './voiceMode';
+export type { VoiceCommand, VoiceMatch } from './commands';
+export { matchVoiceCommands } from './commands';

@@ -15,6 +15,7 @@ interface LooseConfig {
   smsPolicy?: { sendTypedChatToSms?: boolean; sendSpeechToSms?: boolean };
   triggerPolicy?: { triggerCooldownMs?: number; dispatchMode?: string; partialTriggerEnabled?: boolean };
   localClassifier?: { keywords?: string[] };
+  voiceMode?: { enabled?: boolean; holdToTalk?: boolean; spokenReplies?: boolean };
   gameModes?: Partial<GameMode>[];
   activeGameMode?: string | null;
   ui?: {
@@ -75,6 +76,8 @@ export interface UiSettings {
   allowUserTriggers: boolean;
   commandModeDefault: boolean;
   keywords: string[];
+  /** Voice mode (hold the talk button and say what should happen; no call). Admin defaults. */
+  voiceMode: { enabled: boolean; holdToTalk: boolean; spokenReplies: boolean };
   gameModes: GameMode[];
   activeGameMode: string | null;
   welcome: WelcomeSettings;
@@ -185,6 +188,11 @@ export function normaliseConfig(config: AppConfig | null | undefined): UiSetting
     allowUserTriggers: bool(c.allowUserTriggers, false),
     commandModeDefault: bool(c.ui?.isCommandMode, false),
     keywords: keywords.length ? keywords : [...CORE_ACTIONS],
+    voiceMode: {
+      enabled: bool(c.voiceMode?.enabled, true),
+      holdToTalk: bool(c.voiceMode?.holdToTalk, true),
+      spokenReplies: bool(c.voiceMode?.spokenReplies, true),
+    },
     gameModes,
     activeGameMode: typeof c.activeGameMode === 'string' ? c.activeGameMode : null,
     welcome: {

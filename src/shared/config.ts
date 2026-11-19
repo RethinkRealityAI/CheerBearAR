@@ -149,6 +149,21 @@ export interface DemoVoiceConfig {
   useAiBrain: boolean;
 }
 
+/**
+ * Voice mode: hold the talk button (or tap, see holdToTalk) and say what should happen ("rainbow", "go to AR",
+ * "take a picture"). No call, no server, no AI: the browser's own speech recognition turns speech into words and a
+ * local matcher (src/voice/commands.ts) turns words into actions. Chrome sends the audio to Google's speech service
+ * and Safari to Apple's (free, no key), so it is not on-device.
+ */
+export interface VoiceModeConfig {
+  /** The talk button is a hold-to-talk mic when no call is live (calling moves to a smaller phone button). */
+  enabled: boolean;
+  /** Default for new visitors: hold the button while talking (true) or tap once to start and once to stop (false). */
+  holdToTalk: boolean;
+  /** Cheer Bear answers commands with a short canned line in the browser's voice (visitors can turn it off). */
+  spokenReplies: boolean;
+}
+
 export interface UiPrefs {
   useCallMode: boolean;
   isCommandMode: boolean;
@@ -192,6 +207,7 @@ export interface AppConfig {
   activeGameMode: string | null;
   lipSync: LipSyncDisplayConfig;
   demoVoice: DemoVoiceConfig;
+  voiceMode: VoiceModeConfig;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -286,6 +302,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   lipSync: { showControlsPanel: true, showDebugHud: true, intensity: 1, attackMs: 55, releaseMs: 95 },
   demoVoice: { speakTypedChatOutsideCall: true, pitch: 1.3, rate: 1.05, useAiBrain: true },
+  voiceMode: { enabled: true, holdToTalk: true, spokenReplies: true },
   gameModes: [
     {
       id: 'chat-time',
@@ -619,6 +636,13 @@ export function validateConfig(config: unknown): string[] {
     c.num(cfg.demoVoice.pitch, 0.5, 2, 'demoVoice.pitch');
     c.num(cfg.demoVoice.rate, 0.5, 2, 'demoVoice.rate');
     c.bool(cfg.demoVoice.useAiBrain, 'demoVoice.useAiBrain');
+  }
+
+  if (!isPlainObject(cfg.voiceMode)) c.fail('voiceMode', 'must be an object');
+  else {
+    c.bool(cfg.voiceMode.enabled, 'voiceMode.enabled');
+    c.bool(cfg.voiceMode.holdToTalk, 'voiceMode.holdToTalk');
+    c.bool(cfg.voiceMode.spokenReplies, 'voiceMode.spokenReplies');
   }
 
   if (!Array.isArray(cfg.gameModes)) c.fail('gameModes', 'must be a list');

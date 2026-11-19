@@ -384,3 +384,6 @@ await check("speech input: ignores Cheer Bear's own voice; denied and unsupporte
 });
 
 console.log(`voice logic: ${passed} passed${process.exitCode ? ', SOME FAILED' : ''}`);
+
+// voice mode's command matcher (voice-3)
+await import('./check-voice-commands');

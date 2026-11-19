@@ -11,15 +11,18 @@ import { settingOn, transcriptsVisible } from '../state/uiConfig';
 import { actionLook } from '../actions';
 import { formatClock } from './callText';
 import { MicExplainer } from './TalkOrb';
+import { VoiceCard } from './VoiceCard';
 
 const MODE_LABELS: Record<UiMode, string> = { calm: 'Just talk', chat: 'Chat', call_debug: 'Staff' };
 
 export function TalkPanel() {
   const uiMode = useApp((s) => s.uiMode);
   const canPickMode = useApp((s) => settingOn(s.ui, 'experience_mode'));
+  // voice mode (no call live): hold to talk first, the call as a smaller second choice (voice-3)
+  const voiceCard = useApp((s) => s.ui.voiceMode.enabled && (s.call === 'idle' || s.call === 'error') && !s.micAsk);
   return (
     <div className={`cb-talk mode-${uiMode}`}>
-      <CallCard />
+      {voiceCard ? <VoiceCard /> : <CallCard />}
       {canPickMode && <ModeSwitch />}
       {uiMode === 'calm' ? <CalmTips /> : <><MessageList /><Composer /></>}
     </div>
@@ -127,10 +130,12 @@ function CalmTips() {
   const c = useController();
   const hasGame = useApp((s) => !!s.game.modeId);
   const inCall = useApp((s) => s.call === 'in-call');
+  const voice = useApp((s) => s.ui.voiceMode.enabled && !inCall);
+  const tap = useApp((s) => s.prefs.tapToTalk ?? !s.ui.voiceMode.holdToTalk);
   return (
     <div className="cb-calm">
-      <p className="cb-calm-big">{inCall ? 'Talk out loud. Cheer Bear can hear you!' : 'Just talk, like a phone call.'}</p>
-      <p>When Cheer Bear says a magic word, something happens in the scene.</p>
+      <p className="cb-calm-big">{inCall ? 'Talk out loud. Cheer Bear can hear you!' : voice ? (tap ? 'Tap the mic and say a magic word.' : 'Hold the mic, say a magic word, let go.') : 'Just talk, like a phone call.'}</p>
+      <p>{voice ? 'Something magic happens in the scene!' : 'When Cheer Bear says a magic word, something happens in the scene.'}</p>
       {hasGame && (
         <button type="button" className="cb-btn is-soft" onClick={() => c.openOverlay('hint')}>
           <Lightbulb aria-hidden="true" size={20} /> Need ideas? Get a hint

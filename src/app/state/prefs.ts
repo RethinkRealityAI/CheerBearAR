@@ -16,6 +16,12 @@ export interface Prefs {
   micExplained: boolean;
   /** The "Tap to call" nudge next to the talk button has been retired (after the first call). */
   orbNudgeDone: boolean;
+  /** Voice mode: tap once to start and once to stop instead of holding (null = the admin default). */
+  tapToTalk: boolean | null;
+  /** Voice mode: Cheer Bear answers out loud (null = the admin default). */
+  spokenReplies: boolean | null;
+  /** The "Hold to talk" nudge has been retired (after the first hold that heard something). */
+  voiceNudgeDone: boolean;
 }
 
 const KEY = 'cb.app.prefs.v1';
@@ -27,6 +33,9 @@ export const DEFAULT_PREFS: Prefs = {
   welcomeSeenVersion: 0,
   micExplained: false,
   orbNudgeDone: false,
+  tapToTalk: null,
+  spokenReplies: null,
+  voiceNudgeDone: false,
 };
 
 export const storage = {

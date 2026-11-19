@@ -61,6 +61,11 @@ export interface Mode {
   onFace?(ev: FaceEvent): void;
   /** Taps on the scene (not on HUD buttons), canvas-relative CSS pixels + NDC. Return true if handled. */
   onTap?(x: number, y: number, ndc: THREE.Vector2): boolean;
+  /**
+   * A voice / app command (ExperienceApi.command). Return true when handled. Optional: without it the experience
+   * presses the mode's own shutter / data-cmd="place|move" buttons (src/experience/commands.ts).
+   */
+  command?(name: import('../shared/contracts').ExperienceCommand): boolean;
   /** Start again (menu): reset to a fresh state. */
   reset?(): void;
   dispose?(): void;
