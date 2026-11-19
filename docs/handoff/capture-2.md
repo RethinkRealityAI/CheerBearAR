@@ -46,6 +46,9 @@ the provided face and floor recordings, fake IMU, `?desktop`. **Nothing has been
   Measured on the last frame:
   - Green-dominant edge pixels went from 29 % to 6 %.
   - The dark fringe went from 56 % to 17 %.
+- **Clip size:** the clip is as tall as the screen. On a phone held upright (narrower than 9:16) that covers the
+  screen. On a wider screen (tablet, landscape, desktop) she stays whole and the keyed camera shows at the sides.
+  Before this fix, the 1440×900 run showed only her nose.
 - The peace-sign 2D frame art is gone: Classic now shows the clip itself. `frame-peace.webp` and `wink-still.webp`
   have been deleted from `public/img/capture/`.
 
@@ -111,7 +114,10 @@ The flow, in one engine session (xr-core's `Engine.start(kind)` swap, used as is
   - `photo.cjs <face.webm> <floor.webm>`: the full 3D Photo flow above, including two selfies, three flips, a
     restore, a Move, Selfie mode and back, and two room photos.
   - `variants.cjs <face.webm> <floor.webm> <se|desktop|reduced>`: the same screens at 375×667, at 1440×900
-    (non-phone UA, `?desktop`), and with reduced motion. It logs the control rectangles and any overlaps.
+    (non-phone UA, `?desktop`), and with reduced motion. It logs the control rectangles and any overlaps (none
+    found). On failure it dumps a screenshot (`v-<size>-ERR.jpg`) and the engine state.
+  - A desktop asks for the camera with no facing mode, so for those requests `lib.cjs` plays the file for the camera
+    the experience is switching to.
 
 ## Tested in the simulator vs untested
 
@@ -130,8 +136,16 @@ The flow, in one engine session (xr-core's `Engine.start(kind)` swap, used as is
   clips or photos), but I did not track down where the extra ones come from. They may be other workers' shared
   stage changes.
 - **Restoring after "Photo again":** in the sim, after re-entering Photo from Selfie, it took about 2 minutes for
-  tracking to report settled before she reappeared. The fake floor clip loops and re-settles slowly, so this is
-  probably a sim artefact, but it is worth watching on a phone. The hint "Hold still a moment" shows meanwhile.
+  tracking to report settled before she reappeared. This has the same cause as the next point. The hint "Hold
+  still a moment" shows meanwhile.
+- **Settle time in the sim varies a lot:** from 50 s up to more than 5 minutes before Place enables after the flip.
+  One 375×667 run timed out at 300 s; the same run passed on retry after about 4 minutes. This is xr-core's settled
+  gate on the looping fake floor clip with the fake IMU under swiftshader. It is the same gate the AR mode uses. I
+  believe it is a sim artefact, but check how long Place stays disabled on a real phone.
+- **Desktop (`?desktop`, non-phone UA, 1440×900):** Selfie, Classic, the review and the Photo selfie guide all
+  work. Flipping to the back camera fails ("The camera did not start": the engine's world tracking wants a phone).
+  The error path handles it: back to 3D with a "The camera did not turn round" sheet (`v-desktop-05-flip-refused.jpg`).
+  Real desktops get the open-on-phone QR and never reach this.
 - **Placement after a flip** is restored relative to the phone: she reappears at the same distance and bearing from
   where you hold the phone, not at the same spot in the room. The world session restarts with a new origin, so the
   old spot cannot be recovered.

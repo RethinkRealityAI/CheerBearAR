@@ -247,10 +247,10 @@ export class FaceMode implements Mode {
     const tanY = 1 / (P[5] || 1), tanX = 1 / (P[0] || 1);
 
     if (this.clipQuad.visible) {
-      // cover the screen with the 9:16 clip at 1 m
-      const hw = tanX, hh = tanY, a = 9 / 16;
-      let w = 2 * hw, h = w / a;
-      if (h < 2 * hh) { h = 2 * hh; w = h * a; }
+      // the 9:16 clip at 1 m, full screen height: covers a phone held upright (narrower than 9:16); on a wider
+      // screen (tablet, landscape) it fits the height so she stays whole and the keyed camera shows at the sides
+      const hh = tanY, a = 9 / 16;
+      const h = 2 * hh, w = h * a;
       this.clipQuad.position.set(0, 0, -1);
       this.clipQuad.scale.set(w, h, 1);
       this.diag.clipT = +this.video.currentTime.toFixed(2);
