@@ -255,7 +255,7 @@ export class ShowcaseMode implements Mode {
     const W = Math.max(1, this.sh.container.clientWidth), H = Math.max(1, this.sh.container.clientHeight);
     if (this.hero && k > 0.001) {
       // splash framing: bear (1 unit + a margin) fills the hero window's height, centred in it
-      const want = 1.22 / (2 * Math.tan(THREE.MathUtils.degToRad(this.cam.fov / 2))) * (H / Math.max(60, this.hero.h));
+      const want = 1.38 / (2 * Math.tan(THREE.MathUtils.degToRad(this.cam.fov / 2))) * (H / Math.max(60, this.hero.h));
       const wantW = 1.0 / (2 * Math.tan(THREE.MathUtils.degToRad(this.cam.fov / 2)) * (W / H)) * (W / Math.max(60, this.hero.w));
       dist = dist * (1 - k) + Math.max(want, wantW) * k;
       ty = PLAY.targetY * (1 - k) + 0.52 * k;

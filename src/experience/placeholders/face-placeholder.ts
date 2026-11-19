@@ -14,9 +14,10 @@ export function createFacePlaceholder(ctx: ModeContext): Mode {
   root.add(face);
   const nose = new THREE.Mesh(
     new THREE.CircleGeometry(0.11, 32),
-    new THREE.MeshBasicMaterial({ color: 0xff389b, toneMapped: false }),
+    new THREE.MeshBasicMaterial({ color: 0xff389b, toneMapped: false, side: THREE.DoubleSide, depthTest: false }),
   );
   nose.position.set(0, 0, 0.6);
+  nose.renderOrder = 10;
   face.add(nose);
   let found = false;
   let events = 0;

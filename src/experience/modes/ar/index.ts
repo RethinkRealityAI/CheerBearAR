@@ -17,7 +17,7 @@ import { angleTo, damp, ease } from '../../core/timeline';
 import { ICON } from '../../hud/icons';
 import { bindGestures, type Shared } from '../shared';
 
-const SCALE = { def: 0.65, min: 0.25, max: 1.3 };
+const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tall, her house 1.2 m
 const REACH = { min: 0.8, max: 3.6 }; // metres from the phone the reticle may sit
 const AREA = 3.0; // stage units she may walk from the stage centre
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
@@ -78,7 +78,6 @@ export class ArMode implements Mode {
 
     const hud = sh.hud;
     this.placeBtn = hud.pill('Place Cheer Bear', () => this.place());
-    this.placeBtn.classList.add('big');
     this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Cheer Bear somewhere else', onClick: () => this.move() });
     this.leaveBtn = hud.toolButton({ label: 'Leave', icon: ICON.leave, aria: 'Leave the house', onClick: () => this.leaveHouse() });
   }
@@ -271,7 +270,8 @@ export class ArMode implements Mode {
     const E = Math.max(1.2, 2.9 / (HOUSE_H * this.scale));
     const D = st.houseSize.z * E;
     this.houseFrom = { pos: h.position.clone(), yaw: h.rotation.y, scale: h.scale.x };
-    this.houseTo = { pos: c.clone().addScaledVector(look, D * 0.12), yaw: Math.atan2(-look.x, -look.z), scale: E };
+    // you stand in the front half of the room, facing the TV on the back wall
+    this.houseTo = { pos: c.clone().addScaledVector(look, D * 0.3), yaw: Math.atan2(-look.x, -look.z), scale: E };
     this.houseT = 0;
     this.inside = true;
     st.interior.visible = true;
@@ -279,7 +279,7 @@ export class ArMode implements Mode {
     st.mailbox.visible = false;
     st.car.visible = false;
     // she pops over to stand in front of you, inside
-    const to = c.clone().addScaledVector(look, 1.1 / this.scale);
+    const to = c.clone().addScaledVector(look, 1.0 / this.scale); // a metre in front of you
     this.bearHop = { at: 0.55, to, yaw: Math.atan2(-look.x, -look.z), done: false };
     st.actor.scripted++;
     this.sh.media.playTheme('inside', true);
