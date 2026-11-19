@@ -135,7 +135,8 @@ export class ShowcaseMode implements Mode {
       onFlick: (power, side) => this.throwHeart(power, side),
       onLongPress: (x, y) => this.hug(x, y),
       onDrag: (dx, dy) => {
-        if (!this.active) return;
+        // Heart Hoops holds the camera on the court: a slow drag up is a throw there, not a look (polish-4)
+        if (!this.active || this.game?.flicks) return;
         this.yaw = THREE.MathUtils.clamp(this.yaw - dx * 0.006, -LIM.yaw, LIM.yaw);
         this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.004, LIM.pitchMin, LIM.pitchMax);
       },
@@ -283,6 +284,7 @@ export class ShowcaseMode implements Mode {
       this.hintNext = '';
       this.hintT = 0;
     } else if (this.active) this.toss.show(true);
+    this.stage.houseSet.setAway(!!g); // ar-4: the house stays out of the game's way (it only shows in its moment here)
     this.syncPlay();
   }
 

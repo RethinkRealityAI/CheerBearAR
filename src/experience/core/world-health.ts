@@ -15,6 +15,8 @@
 //   wh.settled()              // gate Place on it
 //   wh.busy('loading') / wh.busy('')
 //   wh.restart()              // after XR8.stop() + XR8.run(): SLAM starts over
+//   wh.regate()               // after XR8.XrController.recenter() (Move): settled() must be earned again
+//   wh.note('place')          // breadcrumbs (shown with ?diag, kept in snapshot().notes)
 //
 // URL knobs: ?dpr=1|1.25|1.5|2, ?adapt=0, ?cam=720 (Android: ask 960x720, also on Samsung Internet), ?diag.
 
@@ -55,6 +57,8 @@ export interface WorldHealthOptions {
   minDpr?: number;
   adapt?: boolean;
   settleMs?: number;
+  /** Extra lines for the ?diag overlay (app state: mode, inside, scale, programs...). */
+  diagExtra?: () => string;
 }
 
 export interface PipelineModule {
@@ -72,6 +76,10 @@ export interface WorldHealth {
   readonly tracking: string;
   busy(what: string): void;
   restart(): void;
+  /** SLAM was recentred (tracking restarted inside the same run): settled() has to be earned again. */
+  regate(): void;
+  /** A breadcrumb (what the app did), with the time and the tracking state then. */
+  note(what: string): void;
 }
 
 export function worldHealth(opts: WorldHealthOptions): WorldHealth {
@@ -94,7 +102,9 @@ export function worldHealth(opts: WorldHealthOptions): WorldHealth {
     tracking: [] as Array<[number, string]>,
     stalls: [] as Array<[number, number, string, string]>,
     dpr: [[0, dpr]] as Array<[number, number, string?]>,
+    notes: [] as Array<[number, string, string]>,
     restarts: 0,
+    regates: 0,
   };
 
   function sizeCanvas(): void {
@@ -168,8 +178,8 @@ export function worldHealth(opts: WorldHealthOptions): WorldHealth {
   function snapshot(): Record<string, unknown> {
     return {
       v: 1, dpr, maxDpr, fpsNow: fps, tracking: status, cam: { ...cam },
-      settled: settled(), restarts: log.restarts,
-      fpsLog: log.fps.slice(-180), trackLog: log.tracking, stalls: log.stalls, dprLog: log.dpr,
+      settled: settled(), restarts: log.restarts, regates: log.regates,
+      fpsLog: log.fps.slice(-180), trackLog: log.tracking, stalls: log.stalls, dprLog: log.dpr, notes: log.notes,
     };
   }
 
@@ -183,7 +193,12 @@ export function worldHealth(opts: WorldHealthOptions): WorldHealth {
       document.body.appendChild(diagEl);
     }
     const st = log.stalls[log.stalls.length - 1];
-    diagEl.textContent = `slam ${status || '-'}${settled() ? ' ok' : ''}  fps ${fps}  dpr ${dpr}\ncam ${cam.width}x${cam.height}@${cam.frameRate}${cam.asked ? ' (asked ' + cam.asked + ')' : ''}` + (st ? `\nstall ${st[1]} ms @${st[0]}s ${st[2]}` : '');
+    const notes = log.notes.slice(-5).map((n) => `${n[0]}s ${n[1]} [${n[2] || '-'}]`).join('\n');
+    let extra = '';
+    try { extra = opts.diagExtra?.() ?? ''; } catch { /* app not ready */ }
+    diagEl.textContent = `slam ${status || '-'}${settled() ? ' ok' : ''}  fps ${fps}  dpr ${dpr}\ncam ${cam.width}x${cam.height}@${cam.frameRate}${cam.asked ? ' (asked ' + cam.asked + ')' : ''}`
+      + `\nstalls ${log.stalls.length}` + (st ? `  last ${st[1]} ms @${st[0]}s ${st[2]}` : '')
+      + (extra ? '\n' + extra : '') + (notes ? '\n' + notes : '');
   }
 
   return {
@@ -193,5 +208,14 @@ export function worldHealth(opts: WorldHealthOptions): WorldHealth {
     get tracking() { return status; },
     busy(what: string) { busyWhat = what || ''; },
     restart() { log.restarts++; runAt = now() || 1; normalSince = 0; status = ''; last = 0; lowFor = highFor = 0; },
+    regate() {
+      log.regates++;
+      // NORMAL from now on counts again from zero (a recenter may not send a status change)
+      normalSince = status.startsWith('NORMAL') ? now() : 0;
+    },
+    note(what: string) {
+      if (log.notes.length >= 80) log.notes.splice(0, 20);
+      log.notes.push([s(now()), what, status]);
+    },
   };
 }

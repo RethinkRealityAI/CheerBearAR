@@ -205,8 +205,8 @@ export class Playground {
     return pick!;
   }
 
-  /** A thrown heart (stage-local origin and velocity). */
-  throwHeart(from: THREE.Vector3, vel: THREE.Vector3): Body {
+  /** A thrown heart (stage-local origin and velocity; `hex` picks its colour, e.g. Heart Hoops' gold heart). */
+  throwHeart(from: THREE.Vector3, vel: THREE.Vector3, hex?: number): Body {
     const b = this.world.spawn(this.take(KIND.heart), from, vel, HEART_R);
     b.restitution = this.reduced ? 0.3 : 0.48;
     b.friction = 3.2;
@@ -217,7 +217,7 @@ export class Playground {
     this.e.set(0, Math.atan2(-vel.x, -vel.z), 0);
     b.q.setFromEuler(this.e);
     const st = this.state[b.index];
-    st.hex = HEART_COLORS[Math.floor(Math.random() * HEART_COLORS.length)];
+    st.hex = hex ?? HEART_COLORS[Math.floor(Math.random() * HEART_COLORS.length)];
     this.restPose(b, st);
     return b;
   }

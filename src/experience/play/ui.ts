@@ -34,6 +34,9 @@ export class PlayUi {
   private timeEl: HTMLElement | null = null;
   private timeNum: HTMLElement | null = null;
   private balls: HTMLElement[] = [];
+  private rack: HTMLElement | null = null;
+  private rackN = 0;
+  private rackUsed = -1;
   private countEl: HTMLElement;
   private countSub: HTMLElement;
   private streakEl: HTMLElement;
@@ -65,14 +68,18 @@ export class PlayUi {
       this.board.appendChild(this.timeEl);
     }
     if (opts.balls) {
-      const row = el('div', 'cbp-balls');
-      row.setAttribute('aria-label', `${opts.balls} hearts to throw`);
+      // the hearts you have left (Heart Hoops): a big rack at the bottom, under the heart in your hand (polish-4: the
+      // tiny row in the scoreboard did not say "these are what you throw"). The last one is gold and counts double.
+      const row = el('div', 'cbp-rack');
+      row.setAttribute('role', 'img');
+      this.rack = row;
+      this.rackN = opts.balls;
       for (let i = 0; i < opts.balls; i++) {
-        const b = el('i', i === opts.balls - 1 ? 'x2' : '', i === opts.balls - 1 ? SVG.star : SVG.heart);
+        const last = i === opts.balls - 1;
+        const b = el('i', last ? 'x2' : '', SVG.heart + (last ? '<em>x2</em>' : ''));
         this.balls.push(b);
         row.appendChild(b);
       }
-      this.board.appendChild(row);
     }
     this.countEl = el('div', 'cbp-count');
     this.countEl.setAttribute('aria-live', 'assertive');
@@ -83,6 +90,7 @@ export class PlayUi {
     this.powerEl = el('div', 'cbp-power', '<span></span><i class="bar"></i>');
     this.powerBar = this.powerEl.querySelector('.bar')!;
     layer.append(this.board, this.countEl, this.countSub, this.streakEl, this.powerEl);
+    if (this.rack) layer.appendChild(this.rack);
     root.classList.add('cbp-on');
     requestAnimationFrame(() => this.board.classList.add('on'));
   }
@@ -111,6 +119,23 @@ export class PlayUi {
   /** Hoops: which hearts are used, which is next. */
   setBalls(used: number): void {
     this.balls.forEach((b, i) => { b.classList.toggle('used', i < used); b.classList.toggle('now', i === used); });
+    if (this.rack && used !== this.rackUsed) {
+      // the one that just left your hand pops out of the rack
+      if (used > this.rackUsed && this.rackUsed >= 0) {
+        const gone = this.balls[used - 1];
+        gone?.classList.remove('out');
+        void gone?.offsetWidth;
+        gone?.classList.add('out');
+      }
+      this.rackUsed = used;
+      const left = Math.max(0, this.rackN - used);
+      this.rack.setAttribute('aria-label', `${left} heart${left === 1 ? '' : 's'} left to throw`);
+    }
+  }
+
+  /** Show or hide the rack (results card up: hidden). */
+  showRack(on: boolean): void {
+    this.rack?.classList.toggle('off', !on);
   }
 
   /** 3, 2, 1, Go! (text '' hides). `sub` is a short line under it (e.g. "Collect the hearts!"). */
@@ -164,7 +189,7 @@ export class PlayUi {
   }
 
   // ------------------------------------------------------------------ cards
-  pauseCard(onResume: () => void, onQuit: () => void): void {
+  pauseCard(onResume: () => void, onQuit: () => void, extra: HTMLElement | null = null): void {
     this.closeCard();
     const w = el('div', 'cbp-wrap');
     w.setAttribute('role', 'dialog');
@@ -178,6 +203,7 @@ export class PlayUi {
       if (a === 'go') onResume();
       if (a === 'quit') onQuit();
     });
+    if (extra) w.querySelector('.cbp-row')?.before(extra);
     this.root.appendChild(w);
     this.card = w;
     (w.querySelector('.cbp-btn') as HTMLElement).focus({ preventScroll: true });
@@ -218,13 +244,14 @@ export class PlayUi {
     this.count('');
     this.streak(0);
     this.power(null);
+    this.showRack(false);
   }
 
   dispose(): void {
     this.closeCard();
     for (const p of this.pops) p.remove();
     this.pops = [];
-    for (const n of [this.board, this.countEl, this.countSub, this.streakEl, this.powerEl]) n.remove();
+    for (const n of [this.board, this.countEl, this.countSub, this.streakEl, this.powerEl, this.rack]) n?.remove();
     this.root.classList.remove('cbp-on');
   }
 }

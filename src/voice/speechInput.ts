@@ -26,13 +26,20 @@ export interface RecognitionLike {
   onstart: (() => void) | null;
   /** The microphone is capturing (voice mode's hold-to-talk waits for it). Optional: not every browser has it. */
   onaudiostart?: (() => void) | null;
+  /** Voice-4: the rest of the Web Speech events, all optional (used for the ring and the Mic check log). */
+  onsoundstart?: (() => void) | null;
+  onspeechstart?: (() => void) | null;
+  onspeechend?: (() => void) | null;
+  onsoundend?: (() => void) | null;
+  onaudioend?: (() => void) | null;
+  onnomatch?: (() => void) | null;
   start(): void;
   stop(): void;
   abort(): void;
 }
 export interface RecognitionResultEventLike {
   resultIndex: number;
-  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
+  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string; confidence?: number } }>;
 }
 
 export type RecognitionFactory = () => RecognitionLike;

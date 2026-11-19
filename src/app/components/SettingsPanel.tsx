@@ -1,11 +1,12 @@
 // Settings: the old settings panel items that still apply, each switched on/off by the admin's settingsPanel
 // config. Admin-only items are a read-only summary behind "Staff info" (they are edited in /admin now).
 import type { ReactNode } from 'react';
-import { Keyboard, PartyPopper } from 'lucide-react';
+import { Keyboard, Mic, PartyPopper } from 'lucide-react';
 import type { UiMode } from '@/shared/config';
 import { useApp, useController } from '../context';
 import { settingOn } from '../state/uiConfig';
 import { actionLook } from '../actions';
+import { openVoiceDiag } from './VoiceDiagHost';
 
 const MODES: { id: UiMode; label: string; desc: string }[] = [
   { id: 'calm', label: 'Just talk', desc: 'Talk out loud. No words on the screen.' },
@@ -75,6 +76,10 @@ export function SettingsPanel() {
             onChange={(v) => c.voiceUi.setSpokenReplies(v)}
           />
           <p className="cb-settings-note">Your browser turns your words into text (Chrome uses Google’s speech service, Safari uses Apple’s). Cheer Bear only listens while the talk button is white.</p>
+          {/* voice-4: for grown-ups / testers when the mic doesn't hear: what this phone's browser actually does */}
+          <button type="button" className="cb-settings-link" onClick={() => openVoiceDiag()}>
+            <Mic aria-hidden="true" size={16} /> Mic check
+          </button>
         </Group>
       )}
 

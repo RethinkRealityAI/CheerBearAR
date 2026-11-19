@@ -8,7 +8,10 @@
 // Every XR8.run hands over a NEW three.js scene, camera and renderer (same GL context): the engine re-adds the
 // persistent roots (`addRoot`), hands the GL textures of the old renderer to the new one (no re-upload), frees the old
 // renderer's programs and buffers before the stop, builds the environment map once, and compiles the roots' shaders
-// right after the run starts (content stays hidden until SLAM has settled; Place waits for `settled()`).
+// AND uploads all their textures in the run's very first callback (onStart), before SLAM has processed a frame, so
+// nothing heavy happens while tracking initialises or once it has settled (ar-4: the old order compiled 36 programs
+// the moment SLAM first settled and then trickled 22 texture uploads through the next seconds; in the simulator
+// tracking dropped to LIMITED during exactly that window). Content stays hidden and Place waits for `settled()`.
 // Going back to the 3D showcase stops the engine (camera off); the next camera mode runs it again.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -72,6 +75,10 @@ export class Engine implements EngineView {
   private preparing = false;
   private settledLatch = false;
   private texQueue: THREE.Texture[] = [];
+  /** While set, warm() uploads every texture at once (the run's first callback, before SLAM starts). */
+  private burst = false;
+  /** Extra lines for the ?diag overlay (set by the experience / modes). */
+  diagLine: (() => string) | null = null;
   private xrReady: Promise<boolean>;
   private hiddenPaused = false;
   private lastRenderer: THREE.WebGLRenderer | null = null;
@@ -86,6 +93,11 @@ export class Engine implements EngineView {
     this.wh = worldHealth({
       page: 'cheer-bear', canvas: this.canvas, baseDpr: 1.5,
       size: () => [Math.max(1, host.clientWidth), Math.max(1, host.clientHeight)],
+      diagExtra: () => {
+        const r = this.xr?.renderer;
+        const base = r ? `draw ${r.info.render.calls} tris ${Math.round(r.info.render.triangles / 1000)}k prog ${r.info.programs?.length ?? 0} tex ${r.info.memory.textures}` : '';
+        return [base, this.diagLine?.() ?? ''].filter(Boolean).join('\n');
+      },
     });
     this.xrReady = new Promise<boolean>((res) => {
       if (window.XR8) return res(true);
@@ -129,6 +141,30 @@ export class Engine implements EngineView {
   }
   busy(what: string): void {
     this.wh.busy(what);
+  }
+  /** Tracking is calm right now (not latched): NORMAL for a while, no stall in the last second. */
+  calm(): boolean {
+    return this.kind === 'world' && this.prepared && this.wh.settled();
+  }
+  /**
+   * Restart SLAM where the phone is now (XR8.XrController.recenter: the camera goes back to the origin and tracking
+   * starts over, so a scale that drifted while walking is thrown away) and re-arm the settled gate. Used by Move:
+   * the next Place waits for freshly settled tracking. 8th Wall's own World Tracking Portal sample recentres on
+   * place and on its recenter button.
+   */
+  recenter(): boolean {
+    if (this.kind !== 'world' || !this.live) return false;
+    let ok = false;
+    if (!qs.has('norecenter')) {
+      try { window.XR8.XrController.recenter(); ok = true; } catch (e) { this.diag.errors.push('recenter: ' + String(e)); }
+    }
+    this.settledLatch = false;
+    this.wh.regate();
+    this.wh.note(ok ? 'recenter' : 'regate');
+    return ok;
+  }
+  note(what: string): void {
+    this.wh.note(what);
   }
   private raycaster = new THREE.Raycaster();
   ray(ndc: THREE.Vector2): THREE.Raycaster {
@@ -182,6 +218,9 @@ export class Engine implements EngineView {
     try {
       const pending = renderer.compile(root, camera, scene) as Set<THREE.Material>;
       restore();
+      // textures right behind the programs: at a run's start all of them now (nothing is tracking yet), later a few
+      // per frame
+      this.uploadTextures(root, renderer);
       const t0 = performance.now();
       while (pending.size && this.xr?.renderer === renderer && performance.now() - t0 < 8000) {
         for (const m of [...pending]) {
@@ -193,15 +232,27 @@ export class Engine implements EngineView {
       if (this.xr?.renderer !== renderer) return;
     } catch {
       restore();
+      this.uploadTextures(root, renderer);
     }
     glTidy(renderer);
-    // textures: a few per frame from onUpdate (an upload burst is a stall)
+    this.diag.programs = renderer.info.programs?.length ?? 0;
+  }
+
+  /** Every texture under `root`: uploaded now (`burst`, before SLAM starts) or queued a few per frame. */
+  private uploadTextures(root: THREE.Object3D, renderer: THREE.WebGLRenderer): number {
     const seen = new Set<THREE.Texture>();
+    let n = 0;
     root.traverse((o) => {
       const mats = ([] as THREE.Material[]).concat(((o as THREE.Mesh).material as THREE.Material | THREE.Material[]) ?? []);
-      for (const m of mats) for (const v of Object.values(m)) if (v && (v as THREE.Texture).isTexture && !seen.has(v)) { seen.add(v); this.texQueue.push(v); }
+      for (const m of mats) for (const v of Object.values(m)) {
+        if (!v || !(v as THREE.Texture).isTexture || seen.has(v)) continue;
+        seen.add(v);
+        if (!this.burst) { this.texQueue.push(v); continue; }
+        try { renderer.initTexture(v); n++; } catch { /* not ready (video) */ }
+      }
     });
-    this.diag.programs = renderer.info.programs?.length ?? 0;
+    glTidy(renderer);
+    return n;
   }
 
   // ------------------------------------------------------------------ run / swap / stop
@@ -361,16 +412,29 @@ export class Engine implements EngineView {
     xr.scene.environmentIntensity = 0.7;
   }
 
-  /** Once per run: env map, then compile every root's shaders. World: only after SLAM first settles. */
+  /**
+   * Once per run, in the run's first callback (onStart), before SLAM has seen a frame: the env map, every root's
+   * shaders (issued now, finished in the background where the GPU driver compiles in parallel) and every texture
+   * uploaded at once. The one long frame lands where it costs nothing: no map exists yet. Content stays hidden and
+   * Place waits until the programs are ready AND tracking has settled.
+   */
   private prepare(): void {
     if (this.prepared || this.preparing || !this.xr) return;
     this.preparing = true;
     const xr = this.xr;
+    const t0 = now();
     this.ensureEnv();
     this.wh.busy('compile');
-    Promise.all([...this.roots].map((r) => this.warm(r))).finally(() => {
+    this.burst = true;
+    const all = Promise.all([...this.roots].map((r) => this.warm(r)));
+    this.burst = false; // the synchronous part of every warm() has run (programs issued, textures uploaded)
+    this.wh.note(`prepare ${Math.round(now() - t0)} ms`);
+    all.finally(() => {
       this.wh.busy('');
-      if (this.xr === xr) this.prepared = true;
+      if (this.xr === xr) {
+        this.prepared = true;
+        this.wh.note(`programs ready ${Math.round(now() - t0)} ms, ${xr.renderer.info.programs?.length ?? 0}`);
+      }
       this.preparing = false;
     });
   }
@@ -404,9 +468,9 @@ export class Engine implements EngineView {
       const r = processCpuResult?.reality;
       if (r?.trackingStatus) this.tracking = r.trackingStatus;
       if (!this.xr) return;
-      // world: prepare once SLAM first settles (no heavy work while it starts); face: at once
-      if (!this.prepared && this.live && (this.kind === 'face' || this.wh.settled())) this.prepare();
-      // textures: two uploads per frame at most
+      // normally done in onStart (setup); this catches a run whose setup could not
+      if (!this.prepared && !this.preparing) this.prepare();
+      // textures (only roots warmed later, e.g. a mode built after the run started): two uploads per frame at most
       for (let i = 0; i < 2 && this.texQueue.length; i++) {
         const tex = this.texQueue.shift()!;
         try { this.xr.renderer.initTexture(tex); } catch { /* not ready (video) */ }
@@ -471,6 +535,9 @@ export class Engine implements EngineView {
     this.canvas.addEventListener('webglcontextlost', this.onContextLost, { once: true });
     void gl;
     this.hooks.onScene(xr, this.kind);
+    this.wh.note(`run ${this.kind}`);
+    // compile + upload everything NOW, before SLAM has processed a frame (ar-4)
+    this.prepare();
   }
 
   private onContextLost = () => {

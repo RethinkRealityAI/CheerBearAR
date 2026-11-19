@@ -58,8 +58,16 @@ export class HouseSet {
   /** House-moment bounce (1 = at rest) and mailbox wobble (radians). */
   squash = 1;
   mailTilt = 0;
-  /** Stage units per metre (AR: follows Cheer Bear's size so the house stays life size). */
+  /** Stage units per metre (AR: life size times `sizeMul`, whatever size Cheer Bear is). */
   k = 1;
+  /** AR: the pinch's share of the house size (1 = life size, the default; Move resets it). Set by the AR mode. */
+  sizeMul = 1;
+  /** Away (a mini game is on): the house pops out of the way and gives its ground to the game. 1 = here, 0 = gone. */
+  private awayK = 1;
+  private awayTarget = 1;
+  /** Inside: the room wears plain twins of its clipped materials (no discard: the GPU can skip hidden pixels). */
+  private swaps: Array<[THREE.Mesh, THREE.Material, THREE.Material]> = [];
+  private plain = false;
   /** Someone else poses `stage.house` (the AR walk-in glide). Otherwise AR keeps it at its resting spot. */
   posed = false;
   /** Showcase camera tour: blend `k` 0..1 towards `pos` looking at `look` (stage-local). */
@@ -134,6 +142,51 @@ export class HouseSet {
     this.room.group.visible = false;
     this.root.add(this.room.group);
     this.room.mirrorShine.visible = false;
+
+    // ---- plain twins for inside (compiled at load with everything else: they ride on a hidden holder)
+    const tw = clip.twinHolder(this.root);
+    this.swaps = tw.swaps;
+    this.root.add(tw.holder);
+  }
+
+  /** The house is in the scene and not popped away for a game (taps, walls, the walk-in). */
+  get present(): boolean {
+    return this.st.house.visible && this.awayTarget > 0 && this.awayK > 0.001;
+  }
+  /** Fully popped away (a mini game is on). */
+  get away(): boolean {
+    return this.awayTarget === 0;
+  }
+
+  /**
+   * A mini game is on: the house (and in AR its mailbox) pops away so the game has the whole floor; its walls stop
+   * counting for pickups, the ring and her walking. `false` pops it back. Scale only: no material or shader changes.
+   */
+  setAway(on: boolean): void {
+    const t = on ? 0 : 1;
+    if (t === this.awayTarget) return;
+    this.awayTarget = t;
+    if (on && this.inside) this.setInside(false);
+    const k = this.k, at = this.toStage(V.set(0, COT.peak * 0.45, -COT.d / 2), new THREE.Vector3());
+    if (this.st.house.visible) {
+      this.st.fx.emit({ count: on ? 26 : 30, glyph: ['sparkle', 'star', 'heart'], colors: [PAL.pink, PAL.white, PAL.yellow, 0xe6ccff], at, spread: [COT.w * 0.35 * k, COT.peak * 0.3 * k, COT.d * 0.3 * k], burst: 0.5 * k, drag: 1.4, life: [0.7, 1.2], size: [0.07 * k, 0.13 * k] });
+    }
+    if (!on) this.root.visible = true;
+  }
+
+  /** Inside: plain twins (no clip, no discard). Outside: the clipped ones. Material swap only: nothing compiles. */
+  private wearPlain(on: boolean): void {
+    if (on === this.plain) return;
+    this.plain = on;
+    for (const [mesh, clipped, plain] of this.swaps) {
+      const want = on ? plain : clipped, was = mesh.material as THREE.Material;
+      if (was === want) continue;
+      // carry what the room animates per frame (light bar colours, the lamp halo's opacity)
+      const a = was as THREE.MeshBasicMaterial, b = want as THREE.MeshBasicMaterial;
+      if (a.color && b.color) b.color.copy(a.color);
+      b.opacity = a.opacity;
+      mesh.material = want;
+    }
   }
 
   // ------------------------------------------------------------------ space
@@ -167,7 +220,7 @@ export class HouseSet {
 
   /** The cottage footprint in stage-local space (toys, game pickups, keeping her out of the walls). */
   bounds(out: THREE.Box3): THREE.Box3 | null {
-    if (!this.st.house.visible) return null;
+    if (!this.st.house.visible || this.awayTarget === 0) return null;
     out.makeEmpty();
     const hw = COT.w / 2 + 0.25;
     for (const x of [-hw, hw]) for (const z of [-COT.d - 0.25, 0.3]) out.expandByPoint(this.toStage(V.set(x, 0, z), V2));
@@ -201,6 +254,7 @@ export class HouseSet {
   setInside(v: boolean): void {
     if (v === this.inside) return;
     this.inside = v;
+    this.wearPlain(v);
     if (v) this.media.playTheme(T_INSIDE, true);
     else {
       this.media.stopTheme(T_INSIDE);
@@ -213,7 +267,7 @@ export class HouseSet {
   // ------------------------------------------------------------------ taps
   /** What a (world-space) ray hits: room things (inside, or seen through the open door), the door, the house. */
   pick(ray: THREE.Ray): HouseItem | null {
-    if (!this.st.house.visible) return null;
+    if (!this.present) return null;
     this.root.updateMatrixWorld(true);
     R.copy(ray).applyMatrix4(INV.copy(this.root.matrixWorld).invert());
     let throughDoor = this.inside;
@@ -340,26 +394,35 @@ export class HouseSet {
   // ------------------------------------------------------------------ per frame
   update(dt: number, camObj: THREE.Camera | null): void {
     const st = this.st, h = st.house;
-    const k = st.variant === 'ar' ? 1 / Math.max(0.05, st.root.scale.x) : SHOW_K;
+    const k = st.variant === 'ar' ? this.sizeMul / Math.max(0.05, st.root.scale.x) : SHOW_K;
     this.k = k;
+    // popping away for a game / back afterwards (scale only)
+    if (this.awayK !== this.awayTarget) {
+      const soft = st.actor.soft;
+      this.awayK = THREE.MathUtils.clamp(this.awayK + (this.awayTarget ? 1 : -1) * dt / (soft ? 0.25 : this.awayTarget ? 0.45 : 0.3), 0, 1);
+      if (this.awayK === 0) this.root.visible = false;
+    }
+    const pop = this.awayK >= 1 ? 1 : this.awayTarget ? (st.actor.soft ? this.awayK : ease.backOut(this.awayK)) : (st.actor.soft ? this.awayK : 1 - ease.inOut(1 - this.awayK));
+    const pk = Math.max(0.001, pop);
     if (st.variant === 'ar' && !this.posed) {
       this.restPos(h.position);
       h.rotation.set(0, 0, 0);
     }
     const sq = this.squash;
-    this.root.scale.set(k * sq, k * (2 - sq), k * sq);
+    this.root.scale.set(k * sq * pk, k * (2 - sq) * pk, k * sq * pk);
     this.root.position.set(0, 0, (COT.d / 2) * k);
     st.houseSize.set((COT.w + 0.3) * k, COT.peak * k, (COT.d + 0.3) * k);
     if (st.variant === 'ar' && st.mailbox) {
       // the mailbox stands at the garden's front left corner (life size too)
       const mb = st.mailbox;
       this.toStage(V.set(-COT.w / 2 - 0.55, 0, 0.95), mb.position);
-      mb.scale.setScalar((1.05 * k) / 0.78);
+      mb.scale.setScalar(((1.05 * k) / 0.78) * pk);
+      mb.visible = this.awayK > 0.001;
       mb.rotation.set(0, h.rotation.y + 0.45, this.mailTilt);
     }
     this.toStage(V.set(0, 0, 0.45), st.door);
     h.updateMatrixWorld(true);
-    if (!h.visible) return;
+    if (!h.visible || !this.root.visible) return;
 
     this.t += dt;
     const t = this.t;
@@ -367,7 +430,10 @@ export class HouseSet {
     const prev = this.open;
     this.open += (this.openTarget - this.open) * damp(2.4, dt);
     if (Math.abs(this.openTarget - this.open) < 0.002) this.open = this.openTarget;
-    if (this.open !== prev || this.leaf.rotation.y === 0) this.leaf.rotation.y = ease.inOut(this.open) * 1.92;
+    // (compared with the target, not the last value: an instant shut (Move, Start again) left the leaf swung open)
+    void prev;
+    const leafY = ease.inOut(this.open) * 1.92;
+    if (this.leaf.rotation.y !== leafY) this.leaf.rotation.y = leafY;
     // the sun turns and bobs
     this.sun.rotation.z -= dt * 0.25;
     this.sun.position.y = this.sunAt.y + Math.sin(t * 0.9) * 0.05;

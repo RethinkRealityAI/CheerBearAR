@@ -14,7 +14,7 @@ import type { MomentRunner } from '../../scene/moments';
 import type { Shared } from '../shared';
 import { PAL } from '../../scene/fx';
 import { angleTo, ease } from '../../core/timeline';
-import { COT, DOOR } from '../../scene/house/dims';
+import { COT, DOOR, ROOM } from '../../scene/house/dims';
 
 interface Pose { pos: THREE.Vector3; yaw: number }
 interface Glide { to: Pose | (() => Pose); dur: number; from?: Pose; fromL?: THREE.Vector3; t: number; then?: () => void }
@@ -23,9 +23,14 @@ export interface WalkHost {
   hint(text: string, seconds: number): void;
   syncHud(): void;
   tapAction(name: string): void;
+  /** Tracking is calm right now (the door only opens then: the room starts drawing behind it). */
+  calm(): boolean;
+  /** A breadcrumb for ?diag. */
+  note(what: string): void;
 }
 
 const V = new THREE.Vector3(), V2 = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+const FC = new THREE.Vector3(), FF = new THREE.Vector3();
 const TIP_INSIDE = 'Tap the jukebox!';
 
 export class HouseWalk {
@@ -36,6 +41,7 @@ export class HouseWalk {
   testPose: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
   private glides: Glide[] = [];
   private openIn = 0;
+  private doorWait = 0;
   private hop: { at: number; to: THREE.Vector3; yaw: number; then?: () => void } | null = null;
   private tipT = 0;
 
@@ -55,14 +61,14 @@ export class HouseWalk {
 
   /** Placed (or placed again): the door opens a beat later. */
   placed(): void {
-    if (this.st.houseSet.openTarget < 1) this.openIn = 0.9;
+    if (this.st.houseSet.openTarget < 1) { this.openIn = 0.9; this.doorWait = 0; }
   }
 
   // ------------------------------------------------------------------ step inside / leave
-  /** Camera in stage space, flat forward. */
+  /** Camera in stage space, flat forward (shared scratch vectors: valid until the next call). */
   private camFlat(): { c: THREE.Vector3; f: THREE.Vector3 } {
-    const c = this.st.cam.clone().setY(0);
-    const f = this.st.camDir.clone().setY(0);
+    const c = FC.copy(this.st.cam).setY(0);
+    const f = FF.copy(this.st.camDir).setY(0);
     if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
     return { c, f: f.normalize() };
   }
@@ -79,6 +85,7 @@ export class HouseWalk {
     if (this.inside) return;
     this.glides.length = 0; // a Step inside tap while it's heading home turns straight round
     this.runner.cancel();
+    this.host.note('step inside');
     hs.setOpen(true, hs.open < 0.6);
     this.openIn = 0;
     const { c, f } = this.camFlat();
@@ -113,18 +120,33 @@ export class HouseWalk {
     hs.posed = false;
     st.house.rotation.set(0, 0, 0);
     hs.restPos(st.house.position);
+    const hadHop = !!this.hop;
     if (this.hop) { st.actor.scripted = Math.max(0, st.actor.scripted - 1); this.hop = null; }
     const wasIn = this.inside || this.bearIn;
     hs.setInside(false);
-    if (wasIn) this.toDoor(st.actor.position);
+    // she goes to the doorstep if you were in, she was waiting in there, a hop was cut short (ar-4: you had just
+    // walked out, her hop out was still pending and Move left her standing in the hidden room), or she is anywhere
+    // behind the front wall
+    hs.root.updateMatrix();
+    const l = hs.fromStage(st.actor.position, V);
+    const behind = l.z < 0.1 && l.z > ROOM.zBack - 0.3 && Math.abs(l.x) < COT.w / 2 + 0.1; // the room keeps her within that
+    if (wasIn || hadHop || behind) this.toDoor(st.actor.position);
     this.bearIn = false;
   }
 
-  /** Start again: also shut the door. */
+  /** Start again / Move: also shut the door (it opens again a beat after Place, once tracking is calm). */
   reset(): void {
     this.collapse();
     this.st.houseSet.setOpen(false, true);
     this.openIn = 0;
+  }
+
+  /** The house popped back after a game: if she is standing where its walls are, she hops out to the doorstep. */
+  evict(): void {
+    const hs = this.st.houseSet, a = this.st.actor;
+    const l = hs.fromStage(a.position, V);
+    const hw = COT.w / 2 + 0.25;
+    if (Math.abs(l.x) < hw && l.z < 0.35 && l.z > -COT.d - 0.3) this.hopTo(this.toDoor(new THREE.Vector3()), a.heading, 0.2);
   }
 
   private toDoor(out: THREE.Vector3): THREE.Vector3 {
@@ -135,6 +157,7 @@ export class HouseWalk {
   private crossed(inside: boolean): void {
     const st = this.st, hs = st.houseSet, a = st.actor;
     this.runner.cancel();
+    this.host.note(inside ? 'crossed in' : 'crossed out');
     if (inside) {
       // she pops in front of you and waves
       const lp = hs.cam;
@@ -169,7 +192,7 @@ export class HouseWalk {
   /** Keep her in the room (you're in), in the cottage (she went in first) or out of its walls; the doorway lets her in. */
   constrain(p: THREE.Vector3, door: boolean): void {
     const hs = this.st.houseSet;
-    if (!this.st.house.visible) return;
+    if (!hs.present) return; // hidden, or popped away for a game: its ground is free
     const l = hs.fromStage(p, V);
     if (this.inside) {
       p.copy(hs.toStage(hs.clampToRoom(l), V2)).setY(0);
@@ -241,9 +264,17 @@ export class HouseWalk {
 
   update(dt: number): void {
     const st = this.st, hs = st.houseSet, a = st.actor;
-    if (this.openIn > 0 && (this.openIn -= dt) <= 0) {
-      hs.setOpen(true);
-      st.fx.emit({ count: 22, glyph: ['heart', 'sparkle'], colors: [PAL.pink, PAL.white, PAL.yellow], at: hs.toStage(V.set(0, DOOR.h * 0.6, 0.2)), spread: [0.3 * hs.k, 0.5 * hs.k, 0.05 * hs.k], burst: 0.4 * hs.k, drag: 1.5, life: [0.8, 1.3], size: [0.06 * hs.k, 0.11 * hs.k] });
+    // the door opens a beat after Place, and only while tracking is calm (the room starts drawing behind it)
+    if (this.openIn > 0) {
+      this.openIn -= dt;
+      // not calm yet: try again shortly (but never keep the door shut for more than about 10 s)
+      if (this.openIn <= 0 && (!hs.present || (!this.host.calm() && (this.doorWait += 0.25) < 10))) this.openIn = 0.25;
+      else if (this.openIn <= 0) {
+        this.openIn = 0;
+        this.host.note('door opens');
+        hs.setOpen(true);
+        st.fx.emit({ count: 22, glyph: ['heart', 'sparkle'], colors: [PAL.pink, PAL.white, PAL.yellow], at: hs.toStage(V.set(0, DOOR.h * 0.6, 0.2)), spread: [0.3 * hs.k, 0.5 * hs.k, 0.05 * hs.k], burst: 0.4 * hs.k, drag: 1.5, life: [0.8, 1.3], size: [0.06 * hs.k, 0.11 * hs.k] });
+      }
     }
     // the glide
     const g = this.glides[0];
@@ -291,7 +322,7 @@ export class HouseWalk {
 
   /** The Step inside pill (above the bottom row) while she's placed and you're outside. */
   syncHud(walking: boolean): void {
-    const show = walking && !this.inside && !this.busy && this.st.house.visible;
+    const show = walking && !this.inside && !this.busy && this.st.houseSet.present;
     if (show) this.sh.hud.above.appendChild(this.stepBtn);
     else this.stepBtn.remove();
   }

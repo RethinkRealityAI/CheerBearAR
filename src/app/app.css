@@ -173,6 +173,16 @@
 .cb-vbubble.is-caption.is-live { font-size: 19px; }
 .cb-vbubble.is-unknown, .cb-vbubble.is-camera { pointer-events: auto; }
 .cb-vbubble.is-info, .cb-vbubble.is-hint { background: var(--cb-yellow); }
+.cb-voicecard-help { margin: 0; font-size: 14px; line-height: 1.4; color: var(--cb-on-glass-soft); text-align: center; }
+.cb-settings-link {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 4px;
+  border: 0; background: none; color: var(--cb-on-glass-soft); font: var(--cb-w-label) 14px/1 var(--cb-font); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+/* voice-4: why it could not hear you (one kind line), a grown-up line on what to change, magic-word chips */
+.cb-vbubble.is-problem { background: var(--cb-yellow); }
+.cb-vbubble.is-problem.has-chips { pointer-events: auto; }
+.cb-vbubble-help { width: 100%; font: var(--cb-w-body) 13px/1.35 var(--cb-font); color: var(--cb-ink-soft); }
 .cb-vbubble-text { min-width: 0; overflow-wrap: anywhere; }
 .cb-vbubble-rec { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--cb-red); animation: cb-rec 1s ease-in-out infinite alternate; }
 @keyframes cb-rec { from { opacity: 1; } to { opacity: .35; } }

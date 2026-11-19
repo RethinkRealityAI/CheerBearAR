@@ -15,5 +15,6 @@ export { mockFlagsFromUrl } from './mock';
 export { CheerBrain } from './cheerBrain';
 export { buildVisemeTimeline, sampleTimeline } from './textVisemes';
 export type { VoiceModeApi, VoiceModeEvents, VoiceModePhase } from './voiceMode';
+export type { HoldProblem, ProblemHelp, VoicePlatform } from './voiceHelp';
 export type { VoiceCommand, VoiceMatch } from './commands';
 export { matchVoiceCommands } from './commands';

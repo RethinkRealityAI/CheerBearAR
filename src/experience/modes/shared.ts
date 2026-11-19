@@ -50,6 +50,9 @@ export function bindGestures(el: HTMLElement, g: Gestures): () => void {
   };
   const down = (e: PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // a new gesture's first finger: drop any pointer whose up / cancel never arrived (ar-4: one stale pointer left
+    // the map at 2 and a real two-finger pinch at 3, so the pinch never fired again)
+    if (e.isPrimary && pts.size) { pts.clear(); pinchD = 0; }
     const t = performance.now();
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: t, tl: t, xl: e.clientX, yl: e.clientY, vy: 0 });
     try { el.setPointerCapture(e.pointerId); } catch { /* synthetic */ }
@@ -108,12 +111,15 @@ export function bindGestures(el: HTMLElement, g: Gestures): () => void {
     }
     if (pts.size < 2) pinchD = 0;
   };
-  const cancel = (e: PointerEvent) => { pts.delete(e.pointerId); moved = true; flick = false; clearLong(); };
+  const cancel = (e: PointerEvent) => { pts.delete(e.pointerId); moved = true; flick = false; clearLong(); if (pts.size < 2) pinchD = 0; };
+  // capture lost without an up (the element was hidden, the browser took the touch): forget that pointer
+  const lost = (e: PointerEvent) => { if (pts.has(e.pointerId)) cancel(e); };
   const wheel = (e: WheelEvent) => { e.preventDefault(); g.onWheel?.(e.deltaY); };
   el.addEventListener('pointerdown', down);
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up);
   el.addEventListener('pointercancel', cancel);
+  el.addEventListener('lostpointercapture', lost);
   el.addEventListener('wheel', wheel, { passive: false });
   return () => {
     clearLong();
@@ -121,6 +127,7 @@ export function bindGestures(el: HTMLElement, g: Gestures): () => void {
     el.removeEventListener('pointermove', move);
     el.removeEventListener('pointerup', up);
     el.removeEventListener('pointercancel', cancel);
+    el.removeEventListener('lostpointercapture', lost);
     el.removeEventListener('wheel', wheel);
   };
 }

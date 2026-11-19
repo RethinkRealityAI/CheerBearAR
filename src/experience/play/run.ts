@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import type { PlayStatus } from '../../shared/contracts';
 import { PAL, RAINBOW } from '../scene/fx';
 import { RUN_SPEED } from '../scene/actor';
+import { IS_PHONE } from '../core/device';
 import { PlayGame, mulberry32, type PlayHost } from './game';
 import { houseBounds, type PickDraw, type PickKind } from './kit';
 
@@ -74,6 +75,12 @@ export class HeartRun extends PlayGame {
   private house = new THREE.Box3();
   private t = new THREE.Vector3();
   private t2 = new THREE.Vector3();
+  /** polish-4: a one-time nudge when she has not moved a few seconds into the round (is the joystick obvious?). */
+  private stillT = 0;
+  private movedOnce = false;
+  private nudgeEl: HTMLElement | null = null;
+  /** Test hook: how often the nudge showed. */
+  nudges = 0;
 
   constructor(host: PlayHost, emit: (s: PlayStatus) => void, exit: () => void) {
     super(host, emit, exit);
@@ -105,6 +112,30 @@ export class HeartRun extends PlayGame {
     for (let i = 0; i < ON_FIELD; i++) this.spawn(i === 4 ? 'rainbow' : 'heart', i * 0.05);
     this.ui.power(null);
     this.ui.streak(0);
+    this.stillT = 0;
+    this.movedOnce = false;
+    this.nudge(false);
+  }
+
+  /** The joystick nudge: a ring pulses round the stick and a pill says how to run. */
+  private nudge(on: boolean): void {
+    const stick = this.host.root.querySelector('.cbx-stick');
+    stick?.classList.toggle('cbp-nudge', on);
+    if (on && !this.nudgeEl) {
+      const p = document.createElement('div');
+      p.className = 'cbp-nudge-pill';
+      p.setAttribute('role', 'status');
+      p.textContent = IS_PHONE ? 'Drag the joystick to run' : 'Arrow keys or the joystick';
+      this.host.layer.appendChild(p);
+      this.nudgeEl = p;
+      requestAnimationFrame(() => p.classList.add('on'));
+      this.nudges++;
+    } else if (!on && this.nudgeEl) {
+      const p = this.nudgeEl;
+      this.nudgeEl = null;
+      p.classList.remove('on');
+      window.setTimeout(() => p.remove(), 400);
+    }
   }
 
   /** A seeded spot in the field: apart from the others, not on her, not in the house, inside the play area. */
@@ -155,6 +186,11 @@ export class HeartRun extends PlayGame {
   protected tick(dt: number): void {
     const st = this.host.stage, a = st.actor;
     this.elapsed += dt;
+    // not moved yet 2.5 s into the round: show how (once she runs, it goes for the rest of the round)
+    if (!this.movedOnce) {
+      if (a.walking && a.moving > 0.1) { this.movedOnce = true; this.nudge(false); }
+      else if ((this.stillT += dt) > 2.5 && !this.nudgeEl) this.nudge(true);
+    }
     this.boost = Math.max(0, this.boost - dt);
     this.magnet = Math.max(0, this.magnet - dt);
     // the rainbow boost: faster, with a trail
@@ -299,6 +335,7 @@ export class HeartRun extends PlayGame {
   protected visuals(dt: number): void {
     const kit = this.host.kit;
     const live = this.state === 'countdown' || this.state === 'playing' || this.state === 'paused';
+    if (this.nudgeEl && this.state !== 'playing') this.nudge(false);
     this.draws.length = 0;
     for (const s of this.slots) {
       if (!s.alive) continue;
@@ -350,6 +387,7 @@ export class HeartRun extends PlayGame {
   }
 
   protected clear(): void {
+    this.nudge(false);
     for (const s of this.slots) s.alive = false;
     this.cloudOn = false;
     this.host.kit.cloud.visible = false;

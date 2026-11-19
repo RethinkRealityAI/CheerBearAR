@@ -6,6 +6,11 @@
 // rendered material left behind, so clipped materials are compiled again on their first real draw (a stall at the
 // moment the door opens, the exact thing that blacked out the camera in the Cola Run hideout). This clip is a tiny
 // shader patch with a fixed program key: compiled once at load with everything else, then only uniforms change.
+//
+// Inside, the room draws with PLAIN twins of its materials (ar-4): the clip's `discard` stays in the shader even when
+// its planes are switched off, and a shader that can discard turns off the GPU's early depth test / hidden-surface
+// removal on phones, so every wall, the floor, the ceiling and the furniture were fully shaded under each other while
+// the room filled the screen. The twins are made and compiled at load (`twinHolder()`), so swapping is free.
 import * as THREE from 'three';
 
 const OFF = new THREE.Vector4(0, 1, 0, 1e9);
@@ -37,10 +42,13 @@ export class DoorClip {
   /** The cottage cut: the same four planes plus the door plane (facing into the room). */
   readonly cut = { value: [OFF.clone(), OFF.clone(), OFF.clone(), OFF.clone(), NONE.clone()] };
   private on = false;
+  /** Clipped material -> its plain twin (same look, no clip patch, built-in program key). */
+  private twins = new Map<THREE.Material, THREE.Material>();
 
   /** Patch a material (any built-in lit or unlit one). Call before the first compile. */
   apply<T extends THREE.Material>(m: T): T {
     const u = this.uniform;
+    this.twins.set(m, PENDING);
     m.onBeforeCompile = (sh) => {
       sh.uniforms.houseClip = u;
       worldVarying(sh);
@@ -82,6 +90,50 @@ export class DoorClip {
     return m;
   }
 
+  /** The plain twin of a clipped material (made on first ask; shares its textures). Null if `m` is not clipped. */
+  twin(m: THREE.Material): THREE.Material | null {
+    const t = this.twins.get(m);
+    if (!t) return null;
+    if (t !== PENDING) return t;
+    const c = m.clone(); // clone() leaves onBeforeCompile / customProgramCacheKey behind: a built-in program
+    c.name = (m.name || m.type) + ' (plain)';
+    this.twins.set(m, c);
+    return c;
+  }
+
+  /**
+   * Hidden meshes that carry every twin used under `root`, on the SAME geometry as the mesh that will wear it (the
+   * geometry and mesh kind decide some shader defines), so the compile at load builds the twins' programs too
+   * (three's compile() visits hidden objects' materials). Returns the swaps for `wear()`.
+   */
+  twinHolder(root: THREE.Object3D): { holder: THREE.Group; swaps: Array<[THREE.Mesh, THREE.Material, THREE.Material]> } {
+    const holder = new THREE.Group();
+    holder.name = 'house-plain-twins';
+    holder.visible = false;
+    const swaps: Array<[THREE.Mesh, THREE.Material, THREE.Material]> = [];
+    const done = new Set<string>();
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+      const tw = this.twin(mesh.material);
+      if (!tw) return;
+      swaps.push([mesh, mesh.material, tw]);
+      const key = tw.uuid + ':' + mesh.geometry.uuid + ':' + ((mesh as THREE.InstancedMesh).isInstancedMesh ? 'i' : 'm');
+      if (done.has(key)) return;
+      done.add(key);
+      let h: THREE.Mesh;
+      if ((mesh as THREE.InstancedMesh).isInstancedMesh) {
+        const im = new THREE.InstancedMesh(mesh.geometry, tw, 1);
+        if ((mesh as THREE.InstancedMesh).instanceColor) im.setColorAt(0, new THREE.Color(1, 1, 1));
+        h = im;
+      } else h = new THREE.Mesh(mesh.geometry, tw);
+      h.frustumCulled = false;
+      h.userData.cbxTwinHolder = true;
+      holder.add(h);
+    });
+    return { holder, swaps };
+  }
+
   /** No clipping (inside, or standing in the doorway). */
   off(): void {
     if (!this.on) return;
@@ -120,3 +172,5 @@ export class DoorClip {
 }
 
 const A = new THREE.Vector3(), B = new THREE.Vector3(), N = new THREE.Vector3();
+/** Marks a clipped material whose twin is not made yet. */
+const PENDING = new THREE.MeshBasicMaterial();

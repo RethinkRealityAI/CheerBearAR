@@ -113,12 +113,20 @@ export function roomTextures() {
   return tex;
 }
 
+/** The room's emissive lift (index.ts LIFT): its whites stay white under the stage's two lights. */
+const PROP_LIFT = 0x221b25;
+
 function hitOf(obj: THREE.Object3D, pad = 0.05): THREE.Box3 {
   obj.updateMatrixWorld(true);
   return new THREE.Box3().setFromObject(obj).expandByScalar(pad);
 }
 
-/** Clone a prop's materials (so the clip planes don't reach the same prop elsewhere) and clip them. */
+/**
+ * Give a prop its own clipped materials (so the clip planes don't reach the same prop elsewhere). In the room they are
+ * Lambert with the prop's own colour map (ar-4): the room is lit by the stage's flat sky + sun only and every other
+ * surface in it is Lambert, so the props' PBR + environment-map shading cost a lot of fragment time when you stand
+ * next to them for little visible difference (and the room needs one program fewer).
+ */
 function clipProp(obj: THREE.Object3D, clip: DoorClip): void {
   const seen = new Map<THREE.Material, THREE.Material>();
   obj.traverse((o) => {
@@ -126,7 +134,14 @@ function clipProp(obj: THREE.Object3D, clip: DoorClip): void {
     if (!m.isMesh) return;
     const one = (mat: THREE.Material) => {
       let c = seen.get(mat);
-      if (!c) { c = clip.apply(mat.clone()); seen.set(mat, c); }
+      if (!c) {
+        const src = mat as THREE.MeshStandardMaterial;
+        const lam = src.isMeshStandardMaterial
+          ? new THREE.MeshLambertMaterial({ map: src.map, color: src.color, emissive: PROP_LIFT, transparent: src.transparent, opacity: src.opacity, alphaTest: src.alphaTest, side: src.side, vertexColors: src.vertexColors })
+          : mat.clone();
+        c = clip.apply(lam);
+        seen.set(mat, c);
+      }
       return c;
     };
     m.material = Array.isArray(m.material) ? m.material.map(one) : one(m.material);

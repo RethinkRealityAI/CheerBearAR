@@ -10,7 +10,8 @@
 //   unknown words  -> "Try saying…" with three example chips you can tap
 //   then Cheer Bear answers with one short canned line (browser voice, never a trigger word), if spoken replies are on
 //
-// Owner: voice-3 (see docs/handoff/voice-3.md). The AppController creates one and forwards the button's events.
+// Owner: voice-3 / voice-4 (docs/handoff/voice-3.md, voice-4.md: one specific line per listening problem, the
+// permission prompt is never aborted by a quick release). The AppController creates one and forwards the button events.
 import type { ExperienceApi, ExperienceMode, PlayStatus, VoiceSession } from '@/shared/contracts';
 import type { AppState, AppStore, VoiceBubble, VoiceUiState } from './state/appState';
 import type { Prefs } from './state/prefs';
@@ -23,6 +24,9 @@ type VoiceCommand =
   | { kind: 'play'; game: 'heart-run' | 'heart-hoops' }
   | { kind: 'stopPlay' };
 interface VoiceMatch { id: string; command: VoiceCommand; phrase: string }
+/** voice-4: see src/voice/voiceHelp.ts (problemHelp). */
+interface ProblemHelp { text: string; help?: string; chips: boolean; block: boolean }
+interface DoneEvent { text: string; audio: boolean; heldMs: number; matched: number; reason: string; problem?: string; help: ProblemHelp | null }
 type Phase = 'interim' | 'release' | 'final' | 'tap';
 /** Modes with a shutter (same list as SHUTTER_MODES in src/voice/commands.ts); AR counts once it shows one. */
 const SHUTTER_MODES: ReadonlySet<ExperienceMode> = new Set<ExperienceMode>(['face', 'photo']);
@@ -30,6 +34,10 @@ interface VoiceModeLike {
   readonly supported: boolean;
   readonly unavailable: 'unsupported' | 'denied' | null;
   readonly active: boolean;
+  readonly state: VoiceUiState;
+  readonly lastProblem: string | null;
+  readonly micPermission: 'granted' | 'denied' | 'prompt' | 'unknown';
+  help(problem: string): ProblemHelp;
   press(opts?: { auto?: boolean }): boolean;
   release(): void;
   cancel(): void;
@@ -42,7 +50,7 @@ interface VoiceModeLike {
   on(event: 'text', cb: (e: { text: string; final: boolean }) => void): () => void;
   on(event: 'level', cb: (l: number) => void): () => void;
   on(event: 'commands', cb: (e: { matches: VoiceMatch[]; phase: Phase }) => void): () => void;
-  on(event: 'done', cb: (e: { text: string; audio: boolean; heldMs: number; matched: number; reason: string }) => void): () => void;
+  on(event: 'done', cb: (e: DoneEvent) => void): () => void;
 }
 
 export interface VoiceHost {
@@ -74,6 +82,10 @@ export class VoiceModeUi {
   private play: PlayStatus | null = null;
   private bubbleTimer = 0;
   private pressMode: 'hold' | 'tap' = 'hold';
+  /** A quick tap let go before the mic opened: its hint is already up, its "done" stays quiet. */
+  private quietDone = false;
+  /** Why the button can't listen this session (shown in the toast and the Talk tab). */
+  private blockedHelp: ProblemHelp | null = null;
 
   constructor(private host: VoiceHost) {}
 
@@ -105,13 +117,15 @@ export class VoiceModeUi {
     if (exp) this.offs.push(exp.on('play', (p) => { this.play = p; }));
     if (!vm) return;
     this.offs.push(
-      vm.on('state', ({ state, message }) => {
+      vm.on('state', ({ state }) => {
+        // messages come with 'done' (one specific line per cause); a permission given back in Settings -> idle again
         this.set({ voice: state });
-        if (state === 'denied' || state === 'unsupported') { this.pending = []; this.fallback(state); }
-        else if (state === 'error' && message) this.bubble({ kind: 'hint', text: 'Oops! Hold me and try again.' }, 3200);
+        if (state === 'idle' && this.blockedHelp && !vm.unavailable) this.blockedHelp = null;
+        // the mic is open: now is the moment to talk (Android needs ~0.3-1 s and a beep before it hears anything)
+        if (state === 'listening' && !this.s.voiceText && this.s.voiceBubble?.kind === 'caption') this.bubble({ kind: 'caption', text: 'Talk now!' }, 0);
       }),
       vm.on('text', ({ text }) => {
-        if (!text) return;
+        if (!text || !vm.active) return;
         this.set({ voiceText: text });
         this.bubble({ kind: 'caption', text }, 0);
       }),
@@ -155,28 +169,48 @@ export class VoiceModeUi {
   release(): void {
     if (this.tapToTalk || !this.vm?.active) return;
     const held = performance.now() - this.pressAt;
-    if (held < TAP_MS) {
-      this.vm.cancel();
-      this.pending = [];
-      this.set({ voice: 'idle' });
-      this.bubble({ kind: 'hint', text: 'Hold me while you talk!' }, 2600);
-      return;
-    }
+    if (held < TAP_MS) return this.quickTap(true);
     this.finishInGesture();
   }
 
-  /** The pointer left / was cancelled (e.g. a scroll took over): end the hold like a release. */
+  /** The pointer left / was cancelled (e.g. a scroll, or the browser's permission prompt took over). */
   abort(): void {
     if (this.tapToTalk || !this.vm?.active) return;
-    if (performance.now() - this.pressAt < TAP_MS) { this.vm.cancel(); this.set({ voice: 'idle' }); return; }
+    if (performance.now() - this.pressAt < TAP_MS) return this.quickTap(false);
     this.finishInGesture();
+  }
+
+  /**
+   * Let go almost at once. Before the mic opened (or while the browser asks for permission) the recogniser is NOT
+   * aborted: that can kill the permission prompt, so the first hold would fail every time. It is released instead
+   * (the voice module waits for the mic, then drops it quietly).
+   */
+  private quickTap(hint: boolean): void {
+    const vm = this.vm!;
+    if (vm.state === 'finishing') return; // already let go (pointerup, then lostpointercapture)
+    this.pending = [];
+    const asking = vm.micPermission === 'prompt' || vm.micPermission === 'unknown';
+    const waiting = vm.state === 'starting'; // the mic has not opened yet (maybe the permission prompt)
+    if (waiting) {
+      this.quietDone = true;
+      vm.release();
+    } else {
+      vm.cancel();
+      this.set({ voice: 'idle' });
+    }
+    if (waiting) {
+      if (hint || asking) this.bubble({ kind: 'hint', text: vm.micPermission === 'prompt' ? 'Tap Allow, then hold me and talk!' : 'Hold me while you talk!' }, 3200);
+    } else if (hint) {
+      this.bubble({ kind: 'hint', text: 'Hold me while you talk!' }, 2600);
+    }
   }
 
   /** A click on the talk button (tap-to-talk, and every fallback). */
   click(): void {
     const vm = this.vm;
     if (!vm || vm.unavailable || !vm.supported) {
-      this.fallback(vm?.unavailable === 'denied' ? 'denied' : 'unsupported');
+      const why = vm?.unavailable === 'denied' ? 'denied' : 'unsupported';
+      this.fallback(why, this.blockedHelp ?? (vm && why === 'unsupported' ? vm.help('unsupported') : null));
       return;
     }
     if (!this.tapToTalk) return; // handled by press/release
@@ -190,13 +224,18 @@ export class VoiceModeUi {
     this.pressAt = performance.now();
     this.pending = [];
     this.replied = null;
+    this.quietDone = false;
     this.set({ voiceText: '' });
+    // start() runs synchronously inside this press (iOS needs the gesture): nothing is awaited before it
     if (!vm.press({ auto })) {
-      this.fallback(vm.unavailable === 'denied' ? 'denied' : 'unsupported');
+      const problem = vm.lastProblem ?? 'unsupported';
+      if (vm.unavailable) this.fallback(vm.unavailable, this.blockedHelp ?? vm.help(problem));
+      else this.bubble({ kind: 'problem', text: vm.help(problem).text }, 3200);
       return;
     }
     try { navigator.vibrate?.(10); } catch { /* not supported */ }
-    this.bubble({ kind: 'caption', text: auto ? 'I’m listening…' : 'Listening…' }, 0);
+    // "Getting ready" until the browser says the mic is open, then "Talk now!" (state 'listening')
+    this.bubble({ kind: 'caption', text: vm.state === 'listening' ? 'Talk now!' : 'Getting ready…' }, 0);
   }
 
   /** Release inside the gesture: the voice module hands over what was said so far, camera things run now. */
@@ -205,13 +244,21 @@ export class VoiceModeUi {
     this.flushPending(true);
   }
 
-  /** Unsupported browser / blocked microphone: never a dead button. */
-  private fallback(why: 'unsupported' | 'denied'): void {
+  /** Unsupported browser / blocked microphone / speech service off: never a dead button. */
+  private fallback(why: 'unsupported' | 'denied', help: ProblemHelp | null = null): void {
+    if (help) this.blockedHelp = help;
     this.set({ voice: why });
     this.host.openSheet('actions');
-    this.host.showToast('info', why === 'denied'
-      ? 'Your microphone is off, so tap a magic word instead!'
-      : 'This browser can’t hear you, so tap a magic word instead!', 4200);
+    const h = this.blockedHelp;
+    const text = h ? h.text : why === 'denied' ? 'Your microphone is off, so tap a magic word instead!' : 'This browser can’t hear you, so tap a magic word instead!';
+    this.host.showToast('info', h?.help ? `${text} ${h.help}` : text, h?.help ? 8000 : 4200);
+  }
+
+  /** What the Talk tab says while the button can't listen (null: it can). */
+  get blockedText(): { text: string; help?: string } | null {
+    const s = this.s.voice;
+    if (s !== 'unsupported' && s !== 'denied') return null;
+    return this.blockedHelp ?? { text: s === 'denied' ? 'Your microphone is off.' : 'This browser can’t hear you.' };
   }
 
   // ------------------------------------------------------------------ commands
@@ -300,8 +347,10 @@ export class VoiceModeUi {
     if (!this.replied) this.replied = c;
   }
 
-  private onDone(r: { text: string; audio: boolean; heldMs: number; matched: number; reason: string }): void {
+  private onDone(r: DoneEvent): void {
     if (this.pending.length) this.flushPending(false); // tap-to-talk auto stop: no gesture left
+    const quiet = this.quietDone;
+    this.quietDone = false;
     const text = r.text.trim();
     this.set({ voiceText: text });
     if (text) this.host.logSaid(text);
@@ -316,11 +365,16 @@ export class VoiceModeUi {
     if (text) {
       const ex = this.examples();
       this.bubble({ kind: 'unknown', text: 'Hmm! Try saying:', examples: ex }, 9000);
-    } else if (r.audio || r.heldMs > 600) {
-      this.bubble({ kind: 'hint', text: r.audio ? 'I didn’t hear you. Hold me and talk!' : 'Now hold me and talk!' }, 3200);
-    } else {
-      this.clearBubble();
+      return;
     }
+    const h = r.help;
+    if (!h) { this.clearBubble(); return; }
+    if (h.block) { this.fallback(this.vm?.unavailable ?? 'denied', h); this.clearBubble(); return; }
+    // a quick tap already showed its hint; only the permission prompt case says more
+    if (quiet && r.problem === 'too-short') return;
+    // let go to answer the permission prompt, and the mic opened after all: allowed
+    if (r.problem === 'permission-pending' && r.audio) { this.bubble({ kind: 'hint', text: 'Yay! Now hold me and talk!' }, 3600); return; }
+    this.bubble({ kind: 'problem', text: h.text, help: h.help, examples: h.chips ? this.examples().slice(0, 2) : undefined }, h.chips || h.help ? 9000 : 3600);
   }
 
   /** Three things to try: two magic words and a mode you are not in. */

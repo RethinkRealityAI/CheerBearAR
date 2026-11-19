@@ -42,7 +42,16 @@ export function VoiceCard() {
     <div className={`cb-voicecard${listening ? ' is-live' : ''}`}>
       {off ? (
         <>
-          <p className="cb-voicecard-line">{voice === 'denied' ? 'Your microphone is off.' : 'This browser can’t hear you.'} Tap a magic word instead!</p>
+          {(() => {
+            // voice-4: the specific reason (Siri & Dictation off, mic refused, no recognition) and what a grown-up can change
+            const why = c.voiceUi.blockedText;
+            return (
+              <>
+                <p className="cb-voicecard-line">{why?.text ?? (voice === 'denied' ? 'Your microphone is off.' : 'This browser can’t hear you.')}{why && /magic word/i.test(why.text) ? '' : ' Tap a magic word instead!'}</p>
+                {why?.help && <p className="cb-voicecard-help">{why.help}</p>}
+              </>
+            );
+          })()}
           <button type="button" className="cb-btn is-primary is-wide is-big" onClick={() => c.setTab('actions')}>
             <Sparkles aria-hidden="true" size={22} /> Magic words
           </button>

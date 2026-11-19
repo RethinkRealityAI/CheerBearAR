@@ -6,10 +6,13 @@
 //               She says hello, mirrors you (smile -> she beams, mouth wide -> she gasps, wink -> she winks back,
 //               eyebrows up -> surprised, head tilt -> she tilts hers; all gated, see signals.ts), cheers for the
 //               photo, keeps lip-syncing on a call. Shutter: a visible 5 s countdown, a second tap shoots at once.
-//     Classic   the old filter's video: Cheer Bear slides in, waves, counts you down ("smile!") and ends on a wink with
-//               a peace sign. Choosing Classic (a tap) plays it WITH sound over the camera, keyed in the scene. On its
-//               last frame she holds the pose and the photo is taken by itself, with her in it exactly as on screen.
-//               The shutter plays it again for another take. Autoplay refused -> a "Tap to play" button.
+//     Classic   the old filter's video: Cheer Bear slides in, waves and ends on a wink with a peace sign. Choosing
+//               Classic (a tap) plays it WITH sound over the camera, keyed in the scene. On its last frame she holds
+//               the pose (the video stays paused on it) while "Smile!" then a big 3, 2, 1 count you in (soft ticks),
+//               then a flash + shutter sound and the photo, with her in it exactly as on screen. (polish-4: the clip
+//               itself has no countdown; round 2 assumed it did, so nothing was shown between her pose and the photo.)
+//               The shutter shoots at once during the 3-2-1 and plays the clip again for another take afterwards.
+//               Autoplay refused -> a "Tap to play" button.
 //   smile     optional "Smile" switch (bottom left, off by default): a held smile starts the shot.
 //   review    camera + 3D (+ the keyed clip) + the title art in one JPEG (the selfie is the mirror image you saw; the
 //             art is never mirrored): Save / Share / Retake / Watch photo animation / Behind the scenes.
@@ -20,14 +23,18 @@ import {
   BtsPlayer, CICON, Countdown, RevealPlayer, ReviewSheet, chromaMaterial, compose, engineShot, flash, el, segmented,
 } from '../../capture';
 import { drawFrameArt, loadFrameArt } from '../../capture/frame-art';
+import { shutterSound } from '../../capture/sounds';
 import { FaceFx } from './face-fx';
 import { FaceSignals, type FaceCue } from './signals';
 
 const WINK_URL = '/media/capture/wink.mp4';
 const COUNTDOWN_S = 5;
 const SMILE_COUNTDOWN_S = 3;
-/** She holds her last pose this long before the automatic shot (the clip ends on her wink + peace sign). */
-const CLIP_HOLD_MS = 350;
+/** She holds her last pose this long before "Smile!" (the clip ends on her wink + peace sign). */
+const CLIP_HOLD_MS = 250;
+/** Classic, after her pose: "Smile!" for this long, then 3, 2, 1. */
+const CLASSIC_LEAD_S = 1.1;
+const CLASSIC_COUNT_S = 3;
 /** Draw order of the 3D bear: after everything else, behind a depth clear. */
 const OVERLAY_ORDER = 1000;
 
@@ -53,7 +60,7 @@ export class FaceMode implements Mode {
   /** Test hooks. */
   readonly diag = {
     shots: 0, lastPhoto: null as Blob | null, faceEvents: 0, soundPrimed: false,
-    clipPlays: 0, clipEnds: 0, clipAutoShots: 0, clipBlocked: 0, clipMuted: false, clipT: 0,
+    clipPlays: 0, clipEnds: 0, clipAutoShots: 0, clipBlocked: 0, clipMuted: false, clipT: 0, clipCounts: 0,
     reactions: {} as Record<string, number>, expression: 'neutral' as BearExpression, smileShots: 0,
     overlayClears: 0, attachmentKeys: [] as string[],
   };
@@ -468,7 +475,10 @@ export class FaceMode implements Mode {
     this.tapPlay.remove();
   }
 
-  /** Her last frame: she holds the pose (the video stays on it), and the photo is taken with her in it. */
+  /**
+   * Her last frame: she holds the pose (the ended video stays on its last frame, so she is in the photo exactly as on
+   * screen) while "Smile!" and a 3, 2, 1 count you in, then the photo. The shutter shoots at once meanwhile.
+   */
   private onClipEnd(): void {
     clearInterval(this.clipWatch);
     if (this.state !== 'clip') return;
@@ -477,9 +487,22 @@ export class FaceMode implements Mode {
     this.state = 'busy';
     this.armShutter(false);
     this.clipTimer = window.setTimeout(() => {
-      if (this.state !== 'busy') return;
-      this.diag.clipAutoShots++;
-      void this.capture();
+      if (this.state !== 'busy' || !this.countdown) return;
+      if (this.look !== 'classic') { this.toLive(false); return; } // switched to the 3D bear meanwhile
+      this.state = 'countdown';
+      this.cheered = true; // the 3D bear's cheer is not part of Classic
+      this.armShutter(true, 'Take the photo now');
+      this.diag.clipCounts++;
+      this.tuckPicker(true); // the look picker sits over her face: tucked away for the count
+      void this.countdown
+        .start(CLASSIC_COUNT_S, undefined, { lead: 'Smile!', leadS: CLASSIC_LEAD_S, note: '' })
+        .then((go) => {
+          if (this.state !== 'countdown') return;
+          if (go) {
+            this.diag.clipAutoShots++;
+            void this.capture();
+          } else this.toLive(false);
+        });
     }, CLIP_HOLD_MS);
   }
 
@@ -492,6 +515,7 @@ export class FaceMode implements Mode {
     this.shutterBtn.disabled = false;
     this.armShutter(false);
     if (this.shutterBtn.parentElement !== hud.centre) hud.centre.appendChild(this.shutterBtn);
+    this.tuckPicker(false);
     hud.above.appendChild(this.picker.el);
     hud.left.appendChild(this.smileBtn);
     // Classic between takes: she stays on her last frame (the clip is paused there); the shutter plays it again
@@ -521,6 +545,8 @@ export class FaceMode implements Mode {
       if (fromTap || was !== 'classic') this.playClip();
     } else {
       if (this.state === 'clip') this.stopClip();
+      if (this.state === 'countdown') this.countdown?.cancel();
+      this.tuckPicker(false);
       this.clipQuad.visible = false;
       this.state = 'live';
       this.armShutter(false);
@@ -528,6 +554,13 @@ export class FaceMode implements Mode {
       if (was !== '3d') this.hello();
     }
     this.drawOverlay();
+  }
+
+  /** Classic's countdown: the look picker (over her face at phone size) fades out and is inert until live again. */
+  private tuckPicker(on: boolean): void {
+    const el = this.picker.el;
+    el.classList.toggle('cbc-tuck', on);
+    el.inert = on;
   }
 
   private setBearVisible(on: boolean): void {
@@ -596,6 +629,7 @@ export class FaceMode implements Mode {
       }
       if (this.state !== 'busy') return; // left the mode meanwhile
       flash(this.ctx.container, this.ctx.reducedMotion);
+      shutterSound(this.ctx.reducedMotion);
       const img = await engineShot(this.ctx.engine);
       if (this.state !== 'busy') return;
       const top = this.titleTop;

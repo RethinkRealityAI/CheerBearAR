@@ -304,6 +304,7 @@ await acheck('hold: unsupported browser -> press() is false and says so; denied 
   d.vm.press();
   await sleep(5);
   FakeRec.all[0].onerror?.({ error: 'not-allowed' });
+  await sleep(5); // voice-4: the Permissions API is asked first (no API here = treat as denied)
   assert.equal(d.vm.unavailable, 'denied');
   assert.equal(d.states.at(-1), 'denied');
   assert.equal(d.vm.press(), false, 'no second prompt loop');
@@ -344,3 +345,6 @@ await acheck('reply: one line per command, spoken only when asked', async () => 
 });
 
 console.log(`voice commands: ${passed} passed${failed ? `, ${failed} FAILED` : ''}`);
+
+// voice-4: the listening failure modes (fake recognition that reproduces each browser behaviour)
+await import('./check-voice-hold');

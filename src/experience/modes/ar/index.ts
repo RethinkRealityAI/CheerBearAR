@@ -1,7 +1,10 @@
 // AR: Cheer Bear and her house on your floor (world tracking, back camera).
 //
 //   placing  the stage follows a reticle on the floor; pinch to size it; Place is enabled once tracking has settled
-//   placed   joystick walks her (camera-relative); Move (bottom left) goes back to placing and keeps everything;
+//   placed   joystick walks her (camera-relative); Move (bottom left) is a full re-placement: out of the house,
+//            the default size again, tracking restarted where you stand (a scale that drifted while you walked is
+//            thrown away) and Place waits for freshly settled tracking; her state, a paused game and the photo wall
+//            are kept;
 //            tap her for a reaction; her house stands behind her, life size, and its door is a portal: walk in through
 //            it with your phone (or tap "Step inside" / the house and the room comes to you), the TV plays the theme;
 //            walk back out or tap Leave (./house-walk.ts, scene/house/)
@@ -24,7 +27,12 @@ import { PlayKit, type PlayGame, type PlayHost } from '../../play';
 /** The "throw hearts" hint shows once per visit. */
 let tossHinted = false;
 
-const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tall, her house 1.2 m
+const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tall, her house life size
+/**
+ * The pinch sizes her house too (ar-4, Dapo: "I can't really resize it"): life size at the default, from 0.6x to 1.6x.
+ * Move puts both back to the default.
+ */
+const houseMul = (s: number) => THREE.MathUtils.clamp(s / SCALE.def, 0.6, 1.6);
 const REACH = { min: 0.8, max: 3.6 }; // metres from the phone the reticle may sit
 const AREA = 3.0; // stage units she may walk from the stage centre
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
@@ -94,7 +102,7 @@ export class ArMode implements Mode {
     this.root.visible = false;
     this.anchor.name = 'ar-anchor';
     this.anchor.add(stage.root);
-    stage.root.scale.setScalar(this.scale);
+    this.applyScale();
     this.anchor.visible = false;
     this.root.add(this.anchor, this.reticle);
     this.buildReticle();
@@ -109,8 +117,23 @@ export class ArMode implements Mode {
       hint: (t, sec) => this.flashHint(t, sec),
       syncHud: () => this.syncHud(),
       tapAction: (n) => sh.tapAction(n),
+      calm: () => sh.ctx.engine.calm?.() ?? sh.ctx.engine.settled(),
+      note: (w) => sh.ctx.engine.note?.(w),
     });
   }
+
+  /** Her size (the pinch) and her house's (life size times houseMul). */
+  private applyScale(): void {
+    this.stage.root.scale.setScalar(this.scale);
+    this.stage.houseSet.sizeMul = houseMul(this.scale);
+  }
+  /** Tests: the pinch scale and what it was reset to. */
+  get pinchScale(): number {
+    return this.scale;
+  }
+  static readonly DEFAULT_SCALE = SCALE.def;
+  /** Times Move was pressed (tests). */
+  moves = 0;
 
   get placed(): boolean {
     return this.state === 'placed';
@@ -150,7 +173,7 @@ export class ArMode implements Mode {
       onPinch: (k) => {
         if (this.state !== 'placing') return;
         this.scale = THREE.MathUtils.clamp(this.scale * k, SCALE.min, SCALE.max);
-        this.stage.root.scale.setScalar(this.scale);
+        this.applyScale();
       },
       onFlick: (power, side) => { this.throwHeart(power, side); },
       onLongPress: (x, y) => {
@@ -161,6 +184,10 @@ export class ArMode implements Mode {
     });
     this.toss.show(true);
     this.limitedT = 0;
+    this.sh.ctx.engine.diagLine = () => {
+      const hs = this.stage.houseSet;
+      return `ar ${this.state}${this.restoring ? ' restoring' : ''} size ${this.scale.toFixed(2)} house ${(hs.k * this.scale).toFixed(2)}x${hs.inside ? ' INSIDE' : ''}${hs.away ? ' away' : ''} moves ${this.moves}`;
+    };
     if (this.resumePlaced) {
       this.restoring = true;
       this.state = 'placed';
@@ -182,6 +209,7 @@ export class ArMode implements Mode {
     this.unbind?.();
     this.unbind = null;
     this.root.visible = false;
+    this.sh.ctx.engine.diagLine = null;
     this.placeBtn.remove();
     this.moveBtn.remove();
     this.leaveBtn.remove();
@@ -221,11 +249,15 @@ export class ArMode implements Mode {
     this.game = g;
     if (g) {
       this.runner.cancel();
-      if (this.inside) this.collapseNow();
+      if (this.inside || this.walk.busy || this.walk.bearIn) this.collapseNow(); // out of the house first
       this.toss.reset();
       this.toss.show(false);
       this.hintT = 0;
     } else if (this.active) this.toss.show(true);
+    // the house (and its mailbox) pops out of the way while a game runs and comes back when it ends (ar-4)
+    this.stage.houseSet.setAway(!!g);
+    if (!g) this.walk.evict();
+    this.sh.ctx.engine.note?.(g ? `game ${g.id}` : 'game off');
     this.syncHud();
   }
 
@@ -304,7 +336,7 @@ export class ArMode implements Mode {
     a.position.set(0, 0, 0);
     a.setHeading(0);
     this.scale = SCALE.def;
-    this.stage.root.scale.setScalar(this.scale);
+    this.applyScale();
     this.everPlaced = false;
     this.resumePlaced = false;
     this.saved = null;
@@ -321,6 +353,7 @@ export class ArMode implements Mode {
 
   private place(): void {
     if (!this.canPlace()) return;
+    this.sh.ctx.engine.note?.(`place ${this.scale.toFixed(2)}`);
     this.state = 'placed';
     this.reticle.visible = false;
     const first = !this.everPlaced;
@@ -338,11 +371,25 @@ export class ArMode implements Mode {
     this.flashHint('Walk in through her door', 5);
   }
 
+  /**
+   * Move = a full re-placement (ar-4). Out of the house first (inside, mid-glide or her waiting in there), the door
+   * shut, the size back to the default (not the last pinch), the preview snapping to the new reticle, and SLAM
+   * restarted where you stand (recenter) so a scale that drifted while you walked is gone; Place then waits for
+   * freshly settled tracking. Her moments' state, a paused game and the photo wall are kept.
+   */
   private move(): void {
     if (this.state !== 'placed' || this.restoring) return;
+    this.moves++;
     this.runner.cancel();
     this.collapseNow();
+    this.walk.reset();
     this.game?.pause('move'); // the round waits; Place carries on (the game keeps its state)
+    this.scale = SCALE.def;
+    this.applyScale();
+    this.anchor.visible = false;
+    this.reticle.visible = false;
+    this.sh.ctx.engine.recenter?.();
+    this.sh.ctx.engine.note?.('move');
     this.state = 'placing';
     this.syncHud();
   }

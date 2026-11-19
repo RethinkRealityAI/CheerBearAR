@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as Rea
 import { LayoutGrid, MessageCircle, Mic, MicOff, Phone, PhoneOff, RotateCcw, Sparkles } from 'lucide-react';
 import { useApp, useController } from '../context';
 import type { VoiceBubble } from '../state/appState';
+import { VoiceDiagHost } from './VoiceDiagHost';
 
 const HOLD_MS = 700;
 const NUDGE_MS = 12000;
@@ -109,7 +110,7 @@ export function TalkOrb() {
   }, [listening, c]);
 
   // phones: the sheet covers the corner. Desktop: the sidebar sits beside it, so voice mode stays in reach.
-  if (sheetOpen && !(isDesktop && voiceOn)) return null;
+  if (sheetOpen && !(isDesktop && voiceOn)) return <VoiceDiagHost />;
 
   const state = inCall ? 'live' : busy ? 'busy' : voiceOn ? 'voice' : !canCall ? 'chat' : call === 'error' ? 'error' : 'idle';
   const label = {
@@ -187,6 +188,7 @@ export function TalkOrb() {
 
   return (
     <div className="cb-orb-dock">
+      <VoiceDiagHost />
       {micAsk && !overlay && <MicExplainer />}
       {bubble && !micAsk && state !== 'voice' && (
         <div key={bubble} className={`cb-orb-bubble${state === 'error' ? ' is-error' : ''}${showMore ? ' is-above-more' : ''}`} aria-hidden="true">{bubble}</div>
@@ -280,21 +282,22 @@ function useClearOfControls(ref: React.RefObject<HTMLDivElement>, key: unknown) 
 function VoiceBubbleView({ b, above, listening }: { b: VoiceBubble; above: number; listening: boolean }) {
   const c = useController();
   const ref = useRef<HTMLDivElement>(null);
-  const interactive = b.kind === 'unknown' || b.kind === 'camera';
+  const interactive = b.kind === 'unknown' || b.kind === 'camera' || (b.kind === 'problem' && !!b.examples?.length);
   useClearOfControls(ref, `${b.id}-${b.kind}-${above}`);
   return (
     <div
       ref={ref}
       key={b.kind === 'caption' ? `cap-${b.id}` : b.id}
-      className={`cb-vbubble is-${b.kind}${listening ? ' is-live' : ''} above-${above}`}
+      className={`cb-vbubble is-${b.kind}${listening ? ' is-live' : ''}${b.examples?.length ? ' has-chips' : ''} above-${above}`}
       role={interactive ? 'group' : undefined}
       aria-label={interactive ? b.text : undefined}
       aria-hidden={interactive ? undefined : 'true'}
       data-testid="voice-bubble"
     >
-      {b.kind === 'caption' && listening && <span className="cb-vbubble-rec" aria-hidden="true" />}
+      {b.kind === 'caption' && listening && !/^Getting ready/.test(b.text) && <span className="cb-vbubble-rec" aria-hidden="true" />}
       <span className="cb-vbubble-text">{b.text}</span>
-      {b.kind === 'unknown' && b.examples && (
+      {b.kind === 'problem' && b.help && <span className="cb-vbubble-help">{b.help}</span>}
+      {(b.kind === 'unknown' || b.kind === 'problem') && b.examples && (
         <span className="cb-vbubble-chips">
           {b.examples.map((ex) => (
             <button key={ex.say} type="button" className="cb-vchip" onClick={() => c.voiceUi.runExample(ex.say)}>{ex.label}</button>

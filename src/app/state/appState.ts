@@ -39,8 +39,10 @@ export type VoiceUiState = 'idle' | 'starting' | 'listening' | 'finishing' | 'un
 /** The bubble above the talk button in voice mode. */
 export interface VoiceBubble {
   id: number;
-  kind: 'nudge' | 'hint' | 'caption' | 'unknown' | 'camera' | 'info';
+  kind: 'nudge' | 'hint' | 'caption' | 'unknown' | 'camera' | 'info' | 'problem';
   text: string;
+  /** 'problem' (voice-4): a line for a grown-up on what to change (Siri & Dictation, mic permission...). */
+  help?: string;
   /** "Try saying…" chips (unknown speech). */
   examples?: Array<{ say: string; label: string }>;
   /** 'camera': the mode the chip's tap opens. */

@@ -93,6 +93,14 @@ export interface EngineView {
   ray(ndc: THREE.Vector2): THREE.Raycaster;
   /** Camera + 3D as drawn (base64 JPEG decoded to an image). Camera modes only. */
   screenshot(): Promise<HTMLImageElement>;
+  /** World: tracking is calm right now (NORMAL long enough, no recent stall). Not latched like `settled()`. (ar-4) */
+  calm?(): boolean;
+  /** World: restart SLAM where the phone is (XR8.XrController.recenter) and re-arm the settled gate. (ar-4) */
+  recenter?(): boolean;
+  /** A breadcrumb for the ?diag overlay and the health snapshot. (ar-4) */
+  note?(what: string): void;
+  /** The active mode's line in the ?diag overlay. (ar-4) */
+  diagLine?: (() => string) | null;
 }
 
 /** HUD helpers (src/experience/hud/hud.ts). Everything is optional to use. */
