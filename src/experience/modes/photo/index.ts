@@ -20,7 +20,7 @@ import * as THREE from 'three';
 import type { ExperienceMode } from '../../../shared/contracts';
 import type { CameraKind, EngineView, FaceEvent, HudApi, Mode, ModeContext, XrScene } from '../../types';
 import { ReviewSheet, RevealPlayer, compose, engineShot, flash, el } from '../../capture';
-import { drawFrameArt, loadFrameArt } from '../../capture/frame-art';
+import { FRAME_STYLES, PHOTO_FILTERS, drawFrameArt, loadFrameArt, type FrameSpec, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
 import { askMotionPermission } from '../../core/device';
 import { bindGestures } from '../shared';
 import { ICON } from '../../hud/icons';
@@ -84,6 +84,10 @@ export class PhotoMode implements Mode {
   private guide: HTMLElement;
   private shutterBtn: HTMLButtonElement | null = null;
   private review: ReviewSheet;
+  private frame: FrameStyle = 'blossom';
+  private filter: PhotoFilter = 'natural';
+  /** The last raw shot, kept while the review is open so a new frame / filter can recompose it. */
+  private shot: HTMLImageElement | null = null;
   private reveal: RevealPlayer;
   private unbind: (() => void) | null = null;
   private hintT = 0;
@@ -151,14 +155,30 @@ export class PhotoMode implements Mode {
     this.guide = el('div', 'cbc-guide');
     this.guide.setAttribute('aria-hidden', 'true');
 
-    const name = 'cheer-bear-3d-photo';
+    const name = 'happi-3d-photo';
+    const self = this;
     this.review = new ReviewSheet({
       container: ctx.container,
       name,
       title: 'Your 3D photo',
       share: { title: 'Happi and me', text: 'A photo with Happi!' },
-      onRetake: () => this.toPlaced(),
+      onRetake: () => { this.dropShot(); this.toPlaced(); },
       onReveal: (b) => this.reveal.play(b),
+      styles: {
+        frames: FRAME_STYLES, filters: PHOTO_FILTERS,
+        get frame() { return self.frame; },
+        get filter() { return self.filter; },
+        restyle: async (frame, filter) => {
+          if (!this.shot) throw new Error('no shot');
+          const spec = this.spec(frame as FrameStyle, filter as PhotoFilter);
+          return (await compose(this.shot, (g, w, h) => drawFrameArt(g, w, h, spec))).blob;
+        },
+        onChange: (blob, frame, filter) => {
+          this.frame = frame as FrameStyle;
+          this.filter = filter as PhotoFilter;
+          this.diag.lastPhoto = blob;
+        },
+      },
     });
     this.reveal = new RevealPlayer(ctx.container, name);
   }
@@ -210,6 +230,7 @@ export class PhotoMode implements Mode {
     if (this.cam === 'world') this.remember();
     this.state = 'off';
     this.review.close();
+    this.dropShot();
     this.reveal.close();
     this.unbind?.();
     this.unbind = null;
@@ -641,8 +662,10 @@ export class PhotoMode implements Mode {
       flash(this.ctx.container, this.ctx.reducedMotion);
       const img = await engineShot(this.ctx.engine);
       if (this.state !== 'busy') return;
-      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleWidth: 0.34, titleAt: 'bottom-left' }));
-      img.src = '';
+      const spec = this.spec(this.frame, this.filter);
+      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, spec));
+      this.dropShot();
+      this.shot = img;
       if (this.state !== 'busy') return;
       this.diag.shots++;
       this.diag.lastPhoto = blob;
@@ -654,6 +677,15 @@ export class PhotoMode implements Mode {
       this.ctx.hud.toast('That photo did not work. Try again?', 2200);
       this.toPlaced();
     }
+  }
+
+  private spec(frame: FrameStyle, filter: PhotoFilter): FrameSpec {
+    return { title: true, titleWidth: 0.3, titleAt: 'bottom-left', frame, filter };
+  }
+
+  private dropShot(): void {
+    if (this.shot) this.shot.src = '';
+    this.shot = null;
   }
 
   /** A happy hop with a little squash, and hearts out of the frame. */

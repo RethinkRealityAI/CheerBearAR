@@ -136,7 +136,7 @@ export class AppController {
     this.wireVoice(voice);
     this.voiceUi.attach(voice, experience);
 
-    experience.setReservedCorner(88);
+    experience.setReservedCorner(0);
     try {
       await experience.mount(container);
     } catch (err) {

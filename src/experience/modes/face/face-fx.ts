@@ -1,14 +1,13 @@
 // What the Selfie puts on your head and face, in face units (1 FU ~ 118-139 mm; x = wearer's left, y up, the face
 // looks down -z). Two looks:
-//   hood    the 3D Happi hood (Meshy model, cleaned in tools/blender/build_hood.py): the face opening is centred on
-//           your face, the hood wraps the head; a depth-only head occluder hides what is behind your head.
+//   hood    the 3D Happi hood (built in code, src/happi/hood.ts): a human-face oval opening centred on your face,
+//           the hood wraps the head; a depth-only head occluder hides what is behind your head.
 //   faces   flat "Happi faces" decals: red cheek dots, the little squirrel face on your forehead, and the four
 //           official expression heads that pop up beside you to match your face (smile, gasp, frown, sleepy).
 // Both looks can pop an expression head when you react. Flat colours, DoubleSide because the display is mirrored.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { buildHood } from '../../../happi/hood';
 
-export const HOOD_URL = '/models/happi-hood.glb';
 const RED = 0xe8222a;
 
 export type FxLook = 'hood' | 'faces';
@@ -20,7 +19,7 @@ const CHEEKS = { left: new THREE.Vector3(0.32, -0.24, -0.5), right: new THREE.Ve
 const FOREHEAD = new THREE.Vector3(0, 0.5, -0.62);
 
 /** Hood fit (FU): the opening centre relative to the face anchor, its scale and a small forward tilt. */
-export const HOOD_FIT = { x: 0, y: -0.04, z: -0.2, scale: 0.78, tilt: 0.08 };
+export const HOOD_FIT = { x: 0, y: 0, z: 0, scale: 1, tilt: 0.06 };
 
 export function heartShape(size: number): THREE.ShapeGeometry {
   // classic two-lobe heart, point down, centred, `size` wide (photo mode's hop hearts)
@@ -146,27 +145,12 @@ export class FaceFx {
     this.place(null);
   }
 
-  /** Load the hood model once (the mode's load()). */
-  async loadHood(loader: GLTFLoader = new GLTFLoader()): Promise<void> {
+  /** Build the hood once (code-made, src/happi/hood.ts: instant, no download). */
+  async loadHood(_loader?: unknown): Promise<void> {
     if (this.hoodLoaded) return;
-    const g = await loader.loadAsync(HOOD_URL);
-    const h = g.scene;
-    h.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
-      m.renderOrder = 1;
-      const mats = Array.isArray(m.material) ? m.material : [m.material];
-      for (const mat of mats) {
-        const sm = mat as THREE.MeshStandardMaterial;
-        sm.side = THREE.DoubleSide; // the inside of the opening shows round your face
-        if ('roughness' in sm) { sm.roughness = 0.9; sm.metalness = 0; }
-      }
-    });
-    // exported facing +z (glTF): the face looks down -z, so turn it round
-    h.rotation.y = Math.PI;
     const fit = new THREE.Group();
     fit.name = 'hood-fit';
-    fit.add(h);
+    fit.add(buildHood());
     this.hood.add(fit);
     this.applyFit();
     this.hoodLoaded = true;

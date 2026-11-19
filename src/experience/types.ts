@@ -111,6 +111,8 @@ export interface HudApi {
   toast(text: string, ms?: number): void;
   /** Bottom-left slot (Move lives here once placed). Append your buttons; the HUD removes nothing of yours. */
   readonly left: HTMLElement;
+  /** Bottom-right slot (the Moves button in 3D and AR). */
+  readonly right: HTMLElement;
   /** Bottom-centre slot: the joystick (walking modes) or the shutter (capture modes). Never put two things here. */
   readonly centre: HTMLElement;
   /** Above the bottom row, centred (contextual pills like Place, lens rows). */
@@ -118,7 +120,7 @@ export interface HudApi {
   /** A full-width layer over the scene under the HUD chrome, for mode overlays (photo review, etc.). */
   readonly layer: HTMLElement;
   /** A standard round tool button (icon + short label). */
-  toolButton(opts: { label: string; icon: string; aria?: string; onClick: () => void }): HTMLButtonElement;
+  toolButton(opts: { label: string; icon: string; aria?: string; onClick: () => void; tone?: 'orange' | 'navy' }): HTMLButtonElement;
   /** The standard white shutter button (76 px). Put it in `centre`. */
   shutter(onClick: () => void, aria?: string): HTMLButtonElement;
   /** A white flash (photo taken). */

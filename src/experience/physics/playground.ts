@@ -38,12 +38,17 @@ interface ToyState {
 }
 
 function heartShape(): THREE.Shape {
-  // same silhouette as the particle atlas heart (fx.ts), y up, about 2 units wide
+  // Happi's toys are cherry blossoms: five notched petals, y up, about 2 units wide
   const s = new THREE.Shape();
-  const k = 1 / 50;
-  s.moveTo(0, -46 * k);
-  s.bezierCurveTo(-60 * k, -4 * k, -50 * k, 48 * k, 0, 22 * k);
-  s.bezierCurveTo(50 * k, 48 * k, 60 * k, -4 * k, 0, -46 * k);
+  const N = 90;
+  for (let i = 0; i < N; i++) {
+    const th = Math.PI / 2 + (i / N) * Math.PI * 2;
+    const u = ((((th - Math.PI / 2) / (Math.PI * 2 / 5) + 0.5) % 1) + 1) % 1;
+    let r = 0.3 + 0.7 * Math.pow(Math.sin(Math.PI * u), 0.55);
+    r -= 0.16 * Math.max(0, 1 - Math.abs(u - 0.5) / 0.09);
+    if (i === 0) s.moveTo(Math.cos(th) * r, Math.sin(th) * r); else s.lineTo(Math.cos(th) * r, Math.sin(th) * r);
+  }
+  s.closePath();
   return s;
 }
 function starShape(): THREE.Shape {

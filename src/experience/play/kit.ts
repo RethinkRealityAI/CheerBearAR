@@ -10,7 +10,7 @@
 //   cloud     the grumpy raincloud (Heart Run): grey puffs, two eyes, a frown. Our own simple geometry.
 import * as THREE from 'three';
 import type { Stage } from '../scene/stage';
-import { PAL, RAINBOW } from '../scene/fx';
+import { PAL } from '../scene/fx';
 import type { StaticSphere } from '../physics/world';
 
 export const PICK = { heart: 0, star: 1, rainbow: 2 } as const;
@@ -18,7 +18,10 @@ export type PickKind = keyof typeof PICK;
 const CAP = { heart: 14, star: 3, rainbow: 3 };
 const BEACONS = 20;
 /** The rainbow pickup's four bands, outside in. */
-const ARC_COLORS = [RAINBOW[0], RAINBOW[2], RAINBOW[3], RAINBOW[4]];
+/** The fan pickup (the hub's rainbow shape): red and white bands like a festival sensu. */
+const ARC_COLORS = [0xd8312a, 0xffffff, 0xd8312a, 0xffffff];
+/** Festival ring bands: vermilion, white and navy. */
+const RING = [0xe0452b, 0xffffff, 0xe0452b, 0x283a8f, 0xe0452b, 0xffffff];
 /** Hoop: radius of the opening's centre line and the band half-width (stage units). */
 export const HOOP_R = 0.36;
 export const HOOP_BAND = 0.06;
@@ -144,18 +147,18 @@ export class PlayKit {
     this.group.add(this.hearts, this.stars, ...this.arcs, this.puffs, this.beacons);
 
     // ---- the hoop: six flat rainbow bands (outside red .. inside purple) standing up, on a cloud
-    const bands = RAINBOW.length;
+    const bands = RING.length;
     const w = (HOOP_BAND * 2) / bands;
     for (let i = 0; i < bands; i++) {
       const r = HOOP_R + HOOP_BAND - w * (i + 0.5);
       const g = new THREE.TorusGeometry(r, w * 0.62, 8, 48);
-      const mesh = new THREE.Mesh(g, flat(RAINBOW[i], 0.45));
+      const mesh = new THREE.Mesh(g, flat(RING[i], 0.45));
       mesh.name = `hoop-band-${i}`;
       this.hoopBands.push(mesh);
       this.hoop.add(mesh);
     }
     const puffG = new THREE.SphereGeometry(1, 16, 12);
-    const white = flat(0xffffff, 0.8);
+    const white = flat(0xffb7c9, 0.8); // a cluster of blossom at its foot
     for (const [x, y, s] of [[0, -HOOP_R - 0.06, 0.11], [-0.11, -HOOP_R - 0.04, 0.085], [0.11, -HOOP_R - 0.04, 0.085], [-0.2, -HOOP_R + 0.0, 0.065], [0.2, -HOOP_R + 0.0, 0.065]] as const) {
       const pm = new THREE.Mesh(puffG, white);
       pm.position.set(x, y, 0);

@@ -7,6 +7,8 @@
 // Controls: joystick (or arrow keys / WASD) walks her, the camera follows; drag to look around a little; pinch or
 // scroll to zoom within limits; tap her for a reaction.
 import * as THREE from 'three';
+import { happiPlaza } from '../../../happi/plaza';
+import { MOVES_ICON } from '../../../happi/moves';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { ExperienceMode } from '../../../shared/contracts';
 import type { Mode } from '../../types';
@@ -23,8 +25,8 @@ let tossHinted = false;
 
 const FOV_WIDE = 50; // portrait screens: a taller view shows more of New York
 const FOV_LAND = 38;
-const PLAY = { dist: 3.5, pitch: 0.14, targetY: 0.78 }; // looking a little above her: she stands in the lower half, clear of the top bar
-const LIM = { yaw: 1.0, pitchMin: 0.02, pitchMax: 0.6, distMin: 1.9, distMax: 6, area: 3.4 };
+const PLAY = { dist: 2.2, pitch: 0.12, targetY: 0.62 }; // looking a little above her: she stands in the lower half, clear of the top bar
+const LIM = { yaw: 1.0, pitchMin: 0.02, pitchMax: 0.6, distMin: 1.3, distMax: 5, area: 3.4 };
 
 export class ShowcaseMode implements Mode {
   readonly id = 'showcase' as const;
@@ -70,6 +72,9 @@ export class ShowcaseMode implements Mode {
   game: PlayGame | null = null;
   /** Set by the experience: open the game chooser (the Games button, bottom left). */
   onPickGame: (() => void) | null = null;
+  /** Set by the experience: open Happi's moves (the Moves button, bottom right). */
+  onPickMove: (() => void) | null = null;
+  private movesBtn: HTMLButtonElement | null = null;
   private gamesBtn: HTMLButtonElement | null = null;
   private spaceAt = 0;
   private onKey = (e: KeyboardEvent): void => {
@@ -101,7 +106,7 @@ export class ShowcaseMode implements Mode {
     // the panorama's floating island (its centre column) straight ahead of the default view
     this.scene.backgroundRotation.set(0, Math.PI / 2, 0);
     this.scene.add(stage.root);
-    this.scene.add(cloudFloor());
+    this.scene.add(happiPlaza());
     this.kit = new PlayKit(stage);
   }
 
@@ -212,7 +217,7 @@ export class ShowcaseMode implements Mode {
     this.stick = this.sh.hud.joystick(true);
     this.hintT = 5;
     this.sh.hud.hint(IS_PHONE ? 'Drag to look around' : 'Drag to look, arrows walk');
-    this.hintNext = tossHinted ? '' : IS_PHONE ? 'Swipe up to throw hearts' : 'Press Space to throw hearts';
+    this.hintNext = tossHinted ? '' : IS_PHONE ? 'Swipe up to throw blossoms' : 'Press Space to throw blossoms';
     this.toss.show(true);
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
@@ -306,10 +311,14 @@ export class ShowcaseMode implements Mode {
     this.stick = this.sh.hud.joystick(stick);
     if (!stick) this.stick = null;
     if (!g && this.onPickGame) {
-      this.gamesBtn ??= this.sh.hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', onClick: () => this.onPickGame?.() });
+      this.gamesBtn ??= this.sh.hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', tone: 'orange', onClick: () => this.onPickGame?.() });
       this.gamesBtn.dataset.cmd = 'games';
       if (this.gamesBtn.parentElement !== this.sh.hud.left) this.sh.hud.left.appendChild(this.gamesBtn);
     } else this.gamesBtn?.remove();
+    if (!g && this.onPickMove) {
+      this.movesBtn ??= this.sh.hud.toolButton({ label: 'Moves', icon: MOVES_ICON, aria: 'Pick something for Happi to do', tone: 'navy', onClick: () => this.onPickMove?.() });
+      if (this.movesBtn.parentElement !== this.sh.hud.right) this.sh.hud.right.appendChild(this.movesBtn);
+    } else this.movesBtn?.remove();
   }
 
   private pv = new THREE.Vector3();
@@ -489,33 +498,9 @@ export class ShowcaseMode implements Mode {
 
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
 /** The Games button's icon: a heart with speed lines (flat, currentColor). */
-const GAMES_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 20.5 7.6 14.3a4.1 4.1 0 0 1 6.4-5.1 4.1 4.1 0 0 1 6.4 5.1Z"/><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5h3M2 13h2.5M3 16.5h2.5"/></g></svg>';
-const WIDE: Record<string, number> = { House: 3.4, Party: 1.6, Rainbow: 1.0, Running: 1.2, Magic: 0.8, Cold: 0.6, Stare: 0.9 };
+const GAMES_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(14.5 12) scale(1.15) translate(-12 -12.6)"><g fill="currentColor"><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(0 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(72 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(144 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(216 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(288 12 12)"/></g></g><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.5 8.5h3M1 12h2.5M1.5 15.5h3"/></g></svg>';
+const WIDE: Record<string, number> = { House: 4.2, Party: 2.2, Rainbow: 1.5, Running: 1.8, Magic: 1.0, Cold: 0.6, Stare: 0.9 };
 
-
-/** A soft white cloud under her (one colour fading out), so walking reads against the far-away panorama. */
-function cloudFloor(): THREE.Mesh {
-  const n = 128, c = document.createElement('canvas');
-  c.width = c.height = n;
-  const g = c.getContext('2d')!, img = g.createImageData(n, n);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const d = Math.hypot(x - n / 2 + 0.5, y - n / 2 + 0.5) / (n / 2);
-    const a = d >= 1 ? 0 : Math.min(1, Math.pow(1 - d, 0.8) * 1.4);
-    img.data.set([255, 247, 252, Math.round(a * 255)], (y * n + x) * 4);
-  }
-  g.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.Mesh(
-    new THREE.CircleGeometry(5.2, 64),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.78, depthWrite: false, toneMapped: false }),
-  );
-  m.rotation.x = -Math.PI / 2;
-  m.renderOrder = -3;
-  m.name = 'cloud-floor';
-  // CircleGeometry UVs map the square texture onto the disc
-  return m;
-}
 
 function collectTextures(root: THREE.Object3D): THREE.Texture[] {
   const out = new Set<THREE.Texture>();

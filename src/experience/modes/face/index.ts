@@ -22,7 +22,7 @@ import type { FaceEvent, Mode, ModeContext, XrScene } from '../../types';
 import {
   BtsPlayer, CICON, Countdown, RevealPlayer, ReviewSheet, chromaMaterial, compose, engineShot, flash, el, segmented,
 } from '../../capture';
-import { drawFrameArt, loadFrameArt } from '../../capture/frame-art';
+import { FRAME_STYLES, PHOTO_FILTERS, drawFrameArt, loadFrameArt, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
 import { shutterSound } from '../../capture/sounds';
 import { FaceFx } from './face-fx';
 import { FaceSignals, type FaceCue } from './signals';
@@ -46,6 +46,7 @@ const REACT: Record<string, BearClip> = {
   cheer: 'cheer', sparkle: 'cheer', magic: 'cheer', rainbow: 'cheer', house: 'cheer', running: 'cheer', wakeup: 'cheer',
 };
 
+const HAPPI_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 10 4 3l5 4M19 10l1-7-5 4"/><path d="M5 11a7 7 0 0 0 14 0 7 7 0 0 0-14 0Z"/><path d="M9.5 11v1M14.5 11v1M10 15.5c1.2.8 2.8.8 4 0"/></svg>';
 const SMILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8 14c1 1.6 2.4 2.4 4 2.4s3-.8 4-2.4"/><path d="M9 9.5v.5M15 9.5v.5"/></svg>';
 
 export class FaceMode implements Mode {
@@ -79,6 +80,9 @@ export class FaceMode implements Mode {
   private shutterBtn: HTMLButtonElement | null = null;
   private picker: { el: HTMLElement; set(id: string): void };
   private smileBtn: HTMLButtonElement;
+  /** Show the 3D Happi beside you (the Happi on/off button, bottom right). */
+  private showHappi = true;
+  private happiBtn: HTMLButtonElement;
   private tapPlay: HTMLButtonElement;
   private countdown: Countdown | null = null;
   private review: ReviewSheet;
@@ -89,7 +93,10 @@ export class FaceMode implements Mode {
   private cheered = false;
   private lastReact = 0;
   private resizeObs: ResizeObserver | null = null;
-  private titleTop = 0.09;
+  private frame: FrameStyle = 'blossom';
+  private filter: PhotoFilter = 'natural';
+  /** The last raw shot (camera + 3D), kept while the review sheet is open so a new frame / filter can recompose it. */
+  private shot: HTMLImageElement | null = null;
   private wp = new THREE.Vector3();
   private unprime: (() => void) | null = null;
   private lastPhoto: Blob | null = null;
@@ -163,18 +170,36 @@ export class FaceMode implements Mode {
     this.smileBtn = ctx.hud.toolButton({ label: 'Smile', icon: SMILE_ICON, aria: 'Smile to take the photo', onClick: () => this.toggleSmileSnap() });
     this.smileBtn.setAttribute('aria-pressed', 'false');
     this.smileBtn.classList.add('cbc-toggle');
+    this.happiBtn = ctx.hud.toolButton({ label: 'Happi', icon: HAPPI_ICON, aria: 'Show Happi beside you', tone: 'orange', onClick: () => this.toggleHappi() });
+    this.happiBtn.setAttribute('aria-pressed', 'true');
+    this.happiBtn.classList.add('cbc-toggle', 'on');
     this.tapPlay = el('button', 'cbc-tapplay', `${CICON.play}<span>Tap to play</span>`);
     this.tapPlay.type = 'button';
     this.tapPlay.setAttribute('aria-label', 'Play Happi’s video');
     this.tapPlay.addEventListener('click', (e) => { e.stopPropagation(); this.playClip(); });
 
-    const name = 'cheer-bear-selfie';
+    const name = 'happi-selfie';
+    const self = this;
     this.review = new ReviewSheet({
       container: ctx.container,
       name,
       title: 'Your selfie',
       share: { title: 'Me and Happi', text: 'My selfie with Happi!' },
-      onRetake: () => this.toLive(false),
+      onRetake: () => { this.dropShot(); this.toLive(false); },
+      styles: {
+        frames: FRAME_STYLES, filters: PHOTO_FILTERS,
+        get frame() { return self.frame; },
+        get filter() { return self.filter; },
+        restyle: async (frame, filter) => {
+          if (!this.shot) throw new Error('no shot');
+          return (await compose(this.shot, (g, w, h) => drawFrameArt(g, w, h, { title: true, frame: frame as FrameStyle, filter: filter as PhotoFilter }))).blob;
+        },
+        onChange: (blob, frame, filter) => {
+          this.frame = frame as FrameStyle; // the live frame and the next photo follow the last pick
+          this.filter = filter as PhotoFilter;
+          this.lastPhoto = this.diag.lastPhoto = blob;
+        },
+      },
     });
     this.reveal = new RevealPlayer(ctx.container, name);
     this.bts = new BtsPlayer(ctx.container);
@@ -207,9 +232,8 @@ export class FaceMode implements Mode {
     const hud = this.ctx.hud;
     this.countdown = new Countdown(hud.layer, this.ctx.reducedMotion);
     hud.layer.appendChild(this.overlay);
-    this.measureTitle();
     this.drawOverlay();
-    this.resizeObs = new ResizeObserver(() => { this.measureTitle(); this.drawOverlay(); });
+    this.resizeObs = new ResizeObserver(() => this.drawOverlay());
     this.resizeObs.observe(this.ctx.container);
     this.borrowBear();
     this.state = 'live';
@@ -222,12 +246,14 @@ export class FaceMode implements Mode {
     this.countdown?.dispose();
     this.countdown = null;
     this.review.close();
+    this.dropShot();
     this.reveal.close();
     this.bts.close();
     this.shutterBtn?.remove();
     this.shutterBtn = null;
     this.picker.el.remove();
     this.smileBtn.remove();
+    this.happiBtn.remove();
     this.tapPlay.remove();
     this.overlay.remove();
     this.resizeObs?.disconnect();
@@ -262,8 +288,9 @@ export class FaceMode implements Mode {
     // the 3D bear: big, bottom left, peeking in beside you (like the old art), turned towards the middle
     if (this.bearHolder.visible) {
       const d = 1.3, hh = d * tanY, hw = d * tanX;
-      const H = hh * Math.min(0.82, (hw / hh) * 1.75); // head about 45 % of the width on a phone, less on wide screens
-      const top = -hh + 1.04 * hh; // top of her head ~52 % up the screen (her face clears the look picker)
+      // small, in the bottom-left corner beside the shutter, so he never covers you (Dapo, round 3)
+      const H = hh * Math.min(0.66, (hw / hh) * 1.25);
+      const top = -hh + 0.22 * hh + H; // feet just above the dock
       // live reactions: a little bounce when she beams, a small step back when she gasps, a lean with your tilt
       const kb = 1 - Math.exp(-dt * 3.2);
       this.bounce -= this.bounce * kb;
@@ -271,9 +298,9 @@ export class FaceMode implements Mode {
       const want = this.signals.roll;
       this.tilt += (want - this.tilt) * (1 - Math.exp(-dt * 6));
       const hop = this.ctx.reducedMotion ? 0 : Math.sin(Math.min(1, 1 - this.bounce) * Math.PI) * this.bounce * 0.06;
-      this.bearHolder.position.set(-hw + 0.42 * hw, top - H + hop * H, -d - this.recoil * 0.18);
+      this.bearHolder.position.set(-hw + 0.36 * H, top - H + hop * H, -d - this.recoil * 0.18);
       this.bearHolder.scale.setScalar(H);
-      this.bearHolder.rotation.set(-this.recoil * 0.12, 0.5, this.tilt * 0.15);
+      this.bearHolder.rotation.set(-this.recoil * 0.12, 0.22, this.tilt * 0.15); // nearly square on: he looks at you
     }
 
     // face anchor: smoothed towards the latest engine transform (snap when first found)
@@ -368,6 +395,7 @@ export class FaceMode implements Mode {
     this.setSmileSnap(false);
     if (this.state !== 'off') {
       this.review.close();
+      this.dropShot();
       this.reveal.close();
       this.bts.close();
       this.countdown?.cancel();
@@ -492,6 +520,7 @@ export class FaceMode implements Mode {
     this.tuckPicker(false);
     hud.above.appendChild(this.picker.el);
     hud.left.appendChild(this.smileBtn);
+    hud.right.appendChild(this.happiBtn);
     // Classic between takes: she stays on her last frame (the clip is paused there); the shutter plays it again
     this.clipQuad.visible = false;
     this.fx.setLook(this.look);
@@ -542,7 +571,16 @@ export class FaceMode implements Mode {
     el.inert = on;
   }
 
+  private toggleHappi(): void {
+    this.showHappi = !this.showHappi;
+    this.happiBtn.setAttribute('aria-pressed', String(this.showHappi));
+    this.happiBtn.classList.toggle('on', this.showHappi);
+    this.ctx.hud.toast(this.showHappi ? 'Happi is in the picture' : 'Just you this time');
+    if (this.state === 'live' || this.state === 'countdown') this.setBearVisible(true);
+  }
+
   private setBearVisible(on: boolean): void {
+    on = on && this.showHappi;
     this.bearHolder.visible = on;
     if (!on) this.setExpression('neutral');
   }
@@ -607,9 +645,10 @@ export class FaceMode implements Mode {
       shutterSound(this.ctx.reducedMotion);
       const img = await engineShot(this.ctx.engine);
       if (this.state !== 'busy') return;
-      const top = this.titleTop;
-      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleTop: top }));
-      img.src = '';
+      const frame = this.frame, filter = this.filter;
+      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, frame, filter }));
+      this.dropShot();
+      this.shot = img;
       if (this.state !== 'busy') return;
       this.diag.shots++;
       this.diag.lastPhoto = blob;
@@ -619,10 +658,16 @@ export class FaceMode implements Mode {
       if (b) b.disabled = false;
       this.review.show(blob);
     } catch (e) {
+      this.dropShot();
       console.warn('[selfie] photo failed', e);
       this.ctx.hud.toast('That photo did not work. Try again?', 2200);
       this.toLive(false);
     }
+  }
+
+  private dropShot(): void {
+    if (this.shot) this.shot.src = '';
+    this.shot = null;
   }
 
   // ------------------------------------------------------------------ smile to snap
@@ -728,15 +773,6 @@ export class FaceMode implements Mode {
     this.tilt = 0;
   }
 
-  /** The title cloud sits just under the HUD's top bar (same share of the height in the photo). */
-  private measureTitle(): void {
-    const c = this.ctx.container;
-    const h = c.clientHeight || 1;
-    const bar = c.querySelector('.cbx-top') as HTMLElement | null;
-    const bottom = bar ? bar.getBoundingClientRect().bottom - c.getBoundingClientRect().top : 64;
-    this.titleTop = Math.min(0.2, Math.max(0.06, (bottom + 6) / h));
-  }
-
   private drawOverlay(): void {
     const c = this.overlay;
     const box = this.ctx.container;
@@ -746,7 +782,7 @@ export class FaceMode implements Mode {
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, w, h);
     if (this.state === 'off') return;
-    drawFrameArt(g, w, h, { title: true, titleTop: this.titleTop });
+    drawFrameArt(g, w, h, { title: false, frame: this.frame, live: true });
   }
 }
 

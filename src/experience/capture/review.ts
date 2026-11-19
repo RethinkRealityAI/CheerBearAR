@@ -15,6 +15,18 @@ export interface ReviewOptions {
   onReveal?: (blob: Blob) => void;
   /** Show "Behind the scenes". */
   onBts?: () => void;
+  /** Post-snap choices (frame and filter chips). `restyle` recomposes the photo; the sheet swaps it in. */
+  styles?: ReviewStyles;
+}
+
+export interface ReviewStyles {
+  frames: Array<{ id: string; label: string }>;
+  filters: Array<{ id: string; label: string }>;
+  frame: string;
+  filter: string;
+  restyle(frame: string, filter: string): Promise<Blob>;
+  /** The photo changed (the mode keeps the latest for its diagnostics / reveal). */
+  onChange?(blob: Blob, frame: string, filter: string): void;
 }
 
 export class ReviewSheet {
@@ -25,6 +37,8 @@ export class ReviewSheet {
   private status: HTMLElement | null = null;
   private statusT = 0;
   private prevFocus: Element | null = null;
+  private img: HTMLImageElement | null = null;
+  private styleJob = 0;
 
   constructor(private o: ReviewOptions) {}
 
@@ -54,6 +68,7 @@ export class ReviewSheet {
     img.src = this.url;
     img.alt = 'Your photo with Happi';
     ph.appendChild(img);
+    this.img = img;
 
     const acts = el('div', 'cbc-rv-actions');
     const r1 = el('div', 'row');
@@ -64,6 +79,8 @@ export class ReviewSheet {
     const r2 = el('div', 'row');
     r2.append(actionButton('Retake', CICON.retake, () => this.retake(), 'alt'));
     if (this.o.onReveal) r2.append(actionButton('Watch photo animation', CICON.play, () => this.blob && this.o.onReveal!(this.blob), 'alt'));
+    const st = this.o.styles;
+    if (st) acts.append(this.styleRows(st));
     acts.append(r1, r2);
     const foot = el('div', 'row foot');
     if (this.o.onBts) foot.append(actionButton('Behind the scenes', CICON.clapper, () => this.o.onBts!(), 'ghost'));
@@ -78,6 +95,59 @@ export class ReviewSheet {
     this.o.container.appendChild(n);
     this.node = n;
     (r1.firstElementChild as HTMLElement).focus({ preventScroll: true });
+  }
+
+  /** Two rows of chips: Frame (Blossom, Parade, Clean) and Filter (Natural, Warm, Sakura, Mono). */
+  private styleRows(st: ReviewStyles): HTMLElement {
+    const box = el('div', 'cbc-rv-styles');
+    let frame = st.frame, filter = st.filter;
+    const row = (label: string, items: Array<{ id: string; label: string }>, cur: () => string, set: (id: string) => void) => {
+      const r = el('div', 'cbc-chips');
+      r.setAttribute('role', 'group');
+      r.setAttribute('aria-label', label);
+      r.appendChild(el('span', 'lbl', label));
+      const btns: HTMLButtonElement[] = [];
+      for (const it of items) {
+        const b = el('button', 'cbc-chip', it.label) as HTMLButtonElement;
+        b.type = 'button';
+        b.dataset.id = it.id;
+        b.setAttribute('aria-pressed', String(it.id === cur()));
+        b.addEventListener('click', () => {
+          if (it.id === cur()) return;
+          set(it.id);
+          btns.forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.id === it.id)));
+          void this.restyle(st, frame, filter);
+        });
+        btns.push(b);
+        r.appendChild(b);
+      }
+      return r;
+    };
+    box.append(
+      row('Frame', st.frames, () => frame, (id) => { frame = id; }),
+      row('Filter', st.filters, () => filter, (id) => { filter = id; }),
+    );
+    return box;
+  }
+
+  private async restyle(st: ReviewStyles, frame: string, filter: string): Promise<void> {
+    const job = ++this.styleJob;
+    this.node?.classList.add('cbc-busy');
+    try {
+      const blob = await st.restyle(frame, filter);
+      if (job !== this.styleJob || !this.node || !this.img) return; // a newer choice, or the sheet closed
+      if (this.url) URL.revokeObjectURL(this.url);
+      this.blob = blob;
+      this.file = photoFile(blob, `${this.o.name}-${stamp()}.jpg`);
+      this.url = URL.createObjectURL(blob);
+      this.img.src = this.url;
+      st.onChange?.(blob, frame, filter);
+    } catch (e) {
+      console.warn('[review] restyle failed', e);
+      this.say('That look did not work. Try another?');
+    } finally {
+      if (job === this.styleJob) this.node?.classList.remove('cbc-busy');
+    }
   }
 
   private say(text: string): void {
@@ -109,6 +179,8 @@ export class ReviewSheet {
     this.node?.remove();
     this.node = null;
     this.status = null;
+    this.img = null;
+    this.styleJob++;
     if (this.url) URL.revokeObjectURL(this.url);
     this.url = null;
     this.blob = null;

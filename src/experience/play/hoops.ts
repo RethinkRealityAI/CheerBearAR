@@ -42,14 +42,14 @@ interface Shot {
 
 export class HeartHoops extends PlayGame {
   readonly id = 'heart-hoops' as const;
-  readonly label = 'Heart Hoops';
+  readonly label = 'Blossom Toss';
   readonly showStick = false;
   protected readonly roundS = null;
   protected readonly starAt = [8, 18, 28] as const;
   protected readonly balls = BALLS;
   protected readonly goLine: string;
   /** The 3D camera holds still on the court while this runs. */
-  readonly view = { wide: 0.9, pitch: 0.16 as number | null, focus: true };
+  readonly view = { wide: 2.2, pitch: 0.16 as number | null, focus: true };
   readonly flicks = true;
   thrown = 0;
   resolved = 0;

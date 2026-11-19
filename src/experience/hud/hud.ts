@@ -1,6 +1,7 @@
 // The experience's own DOM: splash, top bar (small title, mode switcher, menu), hint pill, toast, speech bubble,
 // bottom row (left: Move; centre: joystick or shutter; right: kept free for the app's talk button), sheets (menu,
 // how it works, licences, open-on-phone QR, errors) and the flat cover shown while the camera switches.
+import { PetalField, cornerBranches } from '../../happi/splash-fx';
 import * as THREE from 'three';
 import qrcode from 'qrcode-generator';
 import type { ExperienceMode } from '../../shared/contracts';
@@ -31,14 +32,23 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
+/** Happi's head hopping on a sky disc, swapping expression on every landing (loading screen + mode-change cover). */
+const HEADS = ['happy', 'surprised', 'grumpy', 'sleepy'];
+function headHop(cls: string): string {
+  const imgs = HEADS.map((n, i) => `<img src="/img/happi/head-${n}.webp" alt="" width="240" height="222" style="--k:${i}" decoding="async">`).join('');
+  return `<div class="hh ${cls}" aria-hidden="true"><i class="hh-ring"></i><i class="hh-shadow"></i><span class="hh-head">${imgs}</span></div>`;
+}
+
 export class Hud implements HudApi {
   readonly root: HTMLElement;
   readonly hudEl: HTMLElement;
   readonly left: HTMLElement;
+  readonly right: HTMLElement;
   readonly centre: HTMLElement;
   readonly above: HTMLElement;
   readonly layer: HTMLElement;
   private splash: HTMLElement;
+  private petals: PetalField;
   private startBtn: HTMLButtonElement;
   private loadBar: HTMLElement;
   private hintEl: HTMLElement;
@@ -80,7 +90,7 @@ export class Hud implements HudApi {
     this.splash.setAttribute('aria-label', opts.title);
     this.splash.innerHTML = `
       <div class="sp-col">
-        <div class="sp-top"><p class="sp-eyebrow">Japan Parade &amp; Street Fair<br><b>Official Mascot</b></p><img class="title" src="/img/happi-logo.webp" alt="${esc(opts.title)}" width="769" height="309"></div>
+        <div class="sp-top"><div class="sp-clouds" aria-hidden="true"><i></i><i></i><i></i></div><p class="sp-eyebrow"><img class="wm" src="/img/parade-wordmark.webp" alt="Japan Parade &amp; Street Fair" width="600" height="127"><b>Official Mascot</b></p><img class="title" src="/img/happi-logo.webp" alt="${esc(opts.title)}" width="769" height="309"></div>
         <div class="sp-bottom">
           <p class="lead">${esc(opts.lead)}</p>
           <button type="button" class="cbx-start" disabled>Loading…</button>
@@ -89,7 +99,7 @@ export class Hud implements HudApi {
           <img class="act-by" src="/img/activated-by.webp" alt="Activated by MEDIALIFE" width="148" height="58">
         </div>
       </div>
-      <div class="sp-hero"><div class="sp-wait" aria-hidden="true">${ICON.heart}</div></div>`;
+      <div class="sp-hero"><div class="sp-wait" aria-hidden="true">${headHop('hh-sm')}</div></div>`;
     // portrait order: title, hero window, card (the column wrapper is display: contents there)
     const col = this.splash.querySelector('.sp-col')!;
     const hero = this.splash.querySelector('.sp-hero')!;
@@ -98,12 +108,20 @@ export class Hud implements HudApi {
     this.startBtn = this.splash.querySelector('.cbx-start')!;
     this.loadBar = this.splash.querySelector('.cbx-load')!;
     this.startBtn.addEventListener('click', () => opts.onStart());
+    // cherry branches in the sky's corners and petals drifting down over everything (src/happi/splash-fx.ts)
+    cornerBranches(this.splash.querySelector('.sp-top')!);
+    this.petals = new PetalField(this.splash);
+    this.petals.start();
 
     // ---- HUD
     this.hudEl = el('div', 'cbx-hud');
     this.hudEl.hidden = true;
+    // top: only the lockup (the parade's wordmark over Happi, the same as the splash). Everything you tap lives in
+    // the bottom dock, in thumb reach: the mode tabs and the menu.
     const top = el('div', 'cbx-top');
-    top.innerHTML = `<img class="mini" src="/img/happi-logo-sm.webp" alt="${esc(opts.title)}" width="76" height="31">`;
+    top.innerHTML = `<div class="lockup" role="img" aria-label="Japan Parade &amp; Street Fair official mascot ${esc(opts.title)}"><img src="/img/parade-wordmark.webp" alt="" width="600" height="127"><img src="/img/happi-logo-sm.webp" alt="" width="76" height="31"></div>`;
+    const dock = el('nav', 'cbx-dock');
+    dock.setAttribute('aria-label', 'Views and menu');
     // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
     // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
@@ -126,13 +144,13 @@ export class Hud implements HudApi {
     });
     this.switchEl.style.setProperty('--i', '0');
     this.switchEl.addEventListener('keydown', (e) => this.onSwitchKey(e));
-    top.appendChild(this.switchEl);
-    const menuBtn = el('button', 'cbx-ib', ICON.menu);
+    dock.appendChild(this.switchEl);
+    const menuBtn = el('button', 'cbx-ib cbx-menu', ICON.menu);
     menuBtn.type = 'button';
     menuBtn.setAttribute('aria-label', 'Menu');
     menuBtn.setAttribute('aria-haspopup', 'dialog');
     menuBtn.addEventListener('click', () => this.openMenu());
-    top.appendChild(menuBtn);
+    dock.appendChild(menuBtn);
 
     this.hintEl = el('p', 'ml-hint');
     this.hintEl.setAttribute('role', 'status');
@@ -147,27 +165,29 @@ export class Hud implements HudApi {
     const bottom = el('div', 'cbx-bottom');
     this.left = el('div', 'cbx-slot-left');
     this.centre = el('div', 'cbx-slot-centre');
-    const right = el('div', 'cbx-slot-right');
-    bottom.append(this.left, this.centre, right);
+    this.right = el('div', 'cbx-slot-right');
+    bottom.append(this.left, this.centre, this.right);
 
     // joystick (bottom centre, walking modes)
-    this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M51 17l7-7 7 7"/><path d="M51 99l7 7 7-7"/><path d="M17 51l-7 7 7 7"/><path d="M99 51l7 7-7 7"/></g></svg><span><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></g></svg></span>`);
+    // a plain joystick: navy base, a white ring with one orange arc gliding round it (a flat shimmer, no gradient),
+    // and an orange thumb
+    this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><circle cx="58" cy="58" r="54" fill="none" stroke="currentColor" stroke-width="3" opacity="0.5"/><circle class="arc" cx="58" cy="58" r="54" fill="none" stroke-width="4" stroke-linecap="round" pathLength="100" stroke-dasharray="16 84"/></svg><span></span>`);
     this.stick.setAttribute('role', 'application');
     this.stick.setAttribute('aria-label', 'Joystick: walk Happi');
     this.stick.hidden = true;
     this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
 
-    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom);
+    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom, dock);
     this.layer = el('div', 'cbx-layer');
 
     // the mode-change cover: a flat pink iris grows from the tapped tab, the target mode's badge sits in the middle,
     // then the whole cover fades off the new view (reduced motion: a plain crossfade)
-    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-in"><span class="cbx-cover-badge"></span><p></p></div>`);
+    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-sky" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="cbx-cover-in">${headHop('')}<p><span class="cbx-cover-badge"></span><b></b><em class="cbx-dots"><i></i><i></i><i></i></em></p></div>`);
     this.coverEl.setAttribute('role', 'status');
     this.coverDisc = this.coverEl.querySelector('.cbx-cover-disc')!;
     this.coverIcon = this.coverEl.querySelector('.cbx-cover-badge')!;
-    this.coverText = this.coverEl.querySelector('p')!;
+    this.coverText = this.coverEl.querySelector('.cbx-cover-in b')!;
     this.flashEl = el('div', 'cbx-flash');
 
     container.append(this.layer, this.hudEl, this.splash, this.coverEl, this.flashEl);
@@ -200,15 +220,17 @@ export class Hud implements HudApi {
   }
   hideSplash(): void {
     this.splash.classList.add('gone');
+    this.petals.gust();
     this.irisFrom = null;
     this.hudEl.hidden = false;
     this.hudEl.classList.add('off');
     requestAnimationFrame(() => this.hudEl.classList.remove('off'));
-    window.setTimeout(() => { this.splash.hidden = true; }, 800);
+    window.setTimeout(() => { if (this.splash.classList.contains('gone')) { this.splash.hidden = true; this.petals.stop(); } }, 1200);
   }
   showSplashAgain(): void {
     this.splash.hidden = false;
     this.splash.classList.remove('gone');
+    this.petals.start();
     this.hudEl.hidden = true;
     this.startBtn.disabled = false;
     this.startBtn.textContent = 'Start';
@@ -218,6 +240,7 @@ export class Hud implements HudApi {
   setMode(mode: ExperienceMode, busy: boolean): void {
     const prev = this.curMode;
     this.curMode = mode;
+    this.root.dataset.mode = mode;
     this.busy = busy;
     const i = MODES.findIndex((m) => m.id === mode);
     const focused = this.switchEl.contains(document.activeElement);
@@ -352,8 +375,8 @@ export class Hud implements HudApi {
     this.bubbleSr.textContent = t;
     this.bubble.classList.add('on');
   }
-  toolButton(o: { label: string; icon: string; aria?: string; onClick: () => void }): HTMLButtonElement {
-    const b = el('button', 'cbx-tool', `${o.icon}<span>${esc(o.label)}</span>`);
+  toolButton(o: { label: string; icon: string; aria?: string; onClick: () => void; tone?: 'orange' | 'navy' }): HTMLButtonElement {
+    const b = el('button', 'cbx-tool' + (o.tone ? ' ' + o.tone : ''), `${o.icon}<span>${esc(o.label)}</span>`);
     b.type = 'button';
     b.setAttribute('aria-label', o.aria ?? o.label);
     b.addEventListener('click', (e) => { e.stopPropagation(); o.onClick(); });
@@ -567,6 +590,7 @@ export class Hud implements HudApi {
 
   dispose(): void {
     this.closeAllSheets();
+    this.petals.dispose();
     for (const n of [this.splash, this.hudEl, this.layer, this.coverEl, this.flashEl]) n.remove();
   }
 }

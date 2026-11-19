@@ -1,18 +1,18 @@
-// The props from the old House scene (TV, car, mailbox, tub, mirror, shelf) plus the rainbow and the disco
-// ball, optimised for phones (public/models/props/*.glb: a few thousand triangles each, 1024 webp, meshopt).
+// Happi's props: the TV, cab, post box, tub, mirror and tansu chest are built in code (src/happi/kit3d.ts); only the
+// rainbow and the disco ball are still GLBs (public/models/props/*.glb: a few thousand triangles each, 1024 webp).
 // Each `make()` returns a fresh clone (geometry and textures shared) fitted to a height, standing on y = 0, centred,
 // facing +z.
 import * as THREE from 'three';
 import type { Assets } from '../core/assets';
+import { happiProp } from '../../happi/kit3d';
 
 export type PropName = 'tv' | 'car' | 'mailbox' | 'tub' | 'mirror' | 'shelf' | 'rainbow' | 'discoball';
 const FILES: Record<PropName, string> = {
-  tv: 'tv', car: 'car', mailbox: 'mailbox', tub: 'tub', mirror: 'mirror', shelf: 'shelf',
+  tv: '', car: '', mailbox: '', tub: '', mirror: '', shelf: '',
   rainbow: 'rainbow', discoball: 'discoball',
 };
 /** Turn so the prop's front faces +z (the car model drives along -x). */
-// house.glb is no longer loaded: her house is built in code (scene/house). The file stays on disk.
-const YAW: Partial<Record<PropName, number>> = { car: Math.PI / 2 };
+const YAW: Partial<Record<PropName, number>> = {};
 
 export class PropKit {
   private src = new Map<PropName, THREE.Object3D>();
@@ -21,6 +21,8 @@ export class PropKit {
     const names = Object.keys(FILES) as PropName[];
     let done = 0;
     await Promise.all(names.map(async (n) => {
+      const code = happiProp(n);
+      if (code) { this.src.set(n, code); progress(++done / names.length); return; }
       const g = await assets.gltf(`/models/props/${FILES[n]}.glb`);
       g.scene.traverse((o) => {
         const m = o as THREE.Mesh;

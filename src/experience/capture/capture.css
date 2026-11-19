@@ -90,9 +90,21 @@
 }
 .cbx .cbc-rv-actions {
   flex: none; display: flex; flex-direction: column; gap: 10px; width: min(100%, 460px); margin: 0 auto;
-  /* the app's talk button lives in the bottom-right corner: keep the whole bottom strip under the buttons free */
-  padding-bottom: calc(var(--cb-safe-bottom) + max(12px, var(--cbx-reserved, 88px)));
+  padding-bottom: calc(var(--cb-safe-bottom) + 14px + var(--cbx-reserved, 0px));
 }
+/* post-snap frame / filter chips */
+.cbx .cbc-rv-styles { display: flex; flex-direction: column; gap: 8px; }
+.cbx .cbc-chips { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 1px 0; }
+.cbx .cbc-chips::-webkit-scrollbar { display: none; }
+.cbx .cbc-chips .lbl { flex: 0 0 52px; font-size: 13px; font-weight: 700; color: var(--cb-ink); opacity: 0.7; }
+.cbx .cbc-chip {
+  flex: none; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 2px solid #283a8f22; background: #f3efe7;
+  color: #283a8f; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; touch-action: manipulation;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.cbx .cbc-chip[aria-pressed="true"] { background: #283a8f; color: #fff; border-color: #283a8f; }
+.cbx .cbc-chip:focus-visible { outline: 3px solid #f37321; outline-offset: 2px; }
+.cbx .cbc-review.cbc-busy .cbc-rv-photo img { opacity: 0.7; transition: opacity 0.15s; }
 .cbx .cbc-rv-actions .row { display: flex; gap: 10px; }
 /* Retake keeps its natural width so "Watch photo animation" fits on a 375 px phone */
 .cbx .cbc-rv-actions .row .cbc-btn.alt:first-child:not(:only-child) { flex: 0 0 auto; padding: 0 16px; }
@@ -109,7 +121,7 @@
   .cbx .cbc-review { display: grid; grid-template-columns: 1fr minmax(300px, 420px); grid-template-rows: auto 1fr; column-gap: 28px; padding-bottom: 24px; }
   .cbx .cbc-rv-top { grid-column: 1 / -1; }
   .cbx .cbc-rv-photo { grid-row: 2; }
-  .cbx .cbc-rv-actions { grid-row: 2; align-self: center; padding-bottom: var(--cbx-reserved, 88px); }
+  .cbx .cbc-rv-actions { grid-row: 2; align-self: center; padding-bottom: 24px; }
   .cbx .cbc-rv-actions .row:not(.foot) { flex-direction: column; }
 }
 

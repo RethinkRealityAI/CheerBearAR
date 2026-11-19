@@ -16,6 +16,10 @@ import type { PropKit } from '../props';
 import type { Media } from '../media';
 import type { Stage } from '../stage';
 import { PAL, RAINBOW } from '../fx';
+/** Paper-lantern lights: red, white, orange, warm gold. */
+const LAMPS = [0xd8312a, 0xffffff, 0xf37321, 0xffe08a];
+/** Petals puffing from the rooftop tank. */
+const PETALS = [0xffb7c9, 0xff94b0, 0xffffff, 0xffd9e3];
 import { damp, ease } from '../../core/timeline';
 import { COT, DOOR, DOOR_H0, DOOR_R, ROOM, ROOM_SLACK } from './dims';
 import { buildDoorLeaf, buildExterior } from './exterior';
@@ -357,7 +361,7 @@ export class HouseSet {
   /** A burst of tiny hearts from the chimney (the House moment). */
   puffHearts(n: number): void {
     const k = this.k;
-    this.st.fx.emit({ count: n, glyph: 'heart', colors: [PAL.pink, PAL.red, 0xffffff, 0xff9cc9], at: this.toStage(this.chimneyTop, V), spread: [0.08 * k, 0.05 * k, 0.08 * k], vel: [0, 0.6 * k, 0], velSpread: [0.25 * k, 0.15 * k, 0.25 * k], sway: 0.06 * k, drag: 0.6, life: [1.8, 2.6], size: [0.1 * k, 0.16 * k] });
+    this.st.fx.emit({ count: n, glyph: 'heart', colors: PETALS, at: this.toStage(this.chimneyTop, V), spread: [0.08 * k, 0.05 * k, 0.08 * k], vel: [0, 0.6 * k, 0], velSpread: [0.25 * k, 0.15 * k, 0.25 * k], sway: 0.06 * k, drag: 0.6, life: [1.8, 2.6], size: [0.1 * k, 0.16 * k] });
   }
 
   private popChest(): void {
@@ -443,7 +447,7 @@ export class HouseSet {
       this.chimneyT -= dt;
       if (this.chimneyT <= 0) {
         this.chimneyT = st.actor.soft ? 1.2 : 0.6;
-        st.fx.emit({ count: 1, glyph: 'heart', colors: [PAL.pink, PAL.red, 0xffffff, 0xff9cc9], at: this.toStage(this.chimneyTop, V), spread: [0.05 * k, 0, 0.05 * k], vel: [0.03 * k, 0.32 * k * this.squash, 0], velSpread: [0.05 * k, 0.06 * k, 0.05 * k], sway: 0.06 * k, drag: 0.2, life: [2.2, 2.8], size: [0.09 * k, 0.14 * k] });
+        st.fx.emit({ count: 1, glyph: 'heart', colors: PETALS, at: this.toStage(this.chimneyTop, V), spread: [0.05 * k, 0, 0.05 * k], vel: [0.03 * k, 0.32 * k * this.squash, 0], velSpread: [0.05 * k, 0.06 * k, 0.05 * k], sway: 0.06 * k, drag: 0.2, life: [2.2, 2.8], size: [0.09 * k, 0.14 * k] });
       }
     }
     this.animateRoom(dt);
@@ -480,9 +484,9 @@ export class HouseSet {
       this.twinkleStep++;
       const n = r.bulbCount;
       for (let i = 0; i < n; i++) {
-        if (this.party > 0) COLR.setHex(RAINBOW[(i + this.twinkleStep) % 6]);
+        if (this.party > 0) COLR.setHex(LAMPS[(i + this.twinkleStep) % 4]);
         else {
-          COLR.setHex(RAINBOW[i % 6]);
+          COLR.setHex(LAMPS[i % 4]);
           const tw = ((i * 7 + this.twinkleStep) % 9) === 0;
           if (tw) COLR.setHex(0xffffff);
         }

@@ -7,6 +7,7 @@
 //   await exp.mount(el);          // splash + loading; Start (a tap) -> showcase
 //   exp.setMode('ar');            // from a tap; switches in place
 //   exp.trigger('rainbow');       // case-insensitive
+import { movesHtml } from '../happi/moves';
 import * as THREE from 'three';
 import '../shared/theme.css';
 import { happiSky } from '../happi/sky';
@@ -283,6 +284,19 @@ class Experience implements ExperienceApi {
     return on ? this.play.pause('sheet') : this.play.resume('sheet');
   }
 
+  /** The Moves button (bottom right in 3D and AR): a grid of everything Happi can do; a tap closes it and he does it. */
+  private pickMove(): void {
+    const hud = this.hud;
+    if (!hud || hud.sheetOpen) return;
+    void hud.sheet({ title: 'What should Happi do?', body: '', html: movesHtml(), buttons: ['Close'] });
+    const wraps = this.box?.querySelectorAll<HTMLElement>('.cbx-sheet-wrap');
+    const wrap = wraps?.[wraps.length - 1];
+    wrap?.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((b) => b.addEventListener('click', () => {
+      (wrap.querySelector('.row .btn') as HTMLButtonElement | null)?.click();
+      window.setTimeout(() => this.trigger(b.dataset.move!), 120);
+    }));
+  }
+
   /** The Games button (bottom left in 3D, above Move in AR): a small chooser sheet. */
   private pickGame(): void {
     const hud = this.hud;
@@ -354,6 +368,7 @@ class Experience implements ExperienceApi {
     this.modes.set('showcase', this.showcase);
     this.modes.set('ar', arMode.m);
     this.showcase.onPickGame = arMode.m.onPickGame = () => this.pickGame();
+    this.showcase.onPickMove = arMode.m.onPickMove = () => this.pickMove();
     // a hidden tab holds the round (the pause card waits for you)
     const onVis = () => { if (document.hidden) this.play.pause('hidden'); };
     document.addEventListener('visibilitychange', onVis);

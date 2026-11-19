@@ -129,7 +129,7 @@ export class PlayUi {
       }
       this.rackUsed = used;
       const left = Math.max(0, this.rackN - used);
-      this.rack.setAttribute('aria-label', `${left} heart${left === 1 ? '' : 's'} left to throw`);
+      this.rack.setAttribute('aria-label', `${left} blossom${left === 1 ? '' : 's'} left to throw`);
     }
   }
 

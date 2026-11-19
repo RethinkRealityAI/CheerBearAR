@@ -11,6 +11,7 @@
 //
 // Leaving AR remembers where the stage stood relative to the phone; coming back (from 3D or Selfie) puts it back in
 // the same place in front of you once tracking has settled again (a new run has a new world origin).
+import { MOVES_ICON } from '../../../happi/moves';
 import * as THREE from 'three';
 import type { ExperienceMode } from '../../../shared/contracts';
 import type { Mode, XrScene } from '../../types';
@@ -36,7 +37,7 @@ const houseMul = (s: number) => THREE.MathUtils.clamp(s / SCALE.def, 0.6, 1.6);
 const REACH = { min: 0.8, max: 3.6 }; // metres from the phone the reticle may sit
 const AREA = 3.0; // stage units she may walk from the stage centre
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
-const TOSS_HINT = 'Swipe up to throw hearts';
+const TOSS_HINT = 'Swipe up to throw blossoms';
 
 type State = 'placing' | 'placed';
 
@@ -92,6 +93,8 @@ export class ArMode implements Mode {
   game: PlayGame | null = null;
   /** Set by the experience: open the game chooser (the Games button, above Move). */
   onPickGame: (() => void) | null = null;
+  onPickMove: (() => void) | null = null;
+  private movesBtn: HTMLButtonElement | null = null;
   private gamesBtn: HTMLButtonElement | null = null;
   private pv = new THREE.Vector3();
 
@@ -550,10 +553,14 @@ export class ArMode implements Mode {
     this.walk.syncHud(walking && !this.game);
     // Games (above Move) once she is placed, while no game runs and you're not inside the house
     if (walking && !this.inside && !this.game && this.onPickGame) {
-      this.gamesBtn ??= hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', onClick: () => this.onPickGame?.() });
+      this.gamesBtn ??= hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', tone: 'orange', onClick: () => this.onPickGame?.() });
       this.gamesBtn.dataset.cmd = 'games';
       hud.left.appendChild(this.gamesBtn);
     } else this.gamesBtn?.remove();
+    if (walking && !this.game && this.onPickMove) {
+      this.movesBtn ??= hud.toolButton({ label: 'Moves', icon: MOVES_ICON, aria: 'Pick something for Happi to do', tone: 'navy', onClick: () => this.onPickMove?.() });
+      hud.right.appendChild(this.movesBtn);
+    } else this.movesBtn?.remove();
   }
 
   private flashHint(text: string, s: number): void {
@@ -596,4 +603,4 @@ export class ArMode implements Mode {
 }
 
 /** The Games button's icon: a heart with speed lines (flat, currentColor). */
-const GAMES_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 20.5 7.6 14.3a4.1 4.1 0 0 1 6.4-5.1 4.1 4.1 0 0 1 6.4 5.1Z"/><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5h3M2 13h2.5M3 16.5h2.5"/></g></svg>';
+const GAMES_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(14.5 12) scale(1.15) translate(-12 -12.6)"><g fill="currentColor"><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(0 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(72 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(144 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(216 12 12)"/><path d="M12 12C9.6 10.6 9.9 6.6 11.4 5.6L12 6.6l.6-1C14.1 6.6 14.4 10.6 12 12z" transform="rotate(288 12 12)"/></g></g><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1.5 8.5h3M1 12h2.5M1.5 15.5h3"/></g></svg>';
