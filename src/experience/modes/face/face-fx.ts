@@ -22,15 +22,24 @@ const FOREHEAD = new THREE.Vector3(0, 0.5, -0.62);
 export const HOOD_FIT = { x: 0, y: 0, z: 0, scale: 1, tilt: 0.06 };
 
 export function heartShape(size: number): THREE.ShapeGeometry {
-  // classic two-lobe heart, point down, centred, `size` wide (photo mode's hop hearts)
-  const s = new THREE.Shape();
-  const k = size / 2;
-  s.moveTo(0, -0.95 * k);
-  s.bezierCurveTo(-0.15 * k, -0.75 * k, -1.0 * k, -0.25 * k, -1.0 * k, 0.25 * k);
-  s.bezierCurveTo(-1.0 * k, 0.75 * k, -0.35 * k, 0.95 * k, 0, 0.5 * k);
-  s.bezierCurveTo(0.35 * k, 0.95 * k, 1.0 * k, 0.75 * k, 1.0 * k, 0.25 * k);
-  s.bezierCurveTo(1.0 * k, -0.25 * k, 0.15 * k, -0.75 * k, 0, -0.95 * k);
-  return new THREE.ShapeGeometry(s, 16);
+  // Happi's build: a cherry blossom (five notched petals), centred, about `size` across (photo mode's hop blossoms)
+  const r = size / 2;
+  const shapes: THREE.Shape[] = [];
+  for (let k = 0; k < 5; k++) {
+    const a = (k * 2 * Math.PI) / 5, c = Math.cos(a), sn = Math.sin(a);
+    const P = (x: number, y: number) => new THREE.Vector2((x * c - y * sn) * r, (x * sn + y * c) * r);
+    const s = new THREE.Shape();
+    const p0 = P(0, 0);
+    s.moveTo(p0.x, p0.y);
+    let q = [P(-0.5, 0.3), P(-0.43, 0.93), P(-0.12, 0.93)];
+    s.bezierCurveTo(q[0].x, q[0].y, q[1].x, q[1].y, q[2].x, q[2].y);
+    const n = P(0, 0.77), m = P(0.12, 0.93);
+    s.lineTo(n.x, n.y); s.lineTo(m.x, m.y);
+    q = [P(0.43, 0.93), P(0.5, 0.3), P(0, 0)];
+    s.bezierCurveTo(q[0].x, q[0].y, q[1].x, q[1].y, q[2].x, q[2].y);
+    shapes.push(s);
+  }
+  return new THREE.ShapeGeometry(shapes, 8);
 }
 
 const flat = (color: number) =>

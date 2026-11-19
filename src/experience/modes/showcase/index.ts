@@ -233,6 +233,7 @@ export class ShowcaseMode implements Mode {
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('keyup', this.onKeyUp);
     this.gamesBtn?.remove();
+    this.movesBtn?.remove();
     this.sh.hud.joystick(false);
     this.sh.hud.hint('');
     this.stick = null;
@@ -491,6 +492,7 @@ export class ShowcaseMode implements Mode {
     this.keys.dispose();
     this.toss.show(false);
     this.gamesBtn?.remove();
+    this.movesBtn?.remove();
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('keyup', this.onKeyUp);
   }

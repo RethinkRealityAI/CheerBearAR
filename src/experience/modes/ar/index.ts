@@ -218,6 +218,7 @@ export class ArMode implements Mode {
     this.leaveBtn.remove();
     this.walk.syncHud(false);
     this.gamesBtn?.remove();
+    this.movesBtn?.remove();
     this.sh.hud.joystick(false);
     this.sh.hud.hint('');
     this.stick = null;
@@ -598,6 +599,7 @@ export class ArMode implements Mode {
     this.moveBtn.remove();
     this.leaveBtn.remove();
     this.gamesBtn?.remove();
+    this.movesBtn?.remove();
     this.walk.dispose();
   }
 }

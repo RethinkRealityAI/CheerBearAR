@@ -96,9 +96,9 @@
 .cbx .cbc-rv-styles { display: flex; flex-direction: column; gap: 8px; }
 .cbx .cbc-chips { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 1px 0; }
 .cbx .cbc-chips::-webkit-scrollbar { display: none; }
-.cbx .cbc-chips .lbl { flex: 0 0 52px; font-size: 13px; font-weight: 700; color: var(--cb-ink); opacity: 0.7; }
+.cbx .cbc-chips .lbl { flex: 0 0 44px; font-size: 13px; font-weight: 700; color: var(--cb-ink); opacity: 0.7; }
 .cbx .cbc-chip {
-  flex: none; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 2px solid #283a8f22; background: #f3efe7;
+  flex: none; min-height: 38px; padding: 0 12px; border-radius: 999px; border: 2px solid #283a8f22; background: #f3efe7;
   color: #283a8f; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; touch-action: manipulation;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }

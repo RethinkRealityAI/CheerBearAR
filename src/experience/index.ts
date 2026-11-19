@@ -76,7 +76,7 @@ class Experience implements ExperienceApi {
   private cur: Mode | null = null;
   private entered = false;
   private chain: Promise<void> = Promise.resolve();
-  private reserved = 88;
+  private reserved = 0;
   private speech: MediaStream | null = null;
   private loaded = false;
   private disposed = false;

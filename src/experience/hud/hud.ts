@@ -239,6 +239,7 @@ export class Hud implements HudApi {
   // ------------------------------------------------------------------ mode switcher
   setMode(mode: ExperienceMode, busy: boolean): void {
     const prev = this.curMode;
+    if (prev !== mode) this.closeAllSheets(); // a sheet from the last mode (Games, Moves) never follows you
     this.curMode = mode;
     this.root.dataset.mode = mode;
     this.busy = busy;

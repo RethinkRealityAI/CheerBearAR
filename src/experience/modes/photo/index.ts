@@ -26,8 +26,13 @@ import { bindGestures } from '../shared';
 import { ICON } from '../../hud/icons';
 import { FaceFx, heartShape } from '../face/face-fx';
 import { happiPhotoFrame } from '../../../happi/frame';
+import { happiCutout } from '../../../happi/cutout';
 
-const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // her height in metres
+const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // the frame's height in metres
+const CUT = { def: 1.75, min: 1.2, max: 2.1 }; // the cutout standee, life size
+/** Happi beside the frame (model units: the frame is 1 tall), turned a little toward it, his right hand on its edge. */
+const BESIDE = { x: 0.74, z: 0.02, yaw: -0.38, h: 0.92, grip: new THREE.Vector3(0.47, 0.6, 0.15) };
+type Variant = 'frame' | 'cutout';
 const REACH = { min: 0.9, max: 4.0 };
 /** The frame opening in model units (feet on y = 0, 1 unit tall, facing +z); the plane is a touch bigger, inside. */
 const OPENING = { x0: -0.04, x1: 0.405, y0: 0.385, y1: 0.93, z: 0.112 };
@@ -84,6 +89,18 @@ export class PhotoMode implements Mode {
   private guide: HTMLElement;
   private shutterBtn: HTMLButtonElement | null = null;
   private review: ReviewSheet;
+  /** Which board: your selfie in the frame Happi holds, or the life-size cutout a friend puts their face through. */
+  private variant: Variant = 'frame';
+  private cutSize = CUT.def;
+  private cutout = happiCutout();
+  private variantBtn: HTMLButtonElement;
+  private beside = new THREE.Group(); // Happi's spot next to the frame
+  private arm: { up: THREE.Object3D; fore: THREE.Object3D; hand: THREE.Object3D } | null = null;
+  private q1 = new THREE.Quaternion();
+  private q2 = new THREE.Quaternion();
+  private v1 = new THREE.Vector3();
+  private v2 = new THREE.Vector3();
+  private v3 = new THREE.Vector3();
   private frame: FrameStyle = 'blossom';
   private filter: PhotoFilter = 'natural';
   /** The last raw shot, kept while the review is open so a new frame / filter can recompose it. */
@@ -111,7 +128,13 @@ export class PhotoMode implements Mode {
     this.root.add(hemi, sun, this.anchor, this.reticle, this.faceAnchor);
     this.anchor.add(this.model);
     this.model.add(this.hop);
-    this.hop.add(this.framed);
+    this.hop.add(this.framed, this.cutout);
+    this.cutout.visible = false;
+    this.beside.name = 'photo-happi-beside';
+    this.beside.position.set(BESIDE.x, 0, BESIDE.z);
+    this.beside.rotation.y = BESIDE.yaw;
+    this.framed.add(this.beside);
+    this.framed.position.x = -0.2; // frame + Happi, centred on the spot
     this.anchor.visible = false;
     this.faceAnchor.add(this.fx.group);
     this.faceAnchor.visible = false;
@@ -126,7 +149,7 @@ export class PhotoMode implements Mode {
     this.framed.add(plane);
     // hearts for the tap reaction: flat, opaque, the same program as the face effects
     const hg = heartShape(0.09);
-    const cols = [0xff389b, 0xffffff, 0xff8fc8];
+    const cols = [0xff94b0, 0xffffff, 0xffb7c9];
     for (let i = 0; i < 7; i++) {
       const m = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: cols[i % 3], side: THREE.DoubleSide, toneMapped: false }));
       m.visible = false;
@@ -142,6 +165,7 @@ export class PhotoMode implements Mode {
     this.placeBtn.addEventListener('click', (e) => { e.stopPropagation(); this.place(); });
     this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Happi somewhere else', onClick: () => this.move() });
     this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
+    this.variantBtn = hud.toolButton({ label: 'Cutout', icon: CUTOUT_ICON, aria: 'Use the Happi cutout instead', tone: 'navy', onClick: () => void this.switchVariant() });
     this.flipBtn = hud.toolButton({ label: 'Selfie', icon: ICON.selfie, aria: 'Flip the camera for a new selfie', onClick: () => this.flipTo('face') });
     this.meetBtn = el('button', 'cbx-pill', 'Meet Happi');
     this.meetBtn.type = 'button';
@@ -215,12 +239,13 @@ export class PhotoMode implements Mode {
 
   enter(_from: ExperienceMode | null): void {
     this.root.visible = true;
-    this.model.scale.setScalar(this.size);
+    this.applySize();
     this.unbind = bindGestures(this.ctx.engine.canvas, {
       onPinch: (k) => {
         if (this.cam !== 'world' || (this.state !== 'placing' && this.state !== 'placed')) return;
-        this.size = THREE.MathUtils.clamp(this.size * k, SIZE.min, SIZE.max);
-        this.model.scale.setScalar(this.size);
+        if (this.variant === 'cutout') this.cutSize = THREE.MathUtils.clamp(this.cutSize * k, CUT.min, CUT.max);
+        else this.size = THREE.MathUtils.clamp(this.size * k, SIZE.min, SIZE.max);
+        this.applySize();
       },
     });
     this.onCamera();
@@ -232,6 +257,7 @@ export class PhotoMode implements Mode {
     this.review.close();
     this.dropShot();
     this.reveal.close();
+    this.returnBear();
     this.unbind?.();
     this.unbind = null;
     this.clearHud();
@@ -288,6 +314,7 @@ export class PhotoMode implements Mode {
       this.anchor.rotation.y += dy * (1 - Math.exp(-(this.state === 'placing' ? 8 : 3) * dt));
     }
     this.animateReaction(dt);
+    this.updateBear(dt);
   }
 
   onFace(ev: FaceEvent): void {
@@ -341,7 +368,9 @@ export class PhotoMode implements Mode {
 
   reset(): void {
     this.size = SIZE.def;
-    this.model.scale.setScalar(this.size);
+    this.cutSize = CUT.def;
+    this.setVariant('frame');
+    this.applySize();
     this.rel = null;
     this.placedOnce = false;
     this.setSelfie(null);
@@ -418,6 +447,8 @@ export class PhotoMode implements Mode {
     this.state = 'selfie';
     const hud = this.ctx.hud;
     this.clearHud();
+    this.returnBear();
+    this.showVariantBtn();
     this.anchor.visible = false;
     this.reticle.visible = false;
     if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take your selfie for Happi’s frame');
@@ -572,7 +603,8 @@ export class PhotoMode implements Mode {
     this.placeBtn.disabled = true; // the frame loop enables it once the reticle is on the floor
     this.placeBtn.textContent = 'Getting ready…';
     hud.centre.appendChild(this.placeBtn);
-    hud.left.appendChild(this.flipBtn);
+    if (this.variant === 'frame') hud.left.appendChild(this.flipBtn);
+    this.showVariantBtn();
     hud.hint('Point at the floor');
   }
 
@@ -623,8 +655,8 @@ export class PhotoMode implements Mode {
     this.reticle.visible = false;
     this.anchor.position.copy(this.hit);
     this.toPlaced();
-    this.ctx.hud.hint('Tap her, then take a photo');
-    this.hintT = 4;
+    this.ctx.hud.hint(this.variant === 'cutout' ? 'Stand behind it, face in the oval, then snap' : 'Tap Happi, then take a photo');
+    this.hintT = this.variant === 'cutout' ? 7 : 4;
     this.react();
   }
 
@@ -638,7 +670,9 @@ export class PhotoMode implements Mode {
     this.shutterBtn.setAttribute('aria-label', 'Take a photo with Happi');
     hud.centre.appendChild(this.shutterBtn);
     // bottom left, always there once placed (the slot stacks bottom-up: Move at the bottom, Selfie above it)
-    hud.left.append(this.moveBtn, this.flipBtn);
+    hud.left.append(this.moveBtn);
+    if (this.variant === 'frame') hud.left.append(this.flipBtn);
+    this.showVariantBtn();
     this.anchor.visible = true;
   }
 
@@ -688,11 +722,105 @@ export class PhotoMode implements Mode {
     this.shot = null;
   }
 
+  private applySize(): void {
+    this.model.scale.setScalar(this.variant === 'cutout' ? this.cutSize : this.size);
+  }
+
+  private showVariantBtn(): void {
+    const cut = this.variant === 'cutout';
+    const lbl = this.variantBtn.querySelector('span:last-child, .lbl');
+    if (lbl) lbl.textContent = cut ? 'Frame' : 'Cutout';
+    this.variantBtn.setAttribute('aria-label', cut ? 'Use Happi’s photo frame instead' : 'Use the Happi cutout instead');
+    this.ctx.hud.right.appendChild(this.variantBtn);
+  }
+
+  private setVariant(v: Variant): void {
+    this.variant = v;
+    this.cutout.visible = v === 'cutout';
+    this.framed.visible = v === 'frame';
+    if (v === 'cutout') this.returnBear();
+    this.applySize();
+  }
+
+  /** Frame <-> Cutout. The cutout needs no selfie: straight to the back camera. The frame needs one first. */
+  private async switchVariant(): Promise<void> {
+    if (this.state === 'busy' || this.state === 'flipping' || this.state === 'off') return;
+    const to: Variant = this.variant === 'cutout' ? 'frame' : 'cutout';
+    this.setVariant(to);
+    this.ctx.hud.toast(to === 'cutout' ? 'Happi cutout: a friend puts their face in it' : 'Happi’s photo frame', 1600);
+    if (to === 'cutout' && this.cam === 'face') { askMotionPermission(); await this.flipTo('world'); return; }
+    if (to === 'frame' && this.cam === 'world' && !this.hasSelfie) { await this.flipTo('face'); return; }
+    if (this.state === 'placed') {
+      this.toPlaced();
+      this.ctx.hud.hint(to === 'cutout' ? 'Stand behind it, face in the oval, then snap' : 'Tap Happi, then take a photo');
+      this.hintT = 6;
+    }
+    else if (this.state === 'placing') this.toPlacing();
+    else if (this.state === 'selfie') this.showVariantBtn();
+  }
+
+  // ------------------------------------------------------------------ Happi beside the frame
+  private borrowBear(): void {
+    const bear = this.ctx.bear;
+    if (!bear || bear.object.parent === this.beside) return;
+    bear.object.parent?.remove(bear.object);
+    const o = bear.object;
+    o.position.set(0, 0, 0);
+    o.rotation.set(0, 0, 0);
+    o.scale.setScalar(BESIDE.h / (bear.height || 1));
+    o.userData.cbxOwnGpu = !!bear.releaseRenderer;
+    this.beside.add(o);
+    const up = o.getObjectByName('RightArm'), fore = o.getObjectByName('RightForeArm'), hand = o.getObjectByName('RightHand');
+    this.arm = up && fore && hand ? { up, fore, hand } : null;
+    bear.play('idle', { fade: 0.2 });
+  }
+
+  private returnBear(): void {
+    const bear = this.ctx.bear;
+    if (bear && bear.object.parent === this.beside) this.beside.remove(bear.object);
+    this.arm = null;
+  }
+
+  private updateBear(dt: number): void {
+    if (this.cam !== 'world' || this.variant !== 'frame' || !this.anchor.visible) return;
+    const bear = this.ctx.bear;
+    if (!bear) return;
+    if (bear.object.parent !== this.beside) this.borrowBear();
+    bear.lookAt(this.camPos);
+    bear.update(dt);
+    this.holdEdge();
+  }
+
+  /** After the clip: his right arm reaches for the frame's edge (aim the upper arm, then the forearm, at the grip). */
+  private holdEdge(): void {
+    const a = this.arm;
+    if (!a) return;
+    this.beside.updateWorldMatrix(true, true);
+    const grip = this.framed.localToWorld(this.v3.copy(BESIDE.grip));
+    this.aim(a.up, a.fore, grip);
+    this.aim(a.fore, a.hand, grip);
+  }
+
+  private aim(bone: THREE.Object3D, child: THREE.Object3D, target: THREE.Vector3): void {
+    if (!bone.parent) return;
+    bone.updateWorldMatrix(true, true);
+    const p = bone.getWorldPosition(this.v1);
+    const d0 = child.getWorldPosition(this.v2).sub(p).normalize();
+    const d1 = target.clone().sub(p).normalize();
+    const delta = this.q1.setFromUnitVectors(d0, d1);
+    const world = bone.getWorldQuaternion(this.q2).premultiply(delta);
+    const parentQ = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+    bone.quaternion.copy(parentQ.multiply(world));
+    bone.updateWorldMatrix(false, true);
+  }
+
   /** A happy hop with a little squash, and hearts out of the frame. */
   private react(): void {
     this.lastReact = performance.now();
     this.diag.reactions++;
     this.hopT = 0;
+    const bear = this.ctx.bear;
+    if (bear && bear.object.parent === this.beside) bear.play('cheer', { once: true, fade: 0.2 });
     const reduced = this.ctx.reducedMotion;
     this.hearts.forEach((h, i) => {
       const a = (i / this.hearts.length) * Math.PI * 2;
@@ -740,11 +868,13 @@ export class PhotoMode implements Mode {
     this.thumb.remove();
     this.guide.remove();
     this.shutterBtn?.remove();
+    this.variantBtn.remove();
   }
 
   private hitsBear(ndc: THREE.Vector2): boolean {
-    this.framed.updateMatrixWorld(true);
-    this.box.setFromObject(this.framed);
+    const board = this.variant === 'cutout' ? this.cutout : this.framed;
+    board.updateMatrixWorld(true);
+    this.box.setFromObject(board);
     return this.ctx.engine.ray(ndc).ray.intersectsBox(this.box);
   }
 
@@ -790,3 +920,5 @@ export function createMode(ctx: ModeContext): Mode {
   return new PhotoMode(ctx);
 }
 export default createMode;
+
+const CUTOUT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 22V9.5L7 3l3 4h4l3-4 2 6.5V22z"/><ellipse cx="12" cy="12" rx="3" ry="3.8" fill="currentColor"/></g></svg>';

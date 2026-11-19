@@ -1,5 +1,5 @@
-// Desktop keyboard shortcuts (PROJECT_GUIDE section 9). Esc in native dialogs is handled by the browser; here it
-// closes the conversation panel when nothing else is open.
+// Desktop keyboard shortcuts. Happi has no conversation panel (talk was removed), so only the shortcuts list and Esc
+// stay here; moving and throwing are handled by the experience itself.
 import { useEffect } from 'react';
 import type { AppController } from '../controller';
 
@@ -14,9 +14,6 @@ export function useShortcuts(c: AppController) {
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
       if (s.overlay) return; // a modal is open: the browser owns the keyboard
-      if (mod && !e.shiftKey && key === 'k') { e.preventDefault(); c.toggleSheet(); return; }
-      if (mod && (key === '/' || e.code === 'Slash') && !e.shiftKey) { e.preventDefault(); c.toggleSheet('settings'); return; }
-      if (mod && key === 'g') { e.preventDefault(); c.toggleSheet('games'); return; }
       if ((mod && e.shiftKey && (key === '?' || e.code === 'Slash')) || (key === '?' && !mod && !typing(e.target))) {
         e.preventDefault();
         c.openOverlay('keys');

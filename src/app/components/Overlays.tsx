@@ -194,12 +194,10 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 const MOD = isMac ? '⌘' : 'Ctrl';
 
 export const SHORTCUTS: Array<{ keys: string[]; what: string }> = [
-  { keys: [MOD, 'K'], what: 'Open or close the conversation' },
-  { keys: [MOD, '/'], what: 'Settings' },
-  { keys: [MOD, 'G'], what: 'Games' },
+  { keys: ['W', 'A', 'S', 'D'], what: 'Walk Happi round the square (or the arrow keys)' },
+  { keys: ['Space'], what: 'Throw a blossom' },
   { keys: [MOD, 'Shift', '?'], what: 'Show these shortcuts' },
-  { keys: ['Enter'], what: 'Send a message' },
-  { keys: ['Esc'], what: 'Close a window or the panel' },
+  { keys: ['Esc'], what: 'Close a window' },
 ];
 
 function KeysBody() {
