@@ -81,7 +81,25 @@ export interface ExperienceEvents {
   photo: { blob: Blob; mode: ExperienceMode };
   /** The experience cannot run a camera mode here (desktop, permission denied...). `mode` falls back to showcase. */
   unavailable: { mode: ExperienceMode; reason: 'desktop' | 'permission' | 'unsupported' | 'error'; message: string };
+  /** Mini game (Heart Run, Heart Hoops) state, emitted on every change of state and score. */
+  play: PlayStatus;
 }
+
+// ------------------------------------------------------------------ mini games (round 3)
+/** Mini games played inside 3D and AR. Not the word games (those live in the app and count her words). */
+export type PlayGameId = 'heart-run' | 'heart-hoops';
+export interface PlayGameInfo { id: PlayGameId; label: string; lead: string }
+export interface PlayStatus {
+  id: PlayGameId | null;
+  state: 'idle' | 'countdown' | 'playing' | 'paused' | 'won' | 'over';
+  score: number;
+  /** Best score on this device (localStorage). */
+  best: number;
+  /** Seconds left, or null when the game has no clock. */
+  timeLeft: number | null;
+}
+/** Things you can tell the experience to do by voice (hold-to-talk) or from the app. */
+export type ExperienceCommand = 'capture' | 'place' | 'move' | 'pause' | 'resume' | 'again';
 
 export interface ExperienceApi {
   /** Build the DOM (canvas, splash, in-camera HUD) inside `container` and start loading. */
@@ -109,6 +127,14 @@ export interface ExperienceApi {
   setVisemes?(frame: VisemeFrame | null): void;
   /** Lip sync tuning from the admin config (mouth size and timing). Optional: mocks may leave it out. */
   setLipSync?(tuning: { intensity?: number; attackMs?: number; releaseMs?: number }): void;
+  /** Mini games this build offers (round 3). */
+  readonly playGames?: readonly PlayGameInfo[];
+  /** Start a mini game in the current mode (3D or AR). False when this mode cannot host it. */
+  startPlay?(id: PlayGameId): Promise<boolean>;
+  /** End the running mini game (no-op when none). */
+  stopPlay?(): void;
+  /** Run a command if the current mode supports it (shutter, Place, Move, pause...). False when it does not apply. */
+  command?(name: ExperienceCommand): boolean;
   on<K extends keyof ExperienceEvents>(event: K, cb: (payload: ExperienceEvents[K]) => void): () => void;
   dispose(): void;
 }
