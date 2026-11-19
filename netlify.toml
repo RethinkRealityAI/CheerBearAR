@@ -31,6 +31,12 @@
   to = "/index.html"
   status = 200
 
+# Demo build: keep it out of search engines until the Care Bears rights are confirmed. Remove at launch.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
 [[headers]]
   for = "/models/*"
   [headers.values]
