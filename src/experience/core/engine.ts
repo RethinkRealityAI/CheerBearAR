@@ -176,10 +176,21 @@ export class Engine implements EngineView {
       if (root.parent !== parent) parent?.add(root);
       root.visible = wasVisible;
     };
+    // Not compileAsync: its own poll keeps running after a quick mode swap has released this renderer and then
+    // throws from a timer ("reading 'isReady'"). compile() starts the programs; we wait for them ourselves and
+    // stop as soon as the renderer is no longer the live one.
     try {
-      const p = renderer.compileAsync(root, camera, scene);
+      const pending = renderer.compile(root, camera, scene) as Set<THREE.Material>;
       restore();
-      await p;
+      const t0 = performance.now();
+      while (pending.size && this.xr?.renderer === renderer && performance.now() - t0 < 8000) {
+        for (const m of [...pending]) {
+          const prog = (renderer.properties.get(m) as { currentProgram?: { isReady(): boolean } } | undefined)?.currentProgram;
+          if (!prog || prog.isReady()) pending.delete(m);
+        }
+        if (pending.size) await new Promise((r) => setTimeout(r, 10));
+      }
+      if (this.xr?.renderer !== renderer) return;
     } catch {
       restore();
     }

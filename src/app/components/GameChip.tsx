@@ -11,7 +11,9 @@ export function GameChip() {
   const modes = useApp((s) => s.ui.gameModes);
   const keywords = useApp((s) => s.ui.keywords);
   const mode = modes.find((m) => m.id === game.modeId && m.enabled);
-  const shown = !!mode;
+  // Selfie and 3D Photo are about the picture: the chip would sit on the title art and in the photo's framing.
+  const expMode = useApp((st) => st.expMode);
+  const shown = !!mode && expMode !== 'face' && expMode !== 'photo';
   // The experience's hint pill sits under the top bar too: tell it to move down while the chip is there.
   useEffect(() => {
     const root = document.documentElement;
@@ -19,7 +21,7 @@ export function GameChip() {
     else root.style.removeProperty('--cb-top-reserve');
     return () => { root.style.removeProperty('--cb-top-reserve'); };
   }, [shown]);
-  if (!mode) return null;
+  if (!mode || !shown) return null;
   const words = gameWords(mode, keywords);
   const found = game.found.length;
   const showTotal = mode.id !== CHAT_TIME_ID;
