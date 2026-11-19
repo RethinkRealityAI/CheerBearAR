@@ -1,7 +1,7 @@
 // Friendly names, icons and flat colours for the trigger words (quick-action buttons, chat lines, game words).
 import type { LucideIcon } from 'lucide-react';
 import {
-  Footprints, Hand, House, Moon, Music, PartyPopper, Rainbow, Snowflake, Sparkles, Sunrise, WandSparkles,
+  Footprints, Hand, Heart, House, Moon, Music, PartyPopper, Rainbow, Snowflake, Sparkles, Sunrise, WandSparkles,
 } from 'lucide-react';
 
 interface ActionLook { label: string; icon: LucideIcon; color: string }
@@ -18,6 +18,7 @@ const LOOKS: Record<string, ActionLook> = {
   cold: { label: 'Cold', icon: Snowflake, color: 'var(--cb-sky)' },
   party: { label: 'Party', icon: PartyPopper, color: 'var(--cb-pink)' },
   rainbow: { label: 'Rainbow', icon: Rainbow, color: 'var(--cb-red)' },
+  stare: { label: 'Care Bear Stare', icon: Heart, color: 'var(--cb-pink)' },
 };
 
 const key = (k: string) => k.toLowerCase().replace(/[^a-z0-9]/g, '');
