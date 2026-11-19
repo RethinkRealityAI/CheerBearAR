@@ -1,0 +1,50 @@
+/* Shared look for the experience HUD (vanilla DOM) and the React app. Flat colours only: no gradients anywhere
+   (house rule). The rainbow is always drawn as flat stripes. */
+@import '@fontsource-variable/fredoka';
+
+:root {
+  --cb-pink: #ff389b;
+  --cb-pink-deep: #d81b7c;
+  --cb-pink-soft: #ffd6ea;
+  --cb-blue: #439bdd;
+  --cb-sky: #d4edff;
+  --cb-yellow: #ffd84a;
+  --cb-orange: #ff9a3d;
+  --cb-green: #5fcf86;
+  --cb-purple: #9a6bff;
+  --cb-red: #ff5a5f;
+  --cb-ink: #3b2140;
+  --cb-ink-soft: #6d5273;
+  --cb-white: #ffffff;
+  --cb-cloud: #fff7fb;
+
+  /* in-camera surfaces: translucent black glass, white text (same family as the shared AR hint pill) */
+  --cb-glass: rgba(18, 10, 22, 0.56);
+  --cb-glass-strong: rgba(18, 10, 22, 0.78);
+  --cb-glass-line: rgba(255, 255, 255, 0.22);
+  --cb-blur: blur(14px) saturate(1.2);
+
+  --cb-font: 'Fredoka Variable', 'Fredoka', ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif;
+  --cb-radius: 22px;
+  --cb-radius-sm: 14px;
+  --cb-tap: 48px; /* minimum touch target */
+
+  --cb-safe-top: env(safe-area-inset-top, 0px);
+  --cb-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --cb-safe-left: env(safe-area-inset-left, 0px);
+  --cb-safe-right: env(safe-area-inset-right, 0px);
+
+  /* the rainbow, as six flat stripes (use with repeating hard-stop backgrounds or separate elements) */
+  --cb-rainbow-1: #ff5a5f;
+  --cb-rainbow-2: #ff9a3d;
+  --cb-rainbow-3: #ffd84a;
+  --cb-rainbow-4: #5fcf86;
+  --cb-rainbow-5: #439bdd;
+  --cb-rainbow-6: #9a6bff;
+
+  --cb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --cb-ease: linear; }
+}
