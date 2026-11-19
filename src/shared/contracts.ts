@@ -12,7 +12,7 @@
 // ------------------------------------------------------------------ actions
 /** The trigger words Cheer Bear reacts to. Admin can add more keywords; unknown ones fall back to a generic cheer. */
 export const CORE_ACTIONS = [
-  'House', 'Sparkle', 'Running', 'WakeUp', 'Sleep', 'Dance', 'Wave', 'Magic', 'Cold', 'Party', 'Rainbow',
+  'House', 'Sparkle', 'Running', 'WakeUp', 'Sleep', 'Dance', 'Wave', 'Magic', 'Cold', 'Party', 'Rainbow', 'Stare',
 ] as const;
 export type CoreAction = (typeof CORE_ACTIONS)[number];
 /** Action names are matched case-insensitively. */

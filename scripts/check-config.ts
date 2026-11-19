@@ -47,7 +47,7 @@ await check('unknown and obsolete keys are dropped (arIframeUrl, twilioPhoneNumb
 await check('synonyms are replaced (so a synonym can be deleted), keys lower-cased', () => {
   const c = applyConfigPatch(defaultConfig(), { localClassifier: { synonyms: { House: ['home'] } } });
   assert.deepEqual(c.localClassifier.synonyms, { house: ['home'] });
-  assert.equal(c.localClassifier.keywords.length, 11);
+  assert.equal(c.localClassifier.keywords.length, 12);
 });
 await check('lists are replaced wholesale; an empty game mode list keeps the old ones', () => {
   const c = applyConfigPatch(defaultConfig(), { localClassifier: { keywords: ['House', 'Unicorn'] } });

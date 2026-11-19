@@ -81,10 +81,10 @@ docs/evidence/wow-2/                   screenshots, the heart-toss film + strip,
   flags at runtime.
 - Showcase programs: **21 after warm-up (17 before this round + hearts, stars, balloons, strings, beam) and still 21
   after every toss, poke, hug, Stare, Party + pop, Rainbow, Cold and Magic** (normal and reduced motion).
-- AR programs: see Results.
+- AR (engine) programs: 24 after placing, still 24 after every new interaction (probe in `sim/ar.cjs`).
 - No allocation per frame in the solver, the toys, the toss game or the beam (scratch vectors, preallocated buffers,
   instance compaction). Moments still allocate a few vectors per emit (round-1 style), not per frame.
-- Toys' CPU: see Results (microbenchmark with every pool full).
+- Toys' CPU: 0.097 ms per frame with every pool full (59 bodies), timed in the page.
 
 ## Run and test
 
@@ -103,7 +103,41 @@ read as a flick).
 
 ## Results (simulator, 2026-11-19)
 
-RESULTS_PLACEHOLDER
+Machine note: other workers' simulators ran at the same time (load average 12 to 20 on 4 cores), so swiftshader
+ran the showcase at 3 to 5 fps and AR at 1 to 2 fps. Frame times below are dominated by that load, not by this work.
+
+- **3D showcase, 390x844** (`run-3d-desktop.log`, `phone-3d-*.jpg`, `contact-3d.jpg`): the throw hint shows after
+  the look-around hint; 5 real flick gestures -> 5 thrown, 5 caught, "5 in a row" (purple) and the star ring; a weak
+  throw lands short, bounces, rolls and settles flat, and resets the counter; a tap on her plays a reaction (`action`
+  `Cheer`, source `tap`) with the jiggle; a long press gives the hug hearts; `trigger('care bear stare')` -> `true`
+  and the beam plays; Party shows 7 balloons, a tap on one pops it (7 -> 6); Rainbow stars, Cold snow, Magic burst all
+  play. `actions` lists 13 names ending with `Cheer`, `Stare`. **Programs: 21 after warm-up, 21 at every step.**
+  Console: no errors.
+- **Reduced motion** (`phone-rm-3d-*.jpg`): same flow; 4 balloons, half the stars, softer jiggles; programs 21; no
+  errors.
+- **Desktop 1440x900** (`desktop-*.jpg`): hint "Press Space to throw hearts"; 4 x Space -> 4 thrown, 3 caught;
+  programs 21; no errors.
+- **AR, fake floor camera + fake IMU** (`run-ar.log`, `phone-ar-*.jpg`, `contact-ar.jpg`): place, then the throw hint;
+  flicks throw hearts onto the floor plane and she catches them ("2 in a row", later "5 in a row"); poke (`Sparkle`
+  tap action) and hug; the Stare beam runs along the floor towards the camera and stars bounce at the bottom of the
+  view; Party balloons and a pop (7 -> 6); Rainbow, Cold; Move + Place keeps the throw count. **Engine programs: 24
+  after placing and 24 after every step (no new program from any new interaction).** Engine errors: none. Console:
+  one `[reqfail] /media/theme.mp4 net::ERR_ABORTED` when Party stops the theme video (an aborted range request,
+  not from this work).
+  - Honest caveats: at 1 to 2 fps every frame counts as a stall (> 250 ms), so world-health never reported "settled"
+    on this loaded machine. The run sets `FORCE_SETTLE=1`, which marks world-health settled once tracking is NORMAL
+    (test-only, in the script; the engine then runs its normal compile and Place). SLAM also drifted at that frame
+    rate; the script re-placed her with Move + Place 3 times when she had wandered out of view (what a user would
+    do). Physics ran in slow motion there (the solver caps at 6 substeps per frame, by design).
+- **Heart-toss film** (`heart-toss-3d.mp4`, 9 s, 340 KB; `heart-toss-3d-strip.jpg`): the showcase stepped at a fixed
+  1/30 s and filmed frame by frame (the headless GPU is too slow for real time): 7 throws, 6 caught, one sideways
+  miss that bounces and rolls.
+- **Frame time / programs before and after** (`perf-ab.log`, same machine, back to back, round-1 HEAD vs this tree,
+  load ~16): idle 212 vs 332 ms mean, Party 440 vs 504, Rainbow 367 vs 376, Cold 257 vs 239, Stare (idle in round 1)
+  307 vs 230, toss x8 303 ms. Programs **17 -> 21, flat throughout both runs**. These swiftshader numbers swing by
+  +-50 % with machine load (the HEAD tree also lacks the round-2 HUD restyle), so they show no regression only
+  within that noise. The direct measure: **the toys' whole update (physics + instance upload) costs 0.097 ms per
+  frame with every pool full (59 bodies)**, timed in the page (`toys-cpu`).
 
 ## Simulator-tested vs untested
 
@@ -124,4 +158,26 @@ under the hint).
 
 ## Findings for the immersive skill
 
-FINDINGS_PLACEHOLDER
+1. **Instanced meshes: create `instanceColor` before the first compile.** `setColorAt` on a mesh compiled without it
+   flips `USE_INSTANCING_COLOR` and recompiles on the first spawn. Fill every slot once at construction, keep
+   `count = 0` (and `visible = false` while empty).
+2. **Flick vs orbit on one canvas:** classify a drag on its first 8 px: mostly upward and faster than ~0.28 px/ms is
+   a throw (no orbit); anything slower orbits. Power = 70 % length (over 40 % of the screen height) + 30 % release
+   speed; for kids, snap the aim onto the character inside ~0.3 rad and count +-20 % distance as "at her".
+3. **A catch sensor in front of the character that follows the incoming object's height** (clamped to the arms'
+   reach) plus a side-step (budgeted per throw) reads as "she catches it"; a sensor at a fixed chest point made
+   lobs bounce off her head.
+4. **A tiny custom sphere solver is enough for toys** (floor plane, static spheres/boxes, sphere-sphere, sleep, a
+   sensor): ~300 lines, 0.1 ms per frame for 59 bodies, no dependency. Cap substeps per frame (slow motion under
+   load instead of a spiral of death) and pool every body.
+5. **Particles that land:** give floor particles their own fade (last 0.5 s of life, from the landing) instead of the
+   usual last-35 % fade, and lift point sprites by ~0.3 x size so they sit on the floor; a "perch" sphere lets snow
+   land on a head.
+6. **Simulator under load:** when other simulators run, swiftshader drops AR to 1 to 2 fps, every frame is a
+   world-health stall and Place never enables; SLAM also drifts. Run AR sims on a quiet machine, or (test only) mark
+   world-health settled after tracking is NORMAL and re-place with Move + Place when the stage leaves the view.
+7. **Simulator gestures:** Playwright mouse moves arrive at the page's frame rate (5 fps), so a flick reads as a slow
+   drag. Dispatch synthetic PointerEvents in one task (and a tap's down + up in one task, or a busy main thread
+   stretches it past the tap time limit).
+8. **Filming a WebGL scene in a slow headless browser:** stop the render loop, then step it with a fixed dt (set the
+   loop's "last time" back 1/30 s before each call) and screenshot every frame; ffmpeg makes a smooth 30 fps MP4.

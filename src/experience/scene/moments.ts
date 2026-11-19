@@ -16,9 +16,9 @@ import type { EmitOptions } from './fx';
 import { PAL, RAINBOW } from './fx';
 import type { Stage } from './stage';
 
-// 'Stare' (the Care Bear Stare, round 2) is not in CORE_ACTIONS (the admin's keyword list); the experience lists it in
-// `actions` so the app and the voice keywords can use it ("care bear stare").
-export const MOMENT_NAMES = [...CORE_ACTIONS, 'Cheer', 'Stare'] as const;
+// 'Stare' (the Care Bear Stare, round 2) is a core action, so the admin keyword list and the voice synonyms
+// ("care bear stare") fire it. 'Cheer' is experience-only.
+export const MOMENT_NAMES = [...CORE_ACTIONS, 'Cheer'] as const;
 export type MomentName = (typeof MOMENT_NAMES)[number];
 
 const ALIASES: Record<string, MomentName> = {

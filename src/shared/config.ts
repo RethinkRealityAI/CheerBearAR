@@ -200,7 +200,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   allowUserAudioToOpenAI: false,
   intentMatchingEngine: 'local',
   localClassifier: {
-    keywords: ['House', 'Sparkle', 'Running', 'WakeUp', 'Sleep', 'Dance', 'Wave', 'Magic', 'Cold', 'Party', 'Rainbow'],
+    keywords: ['House', 'Sparkle', 'Running', 'WakeUp', 'Sleep', 'Dance', 'Wave', 'Magic', 'Cold', 'Party', 'Rainbow', 'Stare'],
     synonyms: {
       house: ['home', 'houses'],
       sparkle: ['sparkles', 'sparkly', 'glitter'],
@@ -213,6 +213,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       cold: ['chill', 'freezing', 'icy'],
       party: ['partying', 'parties', 'partied', 'celebrate', 'celebration'],
       rainbow: ['rainbows', 'colorful', 'colors'],
+      stare: ['care bear stare', 'carebear stare', 'bear stare'],
     },
     examples: {},
     morphologyEnabled: false,
