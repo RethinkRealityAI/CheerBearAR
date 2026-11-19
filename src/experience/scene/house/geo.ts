@@ -1,4 +1,4 @@
-// Geometry helpers for Cheer Bear's house: everything is built in code at load from three.js primitives and
+// Geometry helpers for Happi's house: everything is built in code at load from three.js primitives and
 // extruded 2D shapes, merged per material into a few big meshes with one flat colour per piece (vertex colours,
 // no textures, no gradients). Units are metres, door-local: the door opening stands on the floor at z = 0, centred
 // on x = 0; the room is on -z, the garden on +z.

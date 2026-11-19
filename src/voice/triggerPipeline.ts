@@ -1,5 +1,5 @@
 // Trigger pipeline (browser). Port of the old server's transcript -> intent -> trigger queue logic:
-//   - Cheer Bear's transcripts always classify; the user's only when config.allowUserTriggers.
+//   - Happi's transcripts always classify; the user's only when config.allowUserTriggers.
 //   - Partial transcripts fire (local matching only) when triggerPolicy.partialTriggerEnabled.
 //   - Per-transcript dedupe: a keyword fires once per transcript (partials + final together). A transcript id that
 //     has had its final is remembered (last 200), so a late or repeated partial/final for it never fires again.
@@ -99,7 +99,7 @@ export class TriggerPipeline {
 
   /**
    * Keywords that must not fire again for transcript `id` (the demo: the child's own words already fired them, so
-   * Cheer Bear's answer saying the same word does not fire a second time).
+   * Happi's answer saying the same word does not fire a second time).
    */
   claim(id: string, keywords: string[]): void {
     if (!keywords.length) return;

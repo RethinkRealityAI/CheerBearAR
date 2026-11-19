@@ -1,4 +1,4 @@
-// The demo call: no Twilio, no OpenAI, no accounts. It rings, connects, Cheer Bear greets you ONCE, then waits for
+// The demo call: no Twilio, no OpenAI, no accounts. It rings, connects, Happi greets you ONCE, then waits for
 // you. Talk (the browser's speech recognition, while the call is live; mute pauses it) or type in the chat; she
 // answers each turn out loud with the browser's voice, her mouth moving with the words (demoBear.ts). Her words go
 // through the real trigger pipeline as `cheer_bear` transcripts, so "can you dance?" fires Dance because she

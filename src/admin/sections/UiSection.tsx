@@ -82,7 +82,7 @@ export function UiSection() {
       </Group>
 
       <div id="ui-colours" />
-      <Group title="Colours" description="Flat colours only. Tap a swatch to use a Cheer Bear brand colour.">
+      <Group title="Colours" description="Flat colours only. Tap a swatch to use a Happi brand colour.">
         <ColorField path={`${p}.primaryColor`} label="Main colour" value={cu.primaryColor} swatches={swatches}
           error={errors[`${p}.primaryColor`]} onChange={(v) => set('primaryColor', v)} hint="Buttons and highlights." />
         <ColorField path={`${p}.secondaryColor`} label="Second colour" value={cu.secondaryColor} swatches={swatches}

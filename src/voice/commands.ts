@@ -10,7 +10,7 @@
 //   - modes: "3D", "AR" / "augmented reality" / "put her in my room", "selfie", "photo" / "3D photo";
 //   - camera: "take a picture / photo", "cheese", "say cheese"; "place" / "put her here"; "move";
 //   - games: "play heart run", "play heart hoops", "stop the game", "pause", "keep going", "again" / "play again";
-//   - fun: "hello" / "hi Cheer Bear" (at the start) -> Wave; "I love you" / "hug" -> a hug.
+//   - fun: "hello" / "hi Happi" (at the start) -> Wave; "I love you" / "hug" -> a hug.
 //
 // Robust to recognition noise: lower case, punctuation stripped, number words ("three d" -> 3d), "a r" -> ar,
 // "share bear" / "cheer bare" / "chair bear" -> cheer bear, "hard run" / "art hoops" -> heart ... Whole words only,
@@ -52,7 +52,7 @@ const NUMBERS: Record<string, string> = {
 /** Single-word mishearings, always safe to rewrite. */
 const WORD_FIX: Record<string, string> = {
   selfy: 'selfie', selfies: 'selfie', selphie: 'selfie', foto: 'photo', fotos: 'photos', pic: 'picture', pics: 'pictures',
-  cheerbear: 'cheer bear', carebear: 'care bear', carebears: 'care bears', cheerbears: 'cheer bear',
+  hapi: 'happi', happie: 'happi', happey: 'happi',
   hiya: 'hi', heya: 'hey', hullo: 'hello', helo: 'hello', okay: 'ok', rainbo: 'rainbow',
   '3rd': '3d', thrd: '3d',
 };

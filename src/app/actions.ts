@@ -18,7 +18,7 @@ const LOOKS: Record<string, ActionLook> = {
   cold: { label: 'Cold', icon: Snowflake, color: 'var(--cb-sky)' },
   party: { label: 'Party', icon: PartyPopper, color: 'var(--cb-pink)' },
   rainbow: { label: 'Rainbow', icon: Rainbow, color: 'var(--cb-red)' },
-  stare: { label: 'Care Bear Stare', icon: Heart, color: 'var(--cb-pink)' },
+  stare: { label: 'Happi Burst', icon: Heart, color: 'var(--cb-pink)' },
 };
 
 const key = (k: string) => k.toLowerCase().replace(/[^a-z0-9]/g, '');

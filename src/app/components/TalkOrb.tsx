@@ -2,14 +2,14 @@
 // (bottom centre) or Move (bottom left).
 //   idle        a slow breathing ring; tap -> (first time: one-line microphone explainer) -> call
 //   connecting  rings ripple out and the phone wiggles (no spinner); tap opens the conversation
-//   in call     green; while Cheer Bear speaks two rings follow her voice level; tap opens the conversation;
+//   in call     green; while Happi speaks two rings follow her voice level; tap opens the conversation;
 //               press and hold OR the red button above it ends the call
 //   error       a short shake, a red ring; tap tries again
 //   voice       (voice-3, no call live and voiceMode on) a mic: HOLD to talk, let go when done (walkie-talkie).
 //               While held: the live words in a bubble above it, its ring follows your mic level, a light tick on
 //               press. A quick tap says "Hold me while you talk!". Keyboard: hold Space / Enter. Settings has "Tap to
 //               talk" for people who cannot hold. No speech recognition here / mic blocked: it opens the magic words.
-//               Calling lives in the Talk tab ("Call Cheer Bear"); during a call this button is the call button as above.
+//               Calling lives in the Talk tab ("Call Happi"); during a call this button is the call button as above.
 //               The first-time "Hold to talk" nudge points straight at it: the panel button above it waits until the
 //               nudge goes (first words, or after NUDGE_MS) so nothing sits between the two.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
@@ -116,12 +116,12 @@ export function TalkOrb() {
   const label = {
     chat: text.openChat,
     idle: text.call,
-    busy: 'Calling Cheer Bear. Open the conversation',
-    live: `On a call with Cheer Bear. Open the conversation. Press and hold to ${text.hangUp.toLowerCase()}`,
+    busy: 'Calling Happi. Open the conversation',
+    live: `On a call with Happi. Open the conversation. Press and hold to ${text.hangUp.toLowerCase()}`,
     error: 'Call did not connect. Tap to try again',
     voice: voiceOff ? 'Open the magic words'
       : listening ? (tapToTalk ? 'Listening. Tap again when you are done' : 'Listening. Let go when you are done')
-        : tapToTalk ? 'Tap to talk to Cheer Bear' : 'Hold to talk to Cheer Bear',
+        : tapToTalk ? 'Tap to talk to Happi' : 'Hold to talk to Happi',
   }[state];
 
   const startHold = () => {
@@ -144,7 +144,7 @@ export function TalkOrb() {
   const Icon = state === 'voice' ? (voiceOff ? Sparkles : Mic)
     : state === 'chat' ? MessageCircle : state === 'live' ? (muted ? MicOff : Mic) : state === 'error' ? RotateCcw : Phone;
   const bubble = state === 'busy' ? (call === 'ringing' ? 'Ringing…' : call === 'ending' ? 'Hanging up…' : 'Calling…')
-    : state === 'idle' && nudge && !micAsk && !quietCorner ? 'Tap to call Cheer Bear'
+    : state === 'idle' && nudge && !micAsk && !quietCorner ? 'Tap to call Happi'
       : state === 'error' ? 'Tap to try again' : null;
   // the first-time voice nudge: right above the mic, its tail pointing at it (the panel button waits)
   const voiceNudgeOn = state === 'voice' && !micAsk && !voiceBubble && voiceNudge && !nudgeExpired && !voiceOff && !quietCorner && !listening;
@@ -234,7 +234,7 @@ export function TalkOrb() {
         {inCall && <span className="cb-orb-hold" aria-hidden="true" />}
       </button>
       <span className="cb-sr-only" role="status" aria-live="polite">
-        {call === 'connecting' ? 'Calling Cheer Bear' : call === 'in-call' ? 'Connected to Cheer Bear' : listening ? 'Listening' : call === 'error' ? 'Call did not connect' : ''}
+        {call === 'connecting' ? 'Calling Happi' : call === 'in-call' ? 'Connected to Happi' : listening ? 'Listening' : call === 'error' ? 'Call did not connect' : ''}
       </span>
     </div>
   );
@@ -327,7 +327,7 @@ export function MicExplainer({ inline = false }: { inline?: boolean }) {
   }, [c]);
   return (
     <div className={`cb-mic${inline ? ' is-inline' : ''}`} role="dialog" aria-labelledby="cb-mic-text">
-      <p id="cb-mic-text"><Mic aria-hidden="true" size={18} /> Cheer Bear needs your microphone to hear you.</p>
+      <p id="cb-mic-text"><Mic aria-hidden="true" size={18} /> Happi needs your microphone to hear you.</p>
       <div className="cb-mic-actions">
         <button type="button" className="cb-btn is-ghost" onClick={() => { c.dismissMic(); refocus(); }}>Not now</button>
         <button ref={primary} type="button" className="cb-btn is-primary" onClick={() => { c.confirmMic(); refocus(); }}>

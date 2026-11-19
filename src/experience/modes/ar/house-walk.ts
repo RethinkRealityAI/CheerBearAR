@@ -1,4 +1,4 @@
-// AR: walking into Cheer Bear's house (scene/house/). The cottage stands on the stage, life size, a metre or so
+// AR: walking into Happi's house (scene/house/). The cottage stands on the stage, life size, a metre or so
 // behind her; a beat after Place its door swings open and through it you see her room. You walk in through the door
 // with your phone (the house's portal notices the crossing), she pops in to greet you, the TV starts the theme; walk
 // back out (or tap Leave) and your own room is back.

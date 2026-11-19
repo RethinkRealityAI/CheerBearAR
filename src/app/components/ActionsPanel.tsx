@@ -8,7 +8,7 @@ export function ActionsPanel() {
   const inGame = useApp((s) => !!s.game.modeId);
   return (
     <div className="cb-actions">
-      <p className="cb-panel-lead">Tap one and Cheer Bear does it.{inGame ? ' These don’t count in the game: she has to say the words!' : ''}</p>
+      <p className="cb-panel-lead">Tap one and Happi does it.{inGame ? ' These don’t count in the game: she has to say the words!' : ''}</p>
       <div className="cb-action-grid">
         {keywords.map((k) => {
           const look = actionLook(k);

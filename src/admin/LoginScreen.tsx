@@ -40,8 +40,8 @@ export function LoginScreen({ api, source, notice, onDone }: LoginProps) {
     <main className="adm-login">
       <form className="adm-login-card" onSubmit={submit} noValidate aria-describedby={error ? `${id}-err` : undefined}>
         <div className="adm-login-mark" aria-hidden><Lock size={22} /></div>
-        <h1 className="adm-login-title">Cheer Bear admin</h1>
-        <p className="adm-login-lead">Sign in to change how Cheer Bear behaves for everyone.</p>
+        <h1 className="adm-login-title">Happi admin</h1>
+        <p className="adm-login-lead">Sign in to change how Happi behaves for everyone.</p>
         {notice && <p className="adm-notice" role="status">{notice}</p>}
         {source === 'mock' && (
           <p className="adm-notice practice">Practice mode: any username, password <code>demo</code>.</p>

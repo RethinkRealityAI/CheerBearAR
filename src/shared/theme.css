@@ -3,24 +3,24 @@
 @import '@fontsource-variable/fredoka';
 
 :root {
-  --cb-pink: #ff389b;
-  --cb-pink-deep: #d81b7c;
-  --cb-pink-soft: #ffd6ea;
-  --cb-blue: #439bdd;
-  --cb-sky: #d4edff;
+  --cb-pink: #f37321; /* Happi orange (token names kept from the hub this was built on) */
+  --cb-pink-deep: #c9561a;
+  --cb-pink-soft: #ffe2cc;
+  --cb-blue: #283a8f; /* happi coat navy */
+  --cb-sky: #a9e0f5; /* Happi sky */
   --cb-yellow: #ffd84a;
   --cb-orange: #ff9a3d;
   --cb-green: #5fcf86;
   --cb-purple: #9a6bff;
-  --cb-red: #ff5a5f;
-  --cb-ink: #3b2140;
-  --cb-ink-soft: #6d5273;
+  --cb-red: #e8222a;
+  --cb-ink: #1b2340;
+  --cb-ink-soft: #4a5578;
   --cb-white: #ffffff;
-  --cb-cloud: #fff7fb;
+  --cb-cloud: #f2fafe;
 
   /* in-camera surfaces: translucent black glass, white text (same family as the shared AR hint pill) */
-  --cb-glass: rgba(18, 10, 22, 0.56);
-  --cb-glass-strong: rgba(18, 10, 22, 0.78);
+  --cb-glass: rgba(10, 14, 30, 0.56);
+  --cb-glass-strong: rgba(10, 14, 30, 0.78);
   --cb-glass-line: rgba(255, 255, 255, 0.22);
   --cb-blur: blur(14px) saturate(1.2);
 
@@ -29,7 +29,7 @@
   --cb-glass-hint-solid: rgba(8, 8, 10, 0.82);
   --cb-glass-hint-line: rgba(255, 255, 255, 0.14);
   --cb-glass-hint-blur: blur(18px) saturate(150%);
-  --cb-scrim: rgba(18, 10, 22, 0.62);
+  --cb-scrim: rgba(10, 14, 30, 0.62);
   --cb-on-glass-soft: rgba(255, 255, 255, 0.82); /* secondary text on glass (AA on --cb-glass-strong) */
   --cb-fill-1: rgba(255, 255, 255, 0.08);         /* quiet fills on dark glass */
   --cb-fill-2: rgba(255, 255, 255, 0.14);
@@ -54,9 +54,9 @@
   --cb-tap: 48px; /* minimum touch target (never below 44px) */
 
   /* one shadow style: soft, ink-tinted, flat colour (no gradients) */
-  --cb-shadow-1: 0 1px 2px rgba(26, 12, 30, 0.16), 0 2px 8px rgba(26, 12, 30, 0.14);
-  --cb-shadow-2: 0 2px 4px rgba(26, 12, 30, 0.14), 0 8px 24px rgba(26, 12, 30, 0.22);
-  --cb-shadow-3: 0 4px 10px rgba(26, 12, 30, 0.16), 0 20px 56px rgba(26, 12, 30, 0.34);
+  --cb-shadow-1: 0 1px 2px rgba(12, 18, 40, 0.16), 0 2px 8px rgba(12, 18, 40, 0.14);
+  --cb-shadow-2: 0 2px 4px rgba(12, 18, 40, 0.14), 0 8px 24px rgba(12, 18, 40, 0.22);
+  --cb-shadow-3: 0 4px 10px rgba(12, 18, 40, 0.16), 0 20px 56px rgba(12, 18, 40, 0.34);
   --cb-focus: 0 0 0 3px var(--cb-white), 0 0 0 6px var(--cb-ink); /* focus ring that reads on any background */
 
   --cb-safe-top: env(safe-area-inset-top, 0px);

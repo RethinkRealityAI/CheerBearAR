@@ -1,5 +1,5 @@
 // POST /api/sms { message } -> { success, sid }
-// The SMS bridge (port of the old /send-sms): texts the user's message to Cheer Bear's number.
+// The SMS bridge (port of the old /send-sms): texts the user's message to Happi's number.
 // Changed for safety: the destination is ALWAYS CHEER_BEAR_NUMBER (or one of ALLOWED_DIAL_TARGETS); the old server
 // texted any `to` the browser sent, which made it an open SMS relay.
 import type { Config } from '@netlify/functions';
@@ -18,7 +18,7 @@ export default handle(async (req, context) => {
 
   const to = typeof body.to === 'string' && body.to.trim() ? body.to.trim() : cheerBearNumber();
   if (!E164.test(to)) throw new HttpError(400, 'bad_number', 'Invalid phone number format.');
-  if (!allowedDialTargets().includes(to)) throw new HttpError(403, 'number_not_allowed', 'Messages can only go to Cheer Bear.');
+  if (!allowedDialTargets().includes(to)) throw new HttpError(403, 'number_not_allowed', 'Messages can only go to Happi.');
 
   const t = twilioEnv();
   const missing = missingTwilioForSms(t);

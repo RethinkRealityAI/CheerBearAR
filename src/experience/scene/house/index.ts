@@ -1,4 +1,4 @@
-// Cheer Bear's house, built in code (see exterior.ts and room.ts), as a walk-through portal like the MEDIALIFE
+// Happi's house, built in code (see exterior.ts and room.ts), as a walk-through portal like the MEDIALIFE
 // Portal / Bobo's Portal: the cottage stands in the garden; its door opens onto a life-size room that is much bigger
 // than the cottage. From outside you only ever see the room through the doorway (DoorClip); you physically walk in
 // through the door and the room is all around you (the cottage's back and roof hide, the room's own walls take
@@ -10,7 +10,7 @@
 // tiling ones), and crossing is only counted inside the opening.
 //
 // One HouseSet per stage (showcase / AR). `root` is in door-local metres and scaled into stage units: AR keeps the
-// house life size whatever size Cheer Bear is; the showcase uses a fixed scale that suits her 1-unit height.
+// house life size whatever size Happi is; the showcase uses a fixed scale that suits her 1-unit height.
 import * as THREE from 'three';
 import type { PropKit } from '../props';
 import type { Media } from '../media';
@@ -58,7 +58,7 @@ export class HouseSet {
   /** House-moment bounce (1 = at rest) and mailbox wobble (radians). */
   squash = 1;
   mailTilt = 0;
-  /** Stage units per metre (AR: life size times `sizeMul`, whatever size Cheer Bear is). */
+  /** Stage units per metre (AR: life size times `sizeMul`, whatever size Happi is). */
   k = 1;
   /** AR: the pinch's share of the house size (1 = life size, the default; Move resets it). Set by the AR mode. */
   sizeMul = 1;

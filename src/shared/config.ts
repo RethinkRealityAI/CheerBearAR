@@ -24,7 +24,7 @@ export interface LocalClassifier {
 }
 
 export interface SmsPolicy {
-  /** Typed chat messages are also texted to Cheer Bear's number while a call is live. */
+  /** Typed chat messages are also texted to Happi's number while a call is live. */
   sendTypedChatToSms: boolean;
   /** The user's own call transcripts are texted too (only when user audio goes to OpenAI). */
   sendSpeechToSms: boolean;
@@ -137,9 +137,9 @@ export interface LipSyncDisplayConfig {
   releaseMs: number;
 }
 
-/** Cheer Bear's browser voice and local "brain" (the demo call, and answers to typed chat when no call is live). */
+/** Happi's browser voice and local "brain" (the demo call, and answers to typed chat when no call is live). */
 export interface DemoVoiceConfig {
-  /** Outside a call, Cheer Bear answers typed chat out loud with the browser's voice (and her mouth moves). */
+  /** Outside a call, Happi answers typed chat out loud with the browser's voice (and her mouth moves). */
   speakTypedChatOutsideCall: boolean;
   /** Browser voice pitch: 1 is the voice's normal pitch (0.5 to 2). */
   pitch: number;
@@ -160,7 +160,7 @@ export interface VoiceModeConfig {
   enabled: boolean;
   /** Default for new visitors: hold the button while talking (true) or tap once to start and once to stop (false). */
   holdToTalk: boolean;
-  /** Cheer Bear answers commands with a short canned line in the browser's voice (visitors can turn it off). */
+  /** Happi answers commands with a short canned line in the browser's voice (visitors can turn it off). */
   spokenReplies: boolean;
 }
 
@@ -182,7 +182,7 @@ export interface GameMode {
   name: string;
   description: string;
   enabled: boolean;
-  /** Words to get Cheer Bear to say. Empty for 'chat-time', which uses every keyword. */
+  /** Words to get Happi to say. Empty for 'chat-time', which uses every keyword. */
   triggerWords: string[];
   hints: GameModeHints;
   objective: string;
@@ -193,7 +193,7 @@ export interface AppConfig {
   modeDefault: UiMode;
   /** The user's own words (typed, or transcribed when allowed) may fire triggers. */
   allowUserTriggers: boolean;
-  /** Privacy gate: send the user's microphone to OpenAI for transcription. Off = only Cheer Bear is transcribed. */
+  /** Privacy gate: send the user's microphone to OpenAI for transcription. Off = only Happi is transcribed. */
   allowUserAudioToOpenAI: boolean;
   intentMatchingEngine: IntentMatchingEngine;
   localClassifier: LocalClassifier;
@@ -247,16 +247,16 @@ export const DEFAULT_CONFIG: AppConfig = {
     useCallMode: true,
     isCommandMode: false,
     customization: {
-      experienceName: 'Cheer Bear AI',
+      experienceName: 'Happi AI',
       primaryColor: '#ec4899',
       secondaryColor: '#7c3aed',
       accentColor: '#fbbf24',
-      headerTitle: 'Cheer Bear AI',
+      headerTitle: 'Happi AI',
       chatPlaceholder: 'Type message...',
       commandPlaceholder: 'Direct Trigger...',
-      callButtonText: 'Call Cheer Bear',
+      callButtonText: 'Call Happi',
       hangupButtonText: 'End call',
-      collapsedChatText: 'Chat to Cheer Bear',
+      collapsedChatText: 'Chat to Happi',
       showQuickActionsButton: true,
       showSettingsButton: true,
       showKeyboardHelpButton: true,
@@ -271,15 +271,15 @@ export const DEFAULT_CONFIG: AppConfig = {
         enabled: true,
         showOnce: true,
         version: 1,
-        title: 'Welcome to Cheer Bear AR',
+        title: 'Welcome to Happi AR',
         description:
-          'Meet Cheer Bear and explore the experience. Try calling or chatting, explore Cheer Bear’s house, and play word games together.',
+          'Meet Happi and explore the experience. Try calling or chatting, explore Happi’s house, and play word games together.',
         heroImageUrl: '',
         delayMs: 0,
         items: [
-          { id: 'call-chat', enabled: true, title: 'Call or chat to Cheer Bear', description: 'Say hello and talk with Cheer Bear in real time.', icon: 'Phone' },
-          { id: 'explore-house', enabled: true, title: 'Explore Cheer Bear’s house', description: 'Look around and discover Cheer Bear’s world in AR.', icon: 'Home' },
-          { id: 'word-games', enabled: true, title: 'Play word games', description: 'Try game modes and get Cheer Bear to say special words.', icon: 'Gamepad2' },
+          { id: 'call-chat', enabled: true, title: 'Call or chat to Happi', description: 'Say hello and talk with Happi in real time.', icon: 'Phone' },
+          { id: 'explore-house', enabled: true, title: 'Explore Happi’s house', description: 'Look around and discover Happi’s world in AR.', icon: 'Home' },
+          { id: 'word-games', enabled: true, title: 'Play word games', description: 'Try game modes and get Happi to say special words.', icon: 'Gamepad2' },
         ],
       },
       settingsPanel: {
@@ -307,7 +307,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     {
       id: 'chat-time',
       name: 'Chat Time',
-      description: 'Freely chat with Cheer Bear and discover all the magical words!',
+      description: 'Freely chat with Happi and discover all the magical words!',
       enabled: true,
       triggerWords: [],
       hints: {
@@ -317,7 +317,7 @@ export const DEFAULT_CONFIG: AppConfig = {
           'What makes you happy?',
           'How do you help others feel better?',
           "What's a fun memory you have?",
-          'What do you like about Care-a-Lot?',
+          'What do you like about New York?',
           "What's your favorite color?",
           'Do you have any special talents?',
           "What's your favorite season?",
@@ -326,37 +326,37 @@ export const DEFAULT_CONFIG: AppConfig = {
         specific: {},
       },
       objective:
-        'Freely chat with Cheer Bear and ask it questions about itself, or just have any kind of conversation. When it says certain words, something magical will happen in this scene!',
+        'Freely chat with Happi and ask it questions about itself, or just have any kind of conversation. When it says certain words, something magical will happen in this scene!',
       instructions:
-        'Freely chat with Cheer Bear and ask it questions about itself, or just have any kind of conversation. When Cheer Bear says any of the trigger words, something magical will happen in this scene!',
+        'Freely chat with Happi and ask it questions about itself, or just have any kind of conversation. When Happi says any of the trigger words, something magical will happen in this scene!',
     },
     {
       id: 'rainbow-adventure',
       name: 'Rainbow Adventure',
-      description: 'Explore the colorful world of Care-a-Lot!',
+      description: 'Explore the colorful world of New York!',
       enabled: true,
       triggerWords: ['Rainbow', 'Sparkle', 'Magic', 'Party'],
       hints: {
         general: [
           "Tell me more about where you're from",
-          "What's your favorite thing about Care-a-Lot?",
+          "What's your favorite thing about New York?",
           'What makes your home so special?',
         ],
         specific: {
-          rainbow: ['What do you see in the sky after it rains?', 'What colors can you see from your home?', 'Tell me about the beautiful things in Care-a-Lot'],
+          rainbow: ['What do you see in the sky after it rains?', 'What colors can you see from your home?', 'Tell me about the beautiful things in New York'],
           sparkle: ['What makes things shine and twinkle?', 'Do you like glittery things?', "What's the most beautiful thing you've ever seen?"],
-          magic: ['Can you do anything magical?', 'Tell me about something amazing that happened', 'What special powers do Care Bears have?'],
+          magic: ['Can you do anything magical?', 'Tell me about something amazing that happened', 'What makes a festival special?'],
           party: ['How do you celebrate special occasions?', "What's your favorite way to have fun?", 'Do you like celebrations?'],
         },
       },
-      objective: 'Get Cheer Bear to say all the rainbow-themed words to trigger something cool in the scene!',
+      objective: 'Get Happi to say all the rainbow-themed words to trigger something cool in the scene!',
       instructions:
-        'Ask Cheer Bear questions about their home, favorite things, and magical world. Be creative - you cannot directly ask them to say specific words!',
+        'Ask Happi questions about their home, favorite things, and magical world. Be creative - you cannot directly ask them to say specific words!',
     },
     {
       id: 'dance-party',
       name: 'Dance Party',
-      description: 'Get Cheer Bear ready to party!',
+      description: 'Get Happi ready to party!',
       enabled: true,
       triggerWords: ['Dance', 'Wave', 'Party', 'Running'],
       hints: {
@@ -368,24 +368,24 @@ export const DEFAULT_CONFIG: AppConfig = {
           running: ['Do you like to exercise?', 'What games do you play outside?', 'How do you stay active?'],
         },
       },
-      objective: 'Get Cheer Bear to say these words to trigger something cool in the scene!',
+      objective: 'Get Happi to say these words to trigger something cool in the scene!',
     },
     {
       id: 'care-bear-home',
-      name: 'Care Bear Home',
-      description: "Learn about Cheer Bear's daily routine!",
+      name: 'Happi’s Home',
+      description: "Learn about Happi's daily routine!",
       enabled: true,
       triggerWords: ['House', 'Sleep', 'WakeUp', 'Cold'],
       hints: {
         general: ['Tell me about your day', "What's your daily routine like?", 'Where do you live?'],
         specific: {
-          house: ['What does your home look like?', 'Where do you live in Care-a-Lot?', 'Describe your favorite room'],
+          house: ['What does your home look like?', 'Where do you live in New York?', 'Describe your favorite room'],
           sleep: ["What do you do when you're tired?", 'Do you have sweet dreams?', 'What helps you relax?'],
           wakeup: ['What do you do in the morning?', 'How do you start your day?', "What's the first thing you do when you open your eyes?"],
-          cold: ["What do you do when it's chilly?", 'How do you stay warm?', "What's winter like in Care-a-Lot?"],
+          cold: ["What do you do when it's chilly?", 'How do you stay warm?', "What's winter like in New York?"],
         },
       },
-      objective: 'Get Cheer Bear to say these words to trigger something cool in the scene!',
+      objective: 'Get Happi to say these words to trigger something cool in the scene!',
     },
   ],
   activeGameMode: 'chat-time',

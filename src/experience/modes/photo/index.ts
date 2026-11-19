@@ -1,12 +1,12 @@
-// 3D Photo: your selfie in Cheer Bear's picture frame, in your room. The Mattercraft "3D-Photo" scene was unfinished;
-// the idea (Dapo): take a selfie, then project it into the frame Cheer Bear holds up. Built on the pattern of
+// 3D Photo: your selfie in Happi's picture frame, in your room. The Mattercraft "3D-Photo" scene was unfinished;
+// the idea (Dapo): take a selfie, then project it into the frame Happi holds up. Built on the pattern of
 // MEDIALIFE Labs "Wear It, Meet It" (one engine session, front camera -> back camera, no reload).
 //
-//   selfie   FRONT camera (the mode opens here the first time). Cheer Bear ears + heart nose on your face, a guide
+//   selfie   FRONT camera (the mode opens here the first time). Happi ears + heart nose on your face, a guide
 //            oval, the shutter bottom centre. The selfie is cropped round your head (from the face tracking; the oval
 //            when no face is found) to the frame opening's shape and goes straight into her frame.
-//   flip     "Meet Cheer Bear" flips to the BACK camera in the same engine session (xr-core's Engine.start swap).
-//   placing  a reticle on the floor with Cheer Bear previewing on it, holding your selfie, facing you; pinch to size;
+//   flip     "Meet Happi" flips to the BACK camera in the same engine session (xr-core's Engine.start swap).
+//   placing  a reticle on the floor with Happi previewing on it, holding your selfie, facing you; pinch to size;
 //            Place (or a tap) once world tracking has settled.
 //   placed   she keeps turning to face you; tap her for a hop and hearts; shutter bottom centre takes the room photo
 //            (camera + 3D) -> the review sheet (Save / Share / Retake / Watch photo animation). Move (bottom left,
@@ -25,8 +25,8 @@ import { askMotionPermission } from '../../core/device';
 import { bindGestures } from '../shared';
 import { ICON } from '../../hud/icons';
 import { FaceFx, heartShape } from '../face/face-fx';
+import { happiPhotoFrame } from '../../../happi/frame';
 
-const FRAME_URL = '/models/capture/cb-frame.glb'; // 3.9 MB source -> 221 KB (meshopt + 1024 webp)
 const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // her height in metres
 const REACH = { min: 0.9, max: 4.0 };
 /** The frame opening in model units (feet on y = 0, 1 unit tall, facing +z); the plane is a touch bigger, inside. */
@@ -136,10 +136,10 @@ export class PhotoMode implements Mode {
     this.placeBtn.type = 'button';
     this.placeBtn.disabled = true;
     this.placeBtn.addEventListener('click', (e) => { e.stopPropagation(); this.place(); });
-    this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Cheer Bear somewhere else', onClick: () => this.move() });
+    this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Happi somewhere else', onClick: () => this.move() });
     this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
     this.flipBtn = hud.toolButton({ label: 'Selfie', icon: ICON.selfie, aria: 'Flip the camera for a new selfie', onClick: () => this.flipTo('face') });
-    this.meetBtn = el('button', 'cbx-pill', 'Meet Cheer Bear');
+    this.meetBtn = el('button', 'cbx-pill', 'Meet Happi');
     this.meetBtn.type = 'button';
     this.meetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -156,7 +156,7 @@ export class PhotoMode implements Mode {
       container: ctx.container,
       name,
       title: 'Your 3D photo',
-      share: { title: 'Cheer Bear and me', text: 'A photo with Cheer Bear!' },
+      share: { title: 'Happi and me', text: 'A photo with Happi!' },
       onRetake: () => this.toPlaced(),
       onReveal: (b) => this.reveal.play(b),
     });
@@ -180,14 +180,12 @@ export class PhotoMode implements Mode {
 
   // ------------------------------------------------------------------ Mode
   async load(): Promise<void> {
-    const [g] = await Promise.all([this.ctx.assets.gltf(FRAME_URL), loadFrameArt()]);
-    const scene = g.scene.clone(true);
+    const [scene] = await Promise.all([happiPhotoFrame(), loadFrameArt()]);
     scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; }
     });
     // the model is 1 unit tall (her ears), feet on y = 0, facing +z
-    scene.name = 'cb-frame';
     this.framed.add(scene);
   }
 
@@ -252,7 +250,7 @@ export class PhotoMode implements Mode {
         this.anchor.visible = true;
       }
       this.placeBtn.disabled = !ok;
-      this.placeBtn.textContent = ok ? 'Place Cheer Bear' : 'Getting ready…';
+      this.placeBtn.textContent = ok ? 'Place Happi' : 'Getting ready…';
       this.ctx.hud.hint(settled ? 'Pinch to size, then Place' : 'Point at the floor');
     } else if (this.state === 'restoring') {
       if (settled) this.restore(cam);
@@ -401,9 +399,9 @@ export class PhotoMode implements Mode {
     this.clearHud();
     this.anchor.visible = false;
     this.reticle.visible = false;
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take your selfie for Cheer Bear’s frame');
+    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take your selfie for Happi’s frame');
     this.shutterBtn.disabled = false;
-    this.shutterBtn.setAttribute('aria-label', 'Take your selfie for Cheer Bear’s frame');
+    this.shutterBtn.setAttribute('aria-label', 'Take your selfie for Happi’s frame');
     hud.centre.appendChild(this.shutterBtn);
     hud.layer.appendChild(this.guide);
     this.drawGuide();
@@ -418,7 +416,7 @@ export class PhotoMode implements Mode {
   private showSelfieUi(): void {
     const hud = this.ctx.hud;
     if (this.hasSelfie) {
-      this.meetBtn.textContent = this.placedOnce ? 'Back to Cheer Bear' : 'Meet Cheer Bear';
+      this.meetBtn.textContent = this.placedOnce ? 'Back to Happi' : 'Meet Happi';
       hud.above.appendChild(this.meetBtn);
       hud.left.appendChild(this.thumb);
     } else {
@@ -616,7 +614,7 @@ export class PhotoMode implements Mode {
     this.clearHud();
     if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a 3D photo');
     this.shutterBtn.disabled = false;
-    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Cheer Bear');
+    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Happi');
     hud.centre.appendChild(this.shutterBtn);
     // bottom left, always there once placed (the slot stacks bottom-up: Move at the bottom, Selfie above it)
     hud.left.append(this.moveBtn, this.flipBtn);
@@ -735,16 +733,16 @@ export class PhotoMode implements Mode {
   }
 }
 
-/** The frame before the first selfie: flat Cheer Bear pink with a simple "you" figure (no gradients). */
+/** The frame before the first selfie: flat Happi pink with a simple "you" figure (no gradients). */
 function placeholderTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = SELFIE_PX.w;
   c.height = SELFIE_PX.h;
   const g = c.getContext('2d')!;
   const W = c.width, H = c.height;
-  g.fillStyle = '#ffd6ea';
+  g.fillStyle = '#a9e0f5';
   g.fillRect(0, 0, W, H);
-  g.fillStyle = '#ff8fc8';
+  g.fillStyle = '#283a8f';
   g.beginPath();
   g.arc(W / 2, H * 0.4, W * 0.2, 0, Math.PI * 2);
   g.fill();

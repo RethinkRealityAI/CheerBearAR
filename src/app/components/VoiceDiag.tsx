@@ -1,4 +1,4 @@
-// "Mic check" (voice-4): what this phone's browser does when Cheer Bear listens, so a tester can tell us exactly
+// "Mic check" (voice-4): what this phone's browser does when Happi listens, so a tester can tell us exactly
 // where it goes wrong. Open with `?voicediag` or Settings > Mic check. Not part of the normal UI; lazily loaded.
 //
 //   - Facts: browser, recognition present, mic permission (live), microphones, secure page, online, in-app browser.
@@ -134,7 +134,7 @@ export default function VoiceDiag({ onClose }: { onClose(): void }) {
   };
 
   const reportText = () => [
-    'Cheer Bear mic check',
+    'Happi mic check',
     ...facts.map(([k, v]) => `${k}: ${v}`),
     `Options: continuous ${continuous}, interim ${interim}, meter ${meterOn}`,
     `UA: ${navigator.userAgent}`,
@@ -157,7 +157,7 @@ export default function VoiceDiag({ onClose }: { onClose(): void }) {
     setTimeout(() => setCopied(''), 4000);
   };
   const share = async () => {
-    try { await navigator.share({ title: 'Cheer Bear mic check', text: reportText() }); } catch { /* cancelled */ }
+    try { await navigator.share({ title: 'Happi mic check', text: reportText() }); } catch { /* cancelled */ }
   };
 
   const toggle = (label: string, on: boolean, set: (v: boolean) => void, hint: string) => (

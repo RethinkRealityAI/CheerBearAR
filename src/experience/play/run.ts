@@ -1,4 +1,4 @@
-// Heart Run (the Cola Run idea): 60 seconds to run Cheer Bear around with the joystick and collect what floats over
+// Heart Run (the Cola Run idea): 60 seconds to run Happi around with the joystick and collect what floats over
 // the pulsing floor beacons.
 //
 //   heart    common, +1 (a run of quick pickups climbs in pitch; every 5 in a row +2)

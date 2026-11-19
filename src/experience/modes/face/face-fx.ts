@@ -1,20 +1,29 @@
-// What the Selfie puts on your face: Cheer Bear ears, a heart nose and two cheek hearts. Flat coloured meshes in face
-// units (1 FU ~ 118-139 mm; x = wearer's left, y up, the face looks down -z), DoubleSide because the display is
-// mirrored. A depth-only head occluder hides the far ear when you turn.
+// What the Selfie puts on your head and face, in face units (1 FU ~ 118-139 mm; x = wearer's left, y up, the face
+// looks down -z). Two looks:
+//   hood    the 3D Happi hood (Meshy model, cleaned in tools/blender/build_hood.py): the face opening is centred on
+//           your face, the hood wraps the head; a depth-only head occluder hides what is behind your head.
+//   faces   flat "Happi faces" decals: red cheek dots, the little squirrel face on your forehead, and the four
+//           official expression heads that pop up beside you to match your face (smile, gasp, frown, sleepy).
+// Both looks can pop an expression head when you react. Flat colours, DoubleSide because the display is mirrored.
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-const PINK_FUR = 0xf46db1; // Cheer Bear's fur, sampled from her clips
-const PINK_INNER = 0xffd6ea; // --cb-pink-soft
-const HEART = 0xff389b; // --cb-pink
-const CHEEK = 0xff8fc8;
-const WHITE = 0xffffff;
+export const HOOD_URL = '/models/happi-hood.glb';
+const RED = 0xe8222a;
+
+export type FxLook = 'hood' | 'faces';
+export type HeadMood = 'happy' | 'surprised' | 'grumpy' | 'sleepy';
+const MOODS: HeadMood[] = ['happy', 'surprised', 'grumpy', 'sleepy'];
 
 // fallbacks (FU) when the engine does not send an attachment point (immersive skill: measured points)
-const NOSE_TIP = new THREE.Vector3(0, -0.26, -0.74);
-const CHEEKS = { left: new THREE.Vector3(0.36, -0.26, -0.5), right: new THREE.Vector3(-0.36, -0.26, -0.5) };
+const CHEEKS = { left: new THREE.Vector3(0.32, -0.24, -0.5), right: new THREE.Vector3(-0.32, -0.24, -0.5) };
+const FOREHEAD = new THREE.Vector3(0, 0.5, -0.62);
+
+/** Hood fit (FU): the opening centre relative to the face anchor, its scale and a small forward tilt. */
+export const HOOD_FIT = { x: 0, y: -0.04, z: -0.2, scale: 0.78, tilt: 0.08 };
 
 export function heartShape(size: number): THREE.ShapeGeometry {
-  // classic two-lobe heart, point down, centred, `size` wide
+  // classic two-lobe heart, point down, centred, `size` wide (photo mode's hop hearts)
   const s = new THREE.Shape();
   const k = size / 2;
   s.moveTo(0, -0.95 * k);
@@ -28,69 +37,163 @@ export function heartShape(size: number): THREE.ShapeGeometry {
 const flat = (color: number) =>
   new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 });
 
+/** The little squirrel face from Happi's forehead: three white stripes, two eyes, a dot nose (canvas, flat). */
+function foreheadTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 192;
+  const g = c.getContext('2d')!;
+  g.lineCap = 'round';
+  g.strokeStyle = '#1b1b1f'; g.lineWidth = 9;
+  g.fillStyle = '#ffffff';
+  g.beginPath(); g.moveTo(52, 46); g.quadraticCurveTo(128, 18, 204, 46); g.stroke();
+  for (const x of [104, 128, 152]) { g.beginPath(); g.ellipse(x, 52, 7, 18, 0, 0, Math.PI * 2); g.fill(); g.stroke(); }
+  for (const x of [96, 160]) {
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.ellipse(x, 116, 30, 34, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = '#1b1b1f'; g.beginPath(); g.ellipse(x + 2, 120, 12, 18, 0, 0, Math.PI * 2); g.fill();
+  }
+  g.fillStyle = '#1b1b1f'; g.beginPath(); g.ellipse(128, 160, 9, 7, 0, 0, Math.PI * 2); g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** A piece that pops in (scale) when the face is found. */
 interface Piece { node: THREE.Object3D; delay: number }
 
 export class FaceFx {
   readonly group = new THREE.Group();
+  look: FxLook = 'hood';
+  /** The expression head showing now (null: none). */
+  mood: HeadMood | null = null;
+  hoodLoaded = false;
   private pieces: Piece[] = [];
-  private nose = new THREE.Group();
+  private hood = new THREE.Group();
+  private decals = new THREE.Group();
   private cheekL = new THREE.Group();
   private cheekR = new THREE.Group();
+  private brow = new THREE.Group();
+  private heads = new THREE.Group();
+  private headMeshes = new Map<HeadMood, THREE.Mesh>();
   private popT = 1;
+  private moodT = 0;
+  private moodHold = 0;
 
-  constructor() {
+  constructor(opts: { heads?: boolean } = {}) {
     this.group.name = 'face-fx';
-    // depth-only head: hides whatever is behind your head (the far ear, the bear behind you)
+    // depth-only head: hides whatever is behind your head (the hood's back, Happi behind you)
     const occ = new THREE.Mesh(
       new THREE.SphereGeometry(1, 28, 18),
       new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true }),
     );
-    occ.scale.set(0.52, 0.74, 0.58);
+    occ.scale.set(0.5, 0.72, 0.56);
     occ.position.set(0, 0.04, 0.03);
     occ.renderOrder = -1;
     occ.name = 'head-occluder';
     this.group.add(occ);
 
-    // ears on top of the head, tilted out a little
-    const furM = flat(PINK_FUR), innerM = flat(PINK_INNER);
-    const outerG = new THREE.CircleGeometry(0.2, 40), innerG = new THREE.CircleGeometry(0.115, 32);
-    for (const side of [1, -1]) {
-      const ear = new THREE.Group();
-      const o = new THREE.Mesh(outerG, furM);
-      const i = new THREE.Mesh(innerG, innerM);
-      i.position.set(0, -0.015, -0.012); // in front of the fur disc (the face looks down -z)
-      i.renderOrder = 2;
-      o.renderOrder = 1;
-      ear.add(o, i);
-      ear.position.set(0.44 * side, 0.82, -0.18);
-      ear.rotation.set(0, 0.25 * side, -0.32 * side);
-      ear.name = side > 0 ? 'ear-left' : 'ear-right';
-      this.group.add(ear);
-      this.pieces.push({ node: ear, delay: side > 0 ? 0 : 0.08 });
-    }
+    this.hood.name = 'happi-hood';
+    this.group.add(this.hood);
+    this.pieces.push({ node: this.hood, delay: 0 });
 
-    // heart nose with a flat white shine
-    const nose = new THREE.Mesh(heartShape(0.17), flat(HEART));
-    const shine = new THREE.Mesh(new THREE.CircleGeometry(0.02, 16), flat(WHITE));
-    shine.position.set(-0.035, 0.025, -0.004);
-    shine.renderOrder = 3;
-    nose.renderOrder = 2;
-    this.nose.add(nose, shine);
-    this.nose.name = 'heart-nose';
-    this.group.add(this.nose);
-    this.pieces.push({ node: this.nose, delay: 0.16 });
-
-    const cheekG = heartShape(0.1), cheekM = flat(CHEEK);
+    // ---- Happi faces: cheek dots + forehead squirrel
+    this.decals.name = 'happi-faces';
+    this.group.add(this.decals);
+    const cheekG = new THREE.CircleGeometry(0.075, 36), cheekM = flat(RED);
     for (const [g, name] of [[this.cheekL, 'cheek-left'], [this.cheekR, 'cheek-right']] as const) {
       const m = new THREE.Mesh(cheekG, cheekM);
       m.renderOrder = 2;
       g.add(m);
       g.name = name;
-      this.group.add(g);
-      this.pieces.push({ node: g, delay: 0.22 });
+      this.decals.add(g);
+      this.pieces.push({ node: g, delay: 0.1 });
     }
+    const browM = new THREE.MeshBasicMaterial({
+      map: foreheadTexture(), transparent: true, side: THREE.DoubleSide, toneMapped: false, depthWrite: false,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    });
+    const brow = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.315), browM);
+    brow.rotation.y = Math.PI; // faces the camera (the face looks down -z)
+    brow.scale.x = -1; // and reads the right way round in the mirrored selfie
+    brow.renderOrder = 3;
+    this.brow.add(brow);
+    this.brow.name = 'forehead-squirrel';
+    this.decals.add(this.brow);
+    this.pieces.push({ node: this.brow, delay: 0.18 });
+
+    // ---- the four expression heads (cut from the official artwork), floating up beside your head
+    this.heads.name = 'expression-heads';
+    this.heads.position.set(-0.78, 0.78, -0.1);
+    this.heads.visible = opts.heads !== false;
+    this.group.add(this.heads);
+    const loader = new THREE.TextureLoader();
+    for (const m of MOODS) {
+      const tex = loader.load(`/img/happi/head-${m}.webp`);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.62, 0.57),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.05, side: THREE.DoubleSide, toneMapped: false, depthTest: false }),
+      );
+      mesh.rotation.y = Math.PI;
+      mesh.scale.set(-0.001, 0.001, 1);
+      mesh.renderOrder = 20;
+      mesh.visible = false;
+      mesh.name = `head-${m}`;
+      this.heads.add(mesh);
+      this.headMeshes.set(m, mesh);
+    }
+    this.setLook('hood');
     this.place(null);
+  }
+
+  /** Load the hood model once (the mode's load()). */
+  async loadHood(loader: GLTFLoader = new GLTFLoader()): Promise<void> {
+    if (this.hoodLoaded) return;
+    const g = await loader.loadAsync(HOOD_URL);
+    const h = g.scene;
+    h.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      m.renderOrder = 1;
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      for (const mat of mats) {
+        const sm = mat as THREE.MeshStandardMaterial;
+        sm.side = THREE.DoubleSide; // the inside of the opening shows round your face
+        if ('roughness' in sm) { sm.roughness = 0.9; sm.metalness = 0; }
+      }
+    });
+    // exported facing +z (glTF): the face looks down -z, so turn it round
+    h.rotation.y = Math.PI;
+    const fit = new THREE.Group();
+    fit.name = 'hood-fit';
+    fit.add(h);
+    this.hood.add(fit);
+    this.applyFit();
+    this.hoodLoaded = true;
+  }
+
+  applyFit(): void {
+    const fit = this.hood.children[0];
+    if (!fit) return;
+    fit.position.set(HOOD_FIT.x, HOOD_FIT.y, HOOD_FIT.z);
+    fit.rotation.x = HOOD_FIT.tilt;
+    fit.scale.setScalar(HOOD_FIT.scale);
+  }
+
+  setLook(l: FxLook): void {
+    this.look = l;
+    this.hood.visible = l === 'hood';
+    this.decals.visible = l === 'faces';
+  }
+
+  /** Pop an expression head beside you for `hold` seconds (null clears it). */
+  react(mood: HeadMood | null, hold = 1.8): void {
+    if (mood && mood === this.mood) { this.moodHold = Math.max(this.moodHold, hold); return; }
+    for (const [k, m] of this.headMeshes) if (k !== mood) m.visible = false;
+    this.mood = mood;
+    this.moodT = 0;
+    this.moodHold = hold;
+    if (mood) this.headMeshes.get(mood)!.visible = true;
   }
 
   /** Follow the engine's attachment points (face units), falling back to measured positions. */
@@ -100,12 +203,13 @@ export class FaceFx {
       if (q) out.position.set(q.x, q.y, q.z + dz);
       else out.position.set(fb.x, fb.y, fb.z + dz);
     };
-    p('noseTip', NOSE_TIP, this.nose, -0.03);
     p('leftCheek', CHEEKS.left, this.cheekL, -0.035);
     p('rightCheek', CHEEKS.right, this.cheekR, -0.035);
-    // cheek hearts sit a touch lower and out from the engine's cheek points
+    // the engine's cheek points sit out on the cheekbones: pull the dots in a little, under the eyes
+    this.cheekL.position.x *= 0.86; this.cheekR.position.x *= 0.86;
     this.cheekL.position.y -= 0.02;
     this.cheekR.position.y -= 0.02;
+    p('forehead', FOREHEAD, this.brow, -0.05);
   }
 
   /** Start the pop-in. */
@@ -114,14 +218,31 @@ export class FaceFx {
   }
 
   update(dt: number, reduced: boolean): void {
-    if (this.popT >= 1.6) return;
-    this.popT += dt;
-    for (const pc of this.pieces) {
-      const t = Math.max(0, Math.min(1, (this.popT - (reduced ? 0 : pc.delay)) / (reduced ? 0.2 : 0.45)));
-      // ease out back (a small overshoot), plain ease under reduced motion
-      const c = 1.7;
-      const k = reduced ? t : 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
-      pc.node.scale.setScalar(Math.max(0.001, k));
+    if (this.popT < 1.6) {
+      this.popT += dt;
+      for (const pc of this.pieces) {
+        const t = Math.max(0, Math.min(1, (this.popT - (reduced ? 0 : pc.delay)) / (reduced ? 0.2 : 0.45)));
+        const c = 1.7;
+        const k = reduced ? t : 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
+        pc.node.scale.setScalar(Math.max(0.001, k));
+      }
     }
+    // the expression head: springs in, bobs, then shrinks away when the hold runs out
+    if (!this.mood) return;
+    const m = this.headMeshes.get(this.mood)!;
+    this.moodT += dt;
+    this.moodHold -= dt;
+    let s: number;
+    if (this.moodHold <= 0) {
+      s = Math.max(0, 1 + this.moodHold / 0.25);
+      if (s <= 0.001) { m.visible = false; this.mood = null; return; }
+    } else {
+      const t = Math.min(1, this.moodT / (reduced ? 0.15 : 0.35));
+      const c = 1.9;
+      s = reduced ? t : 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
+    }
+    m.scale.set(-Math.max(0.001, s), Math.max(0.001, s), 1);
+    m.position.y = reduced ? 0 : Math.sin(this.moodT * 3.2) * 0.03;
+    m.rotation.z = reduced ? 0 : Math.sin(this.moodT * 2.1) * 0.08;
   }
 }

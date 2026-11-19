@@ -14,7 +14,7 @@ export function parseImport(text: string, base: AppConfig): { config: AppConfig;
   if (isPlainObject(data) && isPlainObject(data.config)) data = data.config;
   if (!isPlainObject(data)) throw new Error('The file should contain one settings object ({ … }).');
   const known = Object.keys(data).filter((k) => KNOWN_KEYS.includes(k) || k in base);
-  if (!known.length) throw new Error('No Cheer Bear settings found in this file.');
+  if (!known.length) throw new Error('No Happi settings found in this file.');
   for (const k of OBSOLETE_KEYS) delete data[k];
   const unknown = Object.keys(data).filter((k) => !KNOWN_KEYS.includes(k) && !(k in base));
   for (const k of unknown) delete data[k];
@@ -79,7 +79,7 @@ export function BackupSection() {
       confirmText: 'Reset all settings',
       message: (
         <>
-          <p>Keywords, game modes, texts, colours and every other setting go back to how Cheer Bear shipped. Visitors get this straight away.</p>
+          <p>Keywords, game modes, texts, colours and every other setting go back to how Happi shipped. Visitors get this straight away.</p>
           <p>The current settings stay in History, so you can restore them.</p>
         </>
       ),

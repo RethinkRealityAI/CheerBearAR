@@ -91,7 +91,7 @@ export default handle(async (req) => {
   const record = (process.env.TWILIO_RECORD_CALLS || 'true').trim().toLowerCase() !== 'false';
   const dial = response.dial({
     callerId,
-    // answerOnBridge keeps the browser call "ringing" until Cheer Bear picks up (so the app can show ringing).
+    // answerOnBridge keeps the browser call "ringing" until Happi picks up (so the app can show ringing).
     answerOnBridge: true,
     ...(record ? { record: 'record-from-answer' as const } : {}),
   });

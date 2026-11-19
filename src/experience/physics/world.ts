@@ -1,12 +1,12 @@
 // A tiny rigid-sphere solver for the playful bits (thrown hearts, bouncing stars, party balloons). No library: the
-// scenes only ever need spheres against a floor plane, a few static spheres/boxes (Cheer Bear's body, her house
+// scenes only ever need spheres against a floor plane, a few static spheres/boxes (Happi's body, her house
 // walls), sphere-sphere bumps and one "catch" sensor, and cannon-es would cost ~130 KB for that.
 //
 // Rules that keep world tracking smooth (pitfall 14: tracking quality = frame rate):
 //   - fixed timestep (1/120 s) with an accumulator and a hard cap on substeps per frame;
 //   - every body is pooled at construction: nothing is allocated while stepping;
 //   - bodies fall asleep when they rest, and the owner despawns them (hard caps per kind).
-// Units are the stage's (Cheer Bear is 1 unit tall); y is up and the floor is y = 0 unless `floorY` says otherwise.
+// Units are the stage's (Happi is 1 unit tall); y is up and the floor is y = 0 unless `floorY` says otherwise.
 import * as THREE from 'three';
 
 export const STEP = 1 / 120;

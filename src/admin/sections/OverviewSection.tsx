@@ -19,10 +19,10 @@ function describe(st: Status): { key: string; title: string; tone: Tone; text: R
   };
   return [
     { key: 'twilio', title: st.twilio ? 'Phone calls ready' : 'Phone calls not set up', tone: st.twilio ? 'ok' : 'bad',
-      text: st.twilio ? 'Twilio is configured, so visitors can call Cheer Bear.' : <>Visitors can't call Cheer Bear yet: the Twilio keys are missing. {ENV_HELP}</> },
+      text: st.twilio ? 'Twilio is configured, so visitors can call Happi.' : <>Visitors can't call Happi yet: the Twilio keys are missing. {ENV_HELP}</> },
     { key: 'openai', title: st.openai ? 'Listening ready' : 'Listening not set up', tone: st.openai ? 'ok' : 'bad',
-      text: st.openai ? "OpenAI is configured, so Cheer Bear's words are transcribed and can trigger the scene."
-        : <>Cheer Bear's words can't be turned into text, so nothing in the scene reacts. Add the OpenAI key. {ENV_HELP}</> },
+      text: st.openai ? "OpenAI is configured, so Happi's words are transcribed and can trigger the scene."
+        : <>Happi's words can't be turned into text, so nothing in the scene reacts. Add the OpenAI key. {ENV_HELP}</> },
     { key: 'storage', ...storage[st.storage] ?? { tone: 'warn', title: `Storage: ${st.storage}`, text: '' } },
     { key: 'admin', title: st.adminConfigured ? 'Admin sign-in set' : 'Admin password not set', tone: st.adminConfigured ? 'ok' : 'warn',
       text: st.adminConfigured ? 'Only people with the admin password can change settings.'

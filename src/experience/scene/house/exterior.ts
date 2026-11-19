@@ -1,6 +1,6 @@
-// The outside of Cheer Bear's house: a pastel cottage on a cloud, its arched door framed by a flat-striped rainbow
+// The outside of Happi's house: a pastel cottage on a cloud, its arched door framed by a flat-striped rainbow
 // that grows out of two little clouds, heart windows with flower boxes, a cloud roof with a chimney that puffs tiny
-// hearts, a sun, a heart doormat, heart stepping stones and a little garden. An original design in the Care-a-Lot
+// hearts, a sun, a heart doormat, heart stepping stones and a little garden. An original design in the New York
 // spirit (no copied artwork, no logos). Flat colours only.
 //
 // Split in two so the portal can hide what would otherwise stand inside the (much bigger) room:

@@ -9,10 +9,10 @@ import { ICON } from './icons';
 import './hud.css';
 
 const MODES: Array<{ id: ExperienceMode; label: string; icon: string; aria: string }> = [
-  { id: 'showcase', label: '3D', icon: ICON.cube, aria: '3D: Cheer Bear in Care-a-Lot' },
-  { id: 'ar', label: 'AR', icon: ICON.ar, aria: 'AR: Cheer Bear in your room' },
-  { id: 'face', label: 'Selfie', icon: ICON.selfie, aria: 'Selfie with Cheer Bear' },
-  { id: 'photo', label: 'Photo', icon: ICON.photo, aria: '3D photo with Cheer Bear' },
+  { id: 'showcase', label: '3D', icon: ICON.cube, aria: '3D: Happi in New York' },
+  { id: 'ar', label: 'AR', icon: ICON.ar, aria: 'AR: Happi in your room' },
+  { id: 'face', label: 'Selfie', icon: ICON.selfie, aria: 'Selfie with Happi' },
+  { id: 'photo', label: 'Photo', icon: ICON.photo, aria: '3D photo with Happi' },
 ];
 
 export interface HudOptions {
@@ -80,11 +80,12 @@ export class Hud implements HudApi {
     this.splash.setAttribute('aria-label', opts.title);
     this.splash.innerHTML = `
       <div class="sp-col">
-        <div class="sp-top"><img class="title" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="450" height="238"></div>
+        <div class="sp-top"><p class="sp-eyebrow">Japan Parade &amp; Street Fair<br><b>Official Mascot</b></p><img class="title" src="/img/happi-logo.webp" alt="${esc(opts.title)}" width="769" height="309"></div>
         <div class="sp-bottom">
           <p class="lead">${esc(opts.lead)}</p>
           <button type="button" class="cbx-start" disabled>Loading…</button>
           <div class="cbx-load" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+          <p class="sp-credit">Designed by Japan Parade 2026 Grand Marshal <b>Acky Bright</b></p>
           <img class="act-by" src="/img/activated-by.webp" alt="Activated by MEDIALIFE" width="148" height="58">
         </div>
       </div>
@@ -102,7 +103,7 @@ export class Hud implements HudApi {
     this.hudEl = el('div', 'cbx-hud');
     this.hudEl.hidden = true;
     const top = el('div', 'cbx-top');
-    top.innerHTML = `<img class="mini" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="76" height="40">`;
+    top.innerHTML = `<img class="mini" src="/img/happi-logo-sm.webp" alt="${esc(opts.title)}" width="76" height="31">`;
     // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
     // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
@@ -138,8 +139,8 @@ export class Hud implements HudApi {
     this.hintEl.setAttribute('aria-live', 'polite');
     this.toastEl = el('div', 'cbx-toast');
     this.toastEl.setAttribute('aria-hidden', 'true');
-    // what Cheer Bear says: the words reveal one by one as the transcript grows; screen readers get the plain text
-    this.bubble = el('div', 'cbx-bubble', `<b class="cbx-bubble-name" aria-hidden="true">${esc(opts.title.replace(/\s+(AR|AI)$/i, '') || 'Cheer Bear')}</b><span class="cbx-bubble-text" aria-hidden="true"></span><span class="cbx-sr" role="status" aria-live="polite"></span>`);
+    // what Happi says: the words reveal one by one as the transcript grows; screen readers get the plain text
+    this.bubble = el('div', 'cbx-bubble', `<b class="cbx-bubble-name" aria-hidden="true">${esc(opts.title.replace(/\s+(AR|AI)$/i, '') || 'Happi')}</b><span class="cbx-bubble-text" aria-hidden="true"></span><span class="cbx-sr" role="status" aria-live="polite"></span>`);
     this.bubbleWords = this.bubble.querySelector('.cbx-bubble-text')!;
     this.bubbleSr = this.bubble.querySelector('.cbx-sr')!;
     this.above = el('div', 'cbx-above');
@@ -152,7 +153,7 @@ export class Hud implements HudApi {
     // joystick (bottom centre, walking modes)
     this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M51 17l7-7 7 7"/><path d="M51 99l7 7 7-7"/><path d="M17 51l-7 7 7 7"/><path d="M99 51l7 7-7 7"/></g></svg><span><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></g></svg></span>`);
     this.stick.setAttribute('role', 'application');
-    this.stick.setAttribute('aria-label', 'Joystick: walk Cheer Bear');
+    this.stick.setAttribute('aria-label', 'Joystick: walk Happi');
     this.stick.hidden = true;
     this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
@@ -317,7 +318,7 @@ export class Hud implements HudApi {
     this.toastT = window.setTimeout(() => this.toastEl.classList.remove('on'), ms);
   }
   /**
-   * Cheer Bear's words. Text that continues what is showing (a growing transcript) only reveals the new words; other
+   * Happi's words. Text that continues what is showing (a growing transcript) only reveals the new words; other
    * text replaces it, revealed word by word. Long speech keeps its latest words.
    */
   speech(text: string | null): void {
@@ -539,7 +540,7 @@ export class Hud implements HudApi {
       title: 'How it works',
       body: '',
       html: `<ol>
-        <li><b>3D</b>: Cheer Bear in Care-a-Lot. Drag to look around, pinch to zoom, the joystick walks her.</li>
+        <li><b>3D</b>: Happi in New York. Drag to look around, pinch to zoom, the joystick walks her.</li>
         <li><b>AR</b>: point your phone at the floor, tap <b>Place</b>. Walk her into her house to go inside. <b>Move</b> puts it all somewhere else.</li>
         <li><b>Selfie</b> and <b>Photo</b>: the white button takes a picture with her.</li>
         <li>Talk to her! Say <b>house</b>, <b>rainbow</b>, <b>party</b>, <b>magic</b>, <b>dance</b> or <b>sleep</b> and watch what happens.</li>
@@ -558,7 +559,7 @@ export class Hud implements HudApi {
           <a href="https://8thwall.org/docs/engine/license" target="_blank" rel="noopener">Licence text</a></div>
         <div><b>Fredoka</b> (font)<br>SIL Open Font License 1.1.</div>
         <div><b>qrcode-generator</b><br>MIT License. Copyright © Kazuhiko Arase.</div>
-        <div><b>Cheer Bear and Care Bears</b><br>Characters and artwork belong to their owners.</div>
+        <div><b>Happi</b><br>Happi, the Japan Parade &amp; Street Fair official mascot, designed by Acky Bright. Character, logo and artwork belong to their owners.</div>
       </div>`,
       buttons: ['Close'],
     });

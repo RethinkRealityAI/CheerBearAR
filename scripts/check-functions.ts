@@ -49,7 +49,7 @@ const fakeOpenAI = http.createServer(async (req, res) => {
     }
     return res.end(JSON.stringify({ results: [{ flagged: flagWords.test(String(body.input)) }] }));
   }
-  if (req.url === '/v1/chat/completions' && /You are Cheer Bear/.test(body.messages?.[0]?.content || '')) {
+  if (req.url === '/v1/chat/completions' && /You are Happi/.test(body.messages?.[0]?.content || '')) {
     return res.end(JSON.stringify({ choices: [{ message: { content: chatAnswer } }] }));
   }
   if (req.url === '/v1/chat/completions') {
@@ -466,7 +466,7 @@ await check('POST /api/sms validates and refuses when not configured', async () 
   assert.equal((await call('POST', '/api/sms', { json: { message: '' } })).status, 400);
   assert.equal((await call('POST', '/api/sms', { json: { message: 'hi', to: 'not-a-number' } })).status, 400);
   assert.equal((await call('POST', '/api/sms', { json: { message: 'hi', to: '+447700900999' } })).status, 403, 'open relay closed');
-  const r = await call('POST', '/api/sms', { json: { message: 'Hello Cheer Bear' } });
+  const r = await call('POST', '/api/sms', { json: { message: 'Hello Happi' } });
   assert.equal(r.status, 503);
   assert.equal(r.data.error, 'not_configured');
 });

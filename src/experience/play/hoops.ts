@@ -1,4 +1,4 @@
-// Heart Hoops (from Bobo Hoops): Cheer Bear floats a rainbow ring and you get 10 hearts to throw through it with a
+// Heart Hoops (from Bobo Hoops): Happi floats a rainbow ring and you get 10 hearts to throw through it with a
 // swipe up (the heart toss's flick gesture and its toy physics: the same pooled hearts, the same solver).
 //
 //   through the ring = 2, clean through without touching it (a swish) = 3, a long shot +1, from the 3rd in a row +1,

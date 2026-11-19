@@ -191,7 +191,7 @@ async function openSpeechHarness(query: string) {
   return { page, context, errors, getLog, bearFinals, waitBearFinals, type };
 }
 
-await check('demo call: rings, Cheer Bear greets ONCE out loud with a friendly voice, mouth moves, then she waits (no loop)', async () => {
+await check('demo call: rings, Happi greets ONCE out loud with a friendly voice, mouth moves, then she waits (no loop)', async () => {
   const h = await openSpeechHarness('?mockVoice=fast&noai');
   (globalThis as any).__demo = h; // the next checks continue this call
   await h.page.click('#start');
@@ -203,7 +203,7 @@ await check('demo call: rings, Cheer Bear greets ONCE out loud with a friendly v
   assert.ok(log.filter((e) => e.t === 'status').every((e) => e.mock === true), 'status says mock');
   const finals = await h.bearFinals();
   assert.equal(finals.length, 1, `greets once, then waits: ${finals.map((f) => f.text).join(' | ')}`);
-  assert.match(finals[0].text, /Cheer Bear/);
+  assert.match(finals[0].text, /Happi/);
   const partials = log.filter((e) => e.t === 'transcript' && e.id === finals[0].id && !e.final);
   assert.ok(partials.length >= 4, `her words stream as partials (${partials.length})`);
   assert.ok(partials.every((p, i) => i === 0 || p.text.length > partials[i - 1].text.length), 'partials grow word by word');

@@ -1,4 +1,4 @@
-// AR: Cheer Bear and her house on your floor (world tracking, back camera).
+// AR: Happi and her house on your floor (world tracking, back camera).
 //
 //   placing  the stage follows a reticle on the floor; pinch to size it; Place is enabled once tracking has settled
 //   placed   joystick walks her (camera-relative); Move (bottom left) is a full re-placement: out of the house,
@@ -109,8 +109,8 @@ export class ArMode implements Mode {
     this.kit = new PlayKit(stage);
 
     const hud = sh.hud;
-    this.placeBtn = hud.pill('Place Cheer Bear', () => this.place());
-    this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Cheer Bear somewhere else', onClick: () => this.move() });
+    this.placeBtn = hud.pill('Place Happi', () => this.place());
+    this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Happi somewhere else', onClick: () => this.move() });
     this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
     this.leaveBtn = hud.toolButton({ label: 'Leave', icon: ICON.leave, aria: 'Leave the house', onClick: () => this.leaveHouse() });
     this.walk = new HouseWalk(sh, stage, runner, {
@@ -470,7 +470,7 @@ export class ArMode implements Mode {
         this.anchor.visible = true;
       }
       this.placeBtn.disabled = !hasHit;
-      this.placeBtn.textContent = hasHit ? 'Place Cheer Bear' : 'Getting ready…';
+      this.placeBtn.textContent = hasHit ? 'Place Happi' : 'Getting ready…';
     }
 
     // walking
@@ -550,7 +550,7 @@ export class ArMode implements Mode {
     this.walk.syncHud(walking && !this.game);
     // Games (above Move) once she is placed, while no game runs and you're not inside the house
     if (walking && !this.inside && !this.game && this.onPickGame) {
-      this.gamesBtn ??= hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Cheer Bear', onClick: () => this.onPickGame?.() });
+      this.gamesBtn ??= hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', onClick: () => this.onPickGame?.() });
       this.gamesBtn.dataset.cmd = 'games';
       hud.left.appendChild(this.gamesBtn);
     } else this.gamesBtn?.remove();

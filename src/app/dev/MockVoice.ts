@@ -1,8 +1,8 @@
 // Stand-ins for `src/voice` while it is being built (or when it fails to load).
 //
-// MockVoice: a simulated call with scripted Cheer Bear lines (streaming partials, then a final), triggers for the
+// MockVoice: a simulated call with scripted Happi lines (streaming partials, then a final), triggers for the
 // action words in each line, a fake remote stream and mute. URL flags: ?mockFast (short gaps between lines),
-// ?mockMicDenied (the call fails like a blocked microphone), ?mockNoScript (Cheer Bear stays quiet; drive it from
+// ?mockMicDenied (the call fails like a blocked microphone), ?mockNoScript (Happi stays quiet; drive it from
 // tests with window.__cbMock.voice.say(...)).
 //
 // UnavailableVoice: what production gets when the real voice module cannot load. Calling reports a friendly
@@ -20,7 +20,7 @@ const SCRIPT: Array<{ text: string; triggers: string[] }> = [
   { text: 'Want to see some magic? Here it comes!', triggers: ['Magic'] },
   { text: "Let's have a party for all our friends!", triggers: ['Party'] },
   { text: 'Should we dance? I just love to dance!', triggers: ['Dance'] },
-  { text: 'Come and see my house up in Care-a-Lot.', triggers: ['House'] },
+  { text: 'Come and see my house up in New York.', triggers: ['House'] },
   { text: 'I love running across the clouds.', triggers: ['Running'] },
   { text: "Brr, it's getting cold up here!", triggers: ['Cold'] },
   { text: "I'm getting a bit sleepy. Time for a little sleep.", triggers: ['Sleep'] },
@@ -56,7 +56,7 @@ export function createMockVoice(opts: { getConfig(): AppConfig }): VoiceSession 
     em.emit('trigger', { keyword, speaker, via, transcriptId, at: now });
   };
 
-  /** Fake loudness while Cheer Bear "talks" (syllable-like bumps), as viseme frames. */
+  /** Fake loudness while Happi "talks" (syllable-like bumps), as viseme frames. */
   const talk = (ms: number) => {
     const t0 = performance.now();
     const step = () => {

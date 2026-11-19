@@ -137,7 +137,7 @@ function HintBody() {
         </div>
       )}
 
-      <p className="cb-hint-note"><Info aria-hidden="true" size={18} /><span>It only counts when <strong>Cheer Bear</strong> says the word. You can’t just ask her to say it, so be clever!</span></p>
+      <p className="cb-hint-note"><Info aria-hidden="true" size={18} /><span>It only counts when <strong>Happi</strong> says the word. You can’t just ask her to say it, so be clever!</span></p>
 
       {mode.hints.general.length > 0 && (
         <>
@@ -159,8 +159,8 @@ function CompletionBody() {
   const mode = modes.find((m) => m.id === game.modeId);
   const time = game.completedAt ? game.completedAt - game.startedAt : null;
   const message = mode?.id === CHAT_TIME_ID
-    ? 'What a chat! Cheer Bear said every magic word. Want to talk more and see them again?'
-    : 'Great job getting Cheer Bear to say all the words!';
+    ? 'What a chat! Happi said every magic word. Want to talk more and see them again?'
+    : 'Great job getting Happi to say all the words!';
   return (
     <div className="cb-dialog-body">
       <div className="cb-confetti" aria-hidden="true">

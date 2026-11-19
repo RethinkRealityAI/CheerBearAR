@@ -1,4 +1,4 @@
-// Cheer Bear's AI chat brain (POST /api/chat): a strict kid-safe persona on a small, fast OpenAI chat model, with
+// Happi's AI chat brain (POST /api/chat): a strict kid-safe persona on a small, fast OpenAI chat model, with
 // OpenAI moderation on the child's text before anything else and on the reply after. Plain fetch, no SDK.
 // The browser falls back to its local brain (src/voice/cheerBrain.ts) whenever this fails, so errors are thrown,
 // never papered over here.
@@ -31,13 +31,13 @@ export function personaPrompt(keywords: string[], name: string | null): string {
     .map((k) => `- ${k}: ${ACTION_HINTS[k.toLowerCase().replace(/[^a-z]/g, '')] ?? `say "${k}"`}`)
     .join('\n');
   return [
-    'You are Cheer Bear, a cheerful, kind, caring bear who lives in Care-a-Lot, talking with a young child (about 4 to 10 years old) in a children\'s app.',
+    'You are Happi, the cheerful, kind official mascot of the Japan Parade & Street Fair in New York City (an orange squirrel in a navy happi coat), talking with a young child (about 4 to 10 years old) in a children\'s app.',
     'Rules you always follow:',
     '- Reply in 1 or 2 short sentences (under 30 words), simple happy words a small child understands. No lists, no emoji, no markdown.',
     '- Never ask for personal information. The only thing you may ask is the child\'s first name. Never ask for or repeat surnames, ages, addresses, schools, phone numbers, emails, photos or passwords; if the child shares one, gently say to keep it private for their grown-ups.',
-    '- Never give links, websites, apps, products or prices. Never pretend to be a real person. You are a friendly bear character.',
+    '- Never give links, websites, apps, products or prices. Never pretend to be a real person. You are a friendly mascot character.',
     '- If the child brings up anything unsafe, scary, violent, grown-up, medical, or says they are hurt or in danger, answer with warmth, say a trusted grown-up can help, and do not go into details.',
-    '- Keep Care Bears facts general (caring, sharing feelings, friendship, Care-a-Lot in the clouds). Do not invent story details, episodes, or facts you are unsure of.',
+    '- Keep facts general and friendly (the parade, Japanese festival fun, New York, friendship). Do not invent dates, places, schedules or facts you are unsure of.',
     '- Be encouraging and positive. Ask a short friendly question back sometimes.',
     'Magic words: when the child ASKS you to do one of these actions, say yes and include that exact word in your reply. In any other reply, do NOT use these words at all (they make things happen on screen):',
     actions,
@@ -77,10 +77,10 @@ export async function isFlagged(text: string): Promise<boolean> {
   const res = await post(`${o.baseUrl}/moderations`, o.apiKey, { model: o.moderationModel, input: text }, 6000);
   if (!res.ok) {
     console.error('[chat] moderation failed:', res.status, await safeText(res));
-    throw new HttpError(502, 'upstream_error', 'Cheer Bear could not answer right now.');
+    throw new HttpError(502, 'upstream_error', 'Happi could not answer right now.');
   }
   const data = (await res.json()) as { results?: Array<{ flagged?: boolean }> };
-  if (!Array.isArray(data.results)) throw new HttpError(502, 'upstream_error', 'Cheer Bear could not answer right now.');
+  if (!Array.isArray(data.results)) throw new HttpError(502, 'upstream_error', 'Happi could not answer right now.');
   return data.results.some((r) => r?.flagged === true);
 }
 
@@ -99,11 +99,11 @@ export async function chatReply(opts: { text: string; history: ChatTurn[]; name:
   }, 9000);
   if (!res.ok) {
     console.error('[chat] completion failed:', res.status, await safeText(res));
-    throw new HttpError(502, 'upstream_error', 'Cheer Bear could not answer right now.');
+    throw new HttpError(502, 'upstream_error', 'Happi could not answer right now.');
   }
   const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const reply = cleanReply(data.choices?.[0]?.message?.content || '');
-  if (!reply) throw new HttpError(502, 'upstream_error', 'Cheer Bear could not answer right now.');
+  if (!reply) throw new HttpError(502, 'upstream_error', 'Happi could not answer right now.');
   return reply;
 }
 
@@ -120,7 +120,7 @@ async function post(url: string, apiKey: string, body: unknown, timeoutMs: numbe
     });
   } catch (err) {
     console.error('[chat] OpenAI request failed:', err instanceof Error ? err.message : err);
-    throw new HttpError(502, 'upstream_error', 'Cheer Bear could not answer right now.');
+    throw new HttpError(502, 'upstream_error', 'Happi could not answer right now.');
   }
 }
 

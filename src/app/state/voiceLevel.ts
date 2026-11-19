@@ -1,4 +1,4 @@
-// Cheer Bear's voice level (0..1) for the UI: the talk button's rings and the call card avatar follow it.
+// Happi's voice level (0..1) for the UI: the talk button's rings and the call card avatar follow it.
 // Sources, best first: an analyser on her remote stream, else the `amplitude` of the viseme frames. Nothing runs
 // unless something subscribes (the orb subscribes only during a call), and subscribers get the value straight from
 // a rAF loop, so React never re-renders for it.

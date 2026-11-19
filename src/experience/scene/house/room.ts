@@ -1,4 +1,4 @@
-// The room behind Cheer Bear's door, life size: pink heart-and-star wallpaper over white panelling with a rainbow
+// The room behind Happi's door, life size: pink heart-and-star wallpaper over white panelling with a rainbow
 // rail, a lavender plank floor with a big heart rug, a sky ceiling with flat clouds and a cloud trim, fairy lights,
 // a rainbow window with clouds drifting past, the TV playing the theme (Dapo's TV model), the jukebox, her tub,
 // mirror and shelf (Dapo's models), a cloud sofa, a star lamp, a bed with a heart pillow, a photo wall of this

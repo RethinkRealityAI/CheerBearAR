@@ -3,7 +3,7 @@
 //
 //   voice 'trigger'      -> game rules -> experience.trigger(keyword)
 //   voice 'remoteStream' -> experience.setSpeechStream(stream)
-//   voice 'transcript'   -> chat list; Cheer Bear's finals -> experience.setSpeechText() when visibility allows
+//   voice 'transcript'   -> chat list; Happi's finals -> experience.setSpeechText() when visibility allows
 //   voice 'status'       -> talk button state, toasts
 //   experience 'started' -> app UI appears, welcome modal, game timer starts
 //   experience 'userGesture' -> unlock audio
@@ -29,22 +29,22 @@ const mid = () => `m${Date.now().toString(36)}${(msgSeq++).toString(36)}`;
 export function friendlyCallError(message: string | null | undefined, code?: string): string {
   if (code === 'mic_denied') return 'Your microphone is blocked. Allow it for this page, then try again.';
   if (code === 'not_configured') return "Calling isn't working right now. You can still play!";
-  if (code === 'token_failed') return "We couldn't reach Cheer Bear. Check your internet and try again.";
+  if (code === 'token_failed') return "We couldn't reach Happi. Check your internet and try again.";
   if (code === 'call_failed') return "The call didn't connect. Tap to try again.";
   const m = (message ?? '').toLowerCase();
   if (/permission|denied|notallowed|not allowed|microphone/.test(m)) {
     return 'Your microphone is blocked. Allow it for this page, then try again.';
   }
   if (/unavailable|missing|not configured/.test(m)) return "Calling isn't working right now. You can still play!";
-  if (/busy|no answer|declined|rejected/.test(m)) return "Cheer Bear didn't pick up. Try again in a moment.";
+  if (/busy|no answer|declined|rejected/.test(m)) return "Happi didn't pick up. Try again in a moment.";
   if (/offline|network/.test(m)) return 'No internet connection. Check it and try again.';
-  return "We couldn't reach Cheer Bear. Tap to try again.";
+  return "We couldn't reach Happi. Tap to try again.";
 }
 
 export class AppController {
   experience: ExperienceApi | null = null;
   voice: VoiceSession | null = null;
-  /** Cheer Bear's voice level for the talk button (subscribe; no React state). */
+  /** Happi's voice level for the talk button (subscribe; no React state). */
   readonly level = new VoiceLevel();
   /** Voice mode (hold the talk button and say what should happen; no call). src/app/voiceMode.ts */
   readonly voiceUi: VoiceModeUi;
@@ -245,11 +245,11 @@ export class AppController {
     this.set({ call: status, callMessage: message ?? null });
     if (status === 'in-call' && prev !== 'in-call') {
       this.set({ callStartedAt: Date.now() });
-      this.addMessage({ kind: 'system', text: 'You are on a call with Cheer Bear.', final: true, source: 'system' });
-      this.showToast('info', 'Connected! Say hi to Cheer Bear.', 2400);
+      this.addMessage({ kind: 'system', text: 'You are on a call with Happi.', final: true, source: 'system' });
+      this.showToast('info', 'Connected! Say hi to Happi.', 2400);
       this.experience?.trigger('WakeUp');
     }
-    // demo call: e.g. "This browser can't listen here, so type to Cheer Bear instead."
+    // demo call: e.g. "This browser can't listen here, so type to Happi instead."
     if (status === 'in-call' && prev === 'in-call' && code === 'demo' && message) this.showToast('info', message, 5000);
     if (status !== 'in-call' && status !== 'ending') this.set({ callStartedAt: null });
     if (status === 'idle' && (prev === 'in-call' || prev === 'ending')) {
@@ -277,7 +277,7 @@ export class AppController {
     const kind = t.speaker === 'cheer_bear' ? 'bear' : 'user';
     const exists = this.s.messages.some((m) => m.id === t.id);
     if (exists) this.patchMessage(t.id, { text: t.text, final: t.final });
-    // `chat`: the demo Cheer Bear answering a typed message: shown like a chat reply (not a call transcript)
+    // `chat`: the demo Happi answering a typed message: shown like a chat reply (not a call transcript)
     else this.addMessage({ id: t.id, kind, text: t.text, final: t.final, source: t.chat ? 'typed' : 'call' });
 
     if (t.speaker !== 'cheer_bear') return;
@@ -387,8 +387,8 @@ export class AppController {
     try {
       const res = await this.voice.sendText(text) as { smsSent: boolean; replied?: boolean };
       const inCall = this.s.call === 'in-call';
-      // `replied`: the demo Cheer Bear answers out loud (voice module extra)
-      this.patchMessage(id, { note: res.smsSent ? 'Sent' : inCall || res.replied ? undefined : 'Call Cheer Bear to send this' });
+      // `replied`: the demo Happi answers out loud (voice module extra)
+      this.patchMessage(id, { note: res.smsSent ? 'Sent' : inCall || res.replied ? undefined : 'Call Happi to send this' });
     } catch (err) {
       console.warn('[app] sendText failed', err);
       this.patchMessage(id, { note: 'Not sent. Try again.' });

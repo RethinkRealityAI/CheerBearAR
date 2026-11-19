@@ -1,4 +1,4 @@
-// "Watch photo animation": Cheer Bear's reveal clip (CB-reveal-green, transcoded to /media/capture/reveal.mp4) with the
+// "Watch photo animation": Happi's reveal clip (CB-reveal-green, transcoded to /media/capture/reveal.mp4) with the
 // user's photo put into the picture frame she ends up holding. The old Mattercraft scene keyed nothing (similarity 0):
 // it laid the photo over the frame's opening for the last 0.75 s (RevealPhoto, 9051 -> 9804 ms) and held there. We do
 // the same on a 2D canvas, measured on the clip's frames: the opening is x 505-1000, y 875-1495 of 1080x1920 and the
@@ -69,7 +69,7 @@ export class RevealPlayer {
     c.width = 720;
     c.height = 1280;
     c.setAttribute('role', 'img');
-    c.setAttribute('aria-label', 'Cheer Bear puts your photo in her picture frame');
+    c.setAttribute('aria-label', 'Happi puts your photo in her picture frame');
     stage.appendChild(c);
     const close = iconButton(CICON.close, 'Close the animation', () => this.close(), 'cbc-pl-close');
     this.skipBtn = actionButton('Skip', CICON.skip, () => this.skip(), 'ghost');
@@ -253,7 +253,7 @@ export class BtsPlayer {
     return !!this.video && !this.video.paused;
   }
 
-  /** Call from a tap. `photo`: the user's photo, put into the picture frame Cheer Bear holds in the clip. */
+  /** Call from a tap. `photo`: the user's photo, put into the picture frame Happi holds in the clip. */
   play(photo?: Blob | null): void {
     this.close();
     const n = el('div', 'cbc-player');
@@ -268,7 +268,7 @@ export class BtsPlayer {
       c.width = BTS_TRACK.size[0];
       c.height = BTS_TRACK.size[1];
       c.setAttribute('role', 'img');
-      c.setAttribute('aria-label', 'Behind the scenes: filming Cheer Bear, holding your photo');
+      c.setAttribute('aria-label', 'Behind the scenes: filming Happi, holding your photo');
       stage.appendChild(c);
       v.style.cssText = 'position:absolute;width:2px;height:2px;opacity:0;pointer-events:none;left:0;top:0';
       n.appendChild(v); // iOS: in the document, or drawImage gets no frames
@@ -278,7 +278,7 @@ export class BtsPlayer {
       img.src = this.photoUrl;
       this.photo = img;
     } else {
-      v.setAttribute('aria-label', 'Behind the scenes: filming Cheer Bear');
+      v.setAttribute('aria-label', 'Behind the scenes: filming Happi');
       stage.appendChild(v);
     }
     const close = iconButton(CICON.close, 'Close', () => this.close(), 'cbc-pl-close');

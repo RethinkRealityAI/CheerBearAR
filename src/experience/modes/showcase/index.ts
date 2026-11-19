@@ -1,4 +1,4 @@
-// Showcase: Cheer Bear in Care-a-Lot, no camera. Its own WebGL canvas and renderer (works on computers); the engine
+// Showcase: Happi in New York, no camera. Its own WebGL canvas and renderer (works on computers); the engine
 // is stopped while it runs, and this renderer is disposed (context released) whenever a camera mode runs.
 //
 // Also renders the splash: the bear stands inside the splash's transparent "hero window" (setViewOffset framing),
@@ -21,7 +21,7 @@ import { PlayKit, type PlayGame, type PlayHost } from '../../play';
 /** The "throw hearts" hint shows once per visit (after the look-around hint). */
 let tossHinted = false;
 
-const FOV_WIDE = 50; // portrait screens: a taller view shows more of Care-a-Lot
+const FOV_WIDE = 50; // portrait screens: a taller view shows more of New York
 const FOV_LAND = 38;
 const PLAY = { dist: 3.5, pitch: 0.14, targetY: 0.78 }; // looking a little above her: she stands in the lower half, clear of the top bar
 const LIM = { yaw: 1.0, pitchMin: 0.02, pitchMax: 0.6, distMin: 1.9, distMax: 6, area: 3.4 };
@@ -111,7 +111,7 @@ export class ShowcaseMode implements Mode {
     if (this.ready) return this.ready;
     const c = document.createElement('canvas');
     c.className = 'cbx-3d';
-    c.setAttribute('aria-label', 'Cheer Bear in Care-a-Lot');
+    c.setAttribute('aria-label', 'Happi in New York');
     c.style.visibility = 'hidden';
     this.sh.container.insertBefore(c, this.sh.container.firstChild);
     this.canvas = c;
@@ -306,7 +306,7 @@ export class ShowcaseMode implements Mode {
     this.stick = this.sh.hud.joystick(stick);
     if (!stick) this.stick = null;
     if (!g && this.onPickGame) {
-      this.gamesBtn ??= this.sh.hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Cheer Bear', onClick: () => this.onPickGame?.() });
+      this.gamesBtn ??= this.sh.hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', onClick: () => this.onPickGame?.() });
       this.gamesBtn.dataset.cmd = 'games';
       if (this.gamesBtn.parentElement !== this.sh.hud.left) this.sh.hud.left.appendChild(this.gamesBtn);
     } else this.gamesBtn?.remove();

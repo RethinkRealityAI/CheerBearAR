@@ -31,7 +31,7 @@ export function TriggerSection() {
           hint="Faster reactions, but the transcriber's early guesses can be wrong, so expect more false alarms. Off is recommended." />
         <Toggle label="Typed messages can trigger reactions" checked={draft.allowUserTriggers}
           onChange={(v) => edit((d) => { d.allowUserTriggers = v; })}
-          hint="When on, a visitor typing a keyword in the chat plays its reaction. When off, only Cheer Bear's own words do." />
+          hint="When on, a visitor typing a keyword in the chat plays its reaction. When off, only Happi's own words do." />
       </Group>
     </Section>
   );

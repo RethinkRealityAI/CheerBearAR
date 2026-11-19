@@ -1,4 +1,4 @@
-/* Cheer Bear experience: canvases, splash, in-camera HUD, sheets. Everything is scoped under .cbx so it never leaks
+/* Happi experience: canvases, splash, in-camera HUD, sheets. Everything is scoped under .cbx so it never leaks
    into the React app around it. Flat colours only (house rule: no gradients anywhere). Tokens: src/shared/theme.css. */
 
 .cbx {
@@ -43,16 +43,23 @@
   transition: transform 0.7s var(--cb-ease), opacity 0.5s ease;
 }
 .cbx-splash .sp-top img.title {
-  width: min(76vw, 340px); height: auto; display: block; position: relative; z-index: 1;
+  width: min(66vw, 300px); height: auto; display: block; position: relative; z-index: 1;
   animation: cbx-title-in 0.9s var(--cb-ease-spring) 0.05s both;
 }
-/* flat clouds hanging into the window */
+/* the happi coat's navy and white checker trim, top and bottom of the window (flat, no gradients) */
 .cbx-splash .sp-top::after, .cbx-splash .sp-bottom::before {
-  content: ""; position: absolute; left: -10%; right: -10%; height: 46px; pointer-events: none;
-  background-repeat: repeat-x; background-size: 92px 46px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 92 46'%3E%3Cg fill='%23d4edff'%3E%3Ccircle cx='23' cy='10' r='23'/%3E%3Ccircle cx='69' cy='4' r='20'/%3E%3C/g%3E%3C/svg%3E");
+  content: ""; position: absolute; left: 0; right: 0; height: 14px; pointer-events: none;
+  background-repeat: repeat-x; background-size: 28px 14px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 14'%3E%3Crect width='28' height='14' fill='%23283a8f'/%3E%3Crect width='7' height='7' fill='%23ffffff'/%3E%3Crect x='14' width='7' height='7' fill='%23ffffff'/%3E%3Crect x='7' y='7' width='7' height='7' fill='%23ffffff'/%3E%3Crect x='21' y='7' width='7' height='7' fill='%23ffffff'/%3E%3C/svg%3E");
 }
-.cbx-splash .sp-top::after { bottom: -45px; }
+.cbx-splash .sp-top::after { bottom: -14px; }
+.cbx-splash .sp-top { flex-direction: column; align-items: center; gap: 10px; }
+.cbx-splash .sp-eyebrow {
+  margin: 0; text-align: center; color: var(--cb-blue); font-size: 13px; line-height: 1.25; letter-spacing: 0.14em;
+  text-transform: uppercase; font-weight: var(--cb-w-label); animation: cbx-fade 0.6s ease-out 0.25s both;
+}
+.cbx-splash .sp-eyebrow b { display: inline-block; margin-top: 4px; padding: 3px 12px; border-radius: var(--cb-r-pill); background: var(--cb-pink); color: var(--cb-white); letter-spacing: 0.16em; font-weight: var(--cb-w-strong); }
+.cbx-splash .sp-credit { margin: 0; max-width: 34ch; font-size: 13px; line-height: 1.35; color: var(--cb-ink-soft); }
+.cbx-splash .sp-credit b { color: var(--cb-ink); font-weight: var(--cb-w-strong); }
 .cbx-splash .sp-hero { flex: 1 1 auto; min-height: 120px; position: relative; pointer-events: none; }
 .cbx-splash .sp-hero .sp-wait {
   position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
@@ -66,22 +73,19 @@
   display: flex; flex-direction: column; align-items: center; gap: 12px;
   transition: transform 0.7s var(--cb-ease), opacity 0.5s ease;
 }
-.cbx-splash .sp-bottom::before {
-  top: -45px; transform: scaleY(-1);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 92 46'%3E%3Cg fill='%23ffffff'%3E%3Ccircle cx='23' cy='10' r='23'/%3E%3Ccircle cx='69' cy='4' r='20'/%3E%3C/g%3E%3C/svg%3E");
-}
+.cbx-splash .sp-bottom::before { top: -14px; }
 .cbx-splash .lead { margin: 0; max-width: 30ch; font-size: 17px; font-weight: var(--cb-w-label); color: var(--cb-ink); }
 .cbx-start {
   min-width: 230px; min-height: 58px; padding: 0 28px; border: 0; border-radius: var(--cb-r-pill); cursor: pointer;
   background: var(--cb-pink); color: var(--cb-white); font-size: 20px; font-weight: var(--cb-w-strong); letter-spacing: 0.02em;
-  box-shadow: 0 6px 0 var(--cb-pink-deep), 0 10px 22px rgba(216, 27, 124, 0.28);
+  box-shadow: 0 6px 0 var(--cb-pink-deep), 0 10px 22px rgba(201, 86, 26, 0.28);
   transition: transform var(--cb-dur-1) var(--cb-ease), box-shadow var(--cb-dur-1) var(--cb-ease), opacity var(--cb-dur-2), background-color var(--cb-dur-2);
 }
 .cbx-start.ready { animation: cbx-pop-in 0.55s var(--cb-ease) both; }
 @media (hover: hover) {
-  .cbx-start:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 0 var(--cb-pink-deep), 0 14px 26px rgba(216, 27, 124, 0.3); }
+  .cbx-start:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 0 var(--cb-pink-deep), 0 14px 26px rgba(201, 86, 26, 0.3); }
 }
-.cbx-start:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 var(--cb-pink-deep), 0 4px 10px rgba(216, 27, 124, 0.2); }
+.cbx-start:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 var(--cb-pink-deep), 0 4px 10px rgba(201, 86, 26, 0.2); }
 .cbx-start:disabled { opacity: 0.55; cursor: default; box-shadow: 0 6px 0 var(--cb-pink-deep); }
 .cbx-load { width: 170px; height: 6px; border-radius: var(--cb-r-pill); background: var(--cb-pink-soft); overflow: hidden; transition: opacity var(--cb-dur-3), visibility 0s var(--cb-dur-3); }
 .cbx-load i { display: block; height: 100%; width: 0; background: var(--cb-pink); border-radius: var(--cb-r-pill); transition: width 0.45s var(--cb-ease); }
@@ -221,7 +225,7 @@
 }
 .cbx-toast.on { opacity: 1; transform: translate(-50%, -50%) scale(1); transition: opacity var(--cb-dur-1) ease, transform var(--cb-dur-3) var(--cb-ease-spring); }
 
-/* what Cheer Bear says: a white bubble with her name, a tail pointing up at her, words that reveal one by one */
+/* what Happi says: a white bubble with her name, a tail pointing up at her, words that reveal one by one */
 .cbx-bubble {
   position: absolute; left: 50%; bottom: calc(var(--cbx-bottom) + 132px); transform: translate3d(-50%, 10px, 0) scale(0.96);
   transform-origin: 50% 0; width: max-content; max-width: min(360px, calc(100% - 40px)); padding: 9px 18px 12px;

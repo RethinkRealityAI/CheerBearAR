@@ -52,7 +52,7 @@ export class ReviewSheet {
     const ph = el('div', 'cbc-rv-photo');
     const img = el('img');
     img.src = this.url;
-    img.alt = 'Your photo with Cheer Bear';
+    img.alt = 'Your photo with Happi';
     ph.appendChild(img);
 
     const acts = el('div', 'cbc-rv-actions');

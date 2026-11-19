@@ -1,6 +1,6 @@
 // The user's side of the demo call: the browser's own speech recognition (SpeechRecognition /
 // webkitSpeechRecognition), continuous with interim results, restarted whenever the browser ends it (they all stop
-// after a pause or a minute). Mute pauses it. While Cheer Bear is talking (and a moment after) results are ignored,
+// after a pause or a minute). Mute pauses it. While Happi is talking (and a moment after) results are ignored,
 // so her own voice from the speakers is not heard as the user. Not supported / denied are reported once through
 // `onState` and never retried in a loop.
 //
@@ -54,7 +54,7 @@ export function browserRecognition(): RecognitionFactory | null {
 
 const MAX_RESTARTS = 8; // within RESTART_WINDOW_MS, then give up (the service keeps failing)
 const RESTART_WINDOW_MS = 20_000;
-/** Results that start within this long after Cheer Bear stops talking are her echo, not the user. */
+/** Results that start within this long after Happi stops talking are her echo, not the user. */
 const ECHO_TAIL_MS = 700;
 let instances = 0;
 
@@ -67,7 +67,7 @@ export class SpeechInput {
   private restarts: number[] = [];
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private session = 0;
-  /** result index -> ignored (heard while Cheer Bear was talking) */
+  /** result index -> ignored (heard while Happi was talking) */
   private tainted = new Set<number>();
   private seen = new Set<number>();
   private finals = new Set<number>();
@@ -98,7 +98,7 @@ export class SpeechInput {
     this.wanted = true;
     if (!this.factory) {
       this.blocked = true;
-      this.setState('unsupported', "This browser can't listen here, so type to Cheer Bear instead.");
+      this.setState('unsupported', "This browser can't listen here, so type to Happi instead.");
       return;
     }
     if (!this.paused) this.open();
@@ -121,7 +121,7 @@ export class SpeechInput {
     } else this.open();
   }
 
-  /** Cheer Bear started / stopped talking (her voice comes out of the speakers). */
+  /** Happi started / stopped talking (her voice comes out of the speakers). */
   setBearTalking(talking: boolean): void {
     this.bearTalking = talking;
     if (!talking) this.bearStoppedAt = Date.now();
@@ -134,7 +134,7 @@ export class SpeechInput {
       rec = this.factory();
     } catch (err) {
       this.blocked = true;
-      this.setState('unsupported', "This browser can't listen here, so type to Cheer Bear instead.");
+      this.setState('unsupported', "This browser can't listen here, so type to Happi instead.");
       console.warn('[voice] speech recognition unavailable:', err);
       return;
     }
@@ -187,7 +187,7 @@ export class SpeechInput {
     this.restarts = this.restarts.filter((t) => now - t < RESTART_WINDOW_MS);
     if (this.restarts.length >= MAX_RESTARTS) {
       this.blocked = true;
-      this.setState('error', "Cheer Bear can't hear you right now, so type to her instead.");
+      this.setState('error', "Happi can't hear you right now, so type to her instead.");
       return;
     }
     this.restarts.push(now);
@@ -203,17 +203,17 @@ export class SpeechInput {
       case 'service-not-allowed':
         this.blocked = true;
         this.close();
-        this.setState('denied', 'Microphone blocked, so type to Cheer Bear instead.');
+        this.setState('denied', 'Microphone blocked, so type to Happi instead.');
         return;
       case 'audio-capture':
         this.blocked = true;
         this.close();
-        this.setState('error', 'No microphone found, so type to Cheer Bear instead.');
+        this.setState('error', 'No microphone found, so type to Happi instead.');
         return;
       case 'language-not-supported':
         this.blocked = true;
         this.close();
-        this.setState('unsupported', "This browser can't listen in English here, so type to Cheer Bear instead.");
+        this.setState('unsupported', "This browser can't listen in English here, so type to Happi instead.");
         return;
       case 'no-speech':
       case 'aborted':

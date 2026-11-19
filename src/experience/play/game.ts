@@ -3,7 +3,7 @@
 // tab hidden, Move in AR, the pause button), the scoreboard / countdown / results UI and a clean teardown.
 //
 // A game runs inside ONE mode (3D showcase or AR), which hands it a PlayHost (its stage, runner, kit, HUD bits) and
-// calls `update(dt)` every frame (instead of the free heart toss) and `walk(dt)` when the game moves Cheer Bear.
+// calls `update(dt)` every frame (instead of the free heart toss) and `walk(dt)` when the game moves Happi.
 import * as THREE from 'three';
 import type { PlayGameId, PlayStatus } from '../../shared/contracts';
 import type { Stage } from '../scene/stage';

@@ -1,4 +1,4 @@
-// The Care Bear Stare beam: six flat rainbow stripes (no gradients) that roll out from Cheer Bear's tummy, dip to the
+// The Care Bear Stare beam: six flat rainbow stripes (no gradients) that roll out from Happi's tummy, dip to the
 // floor and run along it towards the viewer. One mesh, one program (built and compiled with the stage); its vertices
 // are rewritten in place while the beam is on (preallocated, nothing allocated per frame).
 import * as THREE from 'three';

@@ -1,6 +1,6 @@
 // Browser -> OpenAI Realtime transcription over WebRTC (GA API).
 //   1. POST /api/realtime-session { speaker } -> short-lived client secret (our function holds the API key).
-//   2. RTCPeerConnection with ONE outgoing audio track (Cheer Bear's remote call audio, or the user's microphone),
+//   2. RTCPeerConnection with ONE outgoing audio track (Happi's remote call audio, or the user's microphone),
 //      data channel "oai-events", SDP offer POSTed to https://api.openai.com/v1/realtime/calls with the secret.
 //   3. Events on the data channel:
 //        conversation.item.input_audio_transcription.delta     { item_id, delta }      -> partial

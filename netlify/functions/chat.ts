@@ -1,5 +1,5 @@
 // POST /api/chat { text, history?, name? } -> { reply, flagged, source: 'ai' }
-// Cheer Bear's optional AI brain for the demo call and typed chat (src/voice/brain.ts). Same-origin only, per-IP limit,
+// Happi's optional AI brain for the demo call and typed chat (src/voice/brain.ts). Same-origin only, per-IP limit,
 // 8 KB body. The child's text is redacted (emails, links, digit runs) and run through OpenAI moderation first; a
 // flagged message gets a fixed kind answer and never reaches the chat model. The reply is moderated too.
 // 503 not_configured without OPENAI_API_KEY; 403 disabled when the admin turned the AI brain off. The browser uses

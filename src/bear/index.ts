@@ -7,16 +7,18 @@
 //   // in a tap:   unlockAudio();
 //   // on a call:  bear.setSpeechStream(remoteStream);
 import type { BearCharacter } from '../shared/contracts';
-import { Bear, type LoadBearOptions } from './Bear';
+import type { LoadBearOptions } from './Bear';
+import { Happi, HAPPI_MODEL_URL } from '../happi/Happi';
 
 export { unlockAudio } from '../audio/context';
 export type { LoadBearOptions } from './Bear';
 export { Bear } from './Bear';
+export { Happi } from '../happi/Happi';
 
-/** URL of the one Cheer Bear model used everywhere. */
-export const BEAR_MODEL_URL = '/models/cheer-bear.glb';
+/** URL of the one character model used everywhere (Happi in this build). */
+export const BEAR_MODEL_URL = HAPPI_MODEL_URL;
 
-/** Load Cheer Bear. Resolves with a ready character (body idle playing, face alive). */
+/** Load the character (Happi). Resolves with a ready character (idle playing, face alive). */
 export function loadBear(opts?: LoadBearOptions): Promise<BearCharacter> {
-  return Bear.load(opts);
+  return Happi.load(opts);
 }

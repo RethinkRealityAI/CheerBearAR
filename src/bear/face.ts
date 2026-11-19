@@ -55,6 +55,8 @@ export const EXPRESSIONS: Record<BearExpression, ExpressionDef> = {
     lid: [1, 0],
     talkKeep: 0.7,
   },
+  love: { shapes: { ...both('mouthSmile', 0.55), ...both('cheekSquint', 0.55) }, lid: [0.1, 0.1], talkKeep: 0.4 },
+  excited: { shapes: { ...both('mouthSmile', 0.6), browInnerUp: 0.3 }, talkKeep: 0.4 },
 };
 
 /** Shapes that belong to the mouth (scaled down while talking so visemes read clearly). */
@@ -92,7 +94,7 @@ export class FaceRig {
   private talk = 0;
 
   // expressions: current blend weights per expression
-  private expr: Record<BearExpression, number> = { neutral: 1, happy: 0, surprised: 0, sleepy: 0, cold: 0, wink: 0 };
+  private expr: Record<BearExpression, number> = { neutral: 1, happy: 0, surprised: 0, sleepy: 0, cold: 0, wink: 0, love: 0, excited: 0 };
   private exprTarget: BearExpression = 'neutral';
   private exprHold = 0;
 

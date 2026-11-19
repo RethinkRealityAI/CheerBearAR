@@ -1,9 +1,9 @@
 // Voice entry point (see src/shared/contracts.ts):
-//   createVoiceSession({ getConfig }) -> VoiceSession   call, transcripts, triggers, Cheer Bear's audio stream
+//   createVoiceSession({ getConfig }) -> VoiceSession   call, transcripts, triggers, Happi's audio stream
 //   configClient                      -> ConfigClient   public runtime config (GET /api/config)
 //   adminApi                          -> AdminApi       admin endpoints (/api/admin/*)
 // Owner: server-voice. Demo call without accounts: add ?mockVoice to the URL (see mock.ts). Typed chat with no call
-// live is answered by the demo Cheer Bear too (demoBear.ts; config.demoVoice).
+// live is answered by the demo Happi too (demoBear.ts; config.demoVoice).
 export { createVoiceSession } from './session';
 export type { CreateVoiceSessionOptions, VoiceSessionExt, VoiceStatusEvent, VoiceStatusCode } from './session';
 export { configClient } from './configClient';

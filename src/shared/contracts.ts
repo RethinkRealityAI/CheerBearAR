@@ -1,7 +1,7 @@
 // The contracts between the parts of the app. Each part is built by a different owner (see docs/ARCHITECTURE.md),
 // so everything that crosses a boundary is typed here. Change a contract only together with its owner.
 //
-//   voice  (src/voice)       -> emits transcripts, triggers and Cheer Bear's audio stream
+//   voice  (src/voice)       -> emits transcripts, triggers and Happi's audio stream
 //   experience (src/experience) -> the 3D / AR / selfie / photo view; takes actions and a speech stream
 //   bear   (src/bear)        -> the character: body clips, face, lip sync
 //   app    (src/app)         -> React UI that wires voice to experience, plus chat, games, settings, admin
@@ -10,7 +10,7 @@
 // Here they are direct calls on `ExperienceApi`.
 
 // ------------------------------------------------------------------ actions
-/** The trigger words Cheer Bear reacts to. Admin can add more keywords; unknown ones fall back to a generic cheer. */
+/** The trigger words Happi reacts to. Admin can add more keywords; unknown ones fall back to a generic cheer. */
 export const CORE_ACTIONS = [
   'House', 'Sparkle', 'Running', 'WakeUp', 'Sleep', 'Dance', 'Wave', 'Magic', 'Cold', 'Party', 'Rainbow', 'Stare',
 ] as const;
@@ -35,7 +35,7 @@ export interface VisemeFrame {
 /** Body clips the character must provide (names are logical; the Bear class maps them to GLB clip names). */
 export type BearClip =
   | 'idle' | 'talkIdle' | 'wave' | 'walk' | 'run' | 'dance' | 'cheer' | 'sway' | 'present' | 'sleep' | 'wakeUp' | 'shiver';
-export type BearExpression = 'neutral' | 'happy' | 'surprised' | 'sleepy' | 'cold' | 'wink';
+export type BearExpression = 'neutral' | 'happy' | 'surprised' | 'sleepy' | 'cold' | 'wink' | 'love' | 'excited';
 
 export interface BearCharacter {
   /** The object to add to a scene. Feet on y = 0, facing +z, `height` metres tall at scale 1. */
@@ -48,7 +48,7 @@ export interface BearCharacter {
   setExpression(e: BearExpression, opts?: { hold?: number }): void;
   /** Feed lip sync directly (the Bear smooths and maps to its blend shapes). Null closes the mouth. */
   setVisemes(frame: VisemeFrame | null): void;
-  /** Lip sync from a live stream (Cheer Bear's side of the call). Null stops and closes the mouth. */
+  /** Lip sync from a live stream (Happi's side of the call). Null stops and closes the mouth. */
   setSpeechStream(stream: MediaStream | null): void;
   /** Play a sound file out loud with lip sync. Resolves when it ends (or at once if audio is locked). */
   say(audioUrl: string): Promise<void>;
@@ -100,7 +100,7 @@ export interface PlayStatus {
 }
 /** Things you can tell the experience to do by voice (hold-to-talk) or from the app. */
 export type ExperienceCommand = 'capture' | 'place' | 'move' | 'pause' | 'resume' | 'again'
-  /** (voice-3) a hug from Cheer Bear in 3D / placed AR: the same squeeze + ring of hearts as a long press on her. */
+  /** (voice-3) a hug from Happi in 3D / placed AR: the same squeeze + ring of hearts as a long press on her. */
   | 'hug';
 
 export interface ExperienceApi {
@@ -114,9 +114,9 @@ export interface ExperienceApi {
   trigger(action: ActionName): boolean;
   /** Names `trigger` understands, for quick-action buttons. */
   readonly actions: readonly string[];
-  /** Cheer Bear's voice: the experience runs lip sync on it. Null when the call ends. */
+  /** Happi's voice: the experience runs lip sync on it. Null when the call ends. */
   setSpeechStream(stream: MediaStream | null): void;
-  /** Show what Cheer Bear is saying in a speech bubble (null hides it). */
+  /** Show what Happi is saying in a speech bubble (null hides it). */
   setSpeechText(text: string | null): void;
   /** Play a sound through the bear with lip sync (sample lines, tests). Resolves when it ends. */
   say(audioUrl: string, caption?: string): Promise<void>;
@@ -155,7 +155,7 @@ export interface TranscriptEvent {
   final: boolean;
   at: number;
   /**
-   * True when this is the demo Cheer Bear answering a TYPED chat message (not words heard on a call): the chat shows
+   * True when this is the demo Happi answering a TYPED chat message (not words heard on a call): the chat shows
    * it like a chat reply, whatever the call-transcript visibility policy says.
    */
   chat?: boolean;
@@ -181,7 +181,7 @@ export interface VoiceEvents {
   };
   transcript: TranscriptEvent;
   trigger: TriggerEvent;
-  /** Cheer Bear's audio (the remote side of the call), or null when it stops. Feed to ExperienceApi.setSpeechStream. */
+  /** Happi's audio (the remote side of the call), or null when it stops. Feed to ExperienceApi.setSpeechStream. */
   remoteStream: MediaStream | null;
   /**
    * Mouth shapes for speech that has no stream to analyse (the demo call's browser voice). Feed to
@@ -197,7 +197,7 @@ export interface VoiceSession {
   readonly status: CallStatus;
   readonly muted: boolean;
   /** Must be called from a tap (microphone permission + audio unlock). */
-  /** `mock: true` starts the demo call (no Twilio; Cheer Bear answers with the browser's voice). */
+  /** `mock: true` starts the demo call (no Twilio; Happi answers with the browser's voice). */
   startCall(opts?: { to?: string; mock?: boolean }): Promise<void>;
   endCall(): Promise<void>;
   setMuted(muted: boolean): void;

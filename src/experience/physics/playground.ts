@@ -1,4 +1,4 @@
-// The physical toys of one stage: soft hearts (thrown at Cheer Bear), bouncing stars (Rainbow, the Care Bear Stare)
+// The physical toys of one stage: soft hearts (thrown at Happi), bouncing stars (Rainbow, the Care Bear Stare)
 // and party balloons (they float, bump each other and pop when tapped). One World, three pooled instanced meshes
 // (one draw and one program each, built and compiled with the stage at load), plus the balloons' strings in one line
 // draw. Flat colours only. Everything despawns: resting toys shrink away, each kind has a hard cap and the oldest is
@@ -88,7 +88,7 @@ export class Playground {
   readonly stars: THREE.InstancedMesh;
   readonly balloons: THREE.InstancedMesh;
   readonly strings: THREE.LineSegments;
-  /** Cheer Bear's body (two static spheres) and the house walls (AR). */
+  /** Happi's body (two static spheres) and the house walls (AR). */
   readonly bearLow;
   readonly bearHigh;
   readonly houseBox;
