@@ -1,0 +1,130 @@
+/* Capture UI (xr-capture): countdown, flash, look/pose pickers, photo review sheet, reveal and behind-the-scenes
+   players, the selfie frame overlay. Scoped under .cbx (the experience root). Flat colours only, theme tokens from
+   src/shared/theme.css. The review and players sit at z-index 60+ over the HUD; their bottom padding keeps the app's
+   talk-button corner (--cbx-reserved) free so nothing sits under it. */
+
+/* ---------------------------------------------------------------- overlay art (selfie frame, title) */
+.cbx .cbc-overlay { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none !important; }
+
+/* ---------------------------------------------------------------- countdown */
+.cbx .cbc-count {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 12;
+  display: flex; flex-direction: column; align-items: center; gap: 12px; pointer-events: none;
+}
+.cbx .cbc-count span {
+  display: grid; place-items: center; width: 132px; height: 132px; border-radius: 50%;
+  background: rgba(8, 8, 10, 0.5); border: 6px solid var(--cb-white); color: var(--cb-white);
+  font-size: 76px; font-weight: 700; line-height: 1;
+}
+.cbx .cbc-count span.pop { animation: cbc-pop 0.9s var(--cb-ease); }
+.cbx .cbc-count small {
+  padding: 7px 14px; border-radius: 999px; background: rgba(8, 8, 10, 0.56); color: #fff; font-size: 13px; font-weight: 500;
+}
+@keyframes cbc-pop { 0% { transform: scale(1.35); opacity: 0.4; } 35% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.94); } }
+@media (prefers-reduced-motion: reduce) { .cbx .cbc-count span.pop { animation: none; } }
+
+.cbx .cbc-flash { position: absolute; inset: 0; z-index: 70; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.06s linear; }
+
+/* the shutter while the timer runs: a pink ring says "tap to shoot now" */
+.cbx .cbx-shutter.cbc-armed { border-color: var(--cb-pink); }
+.cbx .cbx-shutter.cbc-armed i { background: var(--cb-pink); transform: scale(0.62); border-radius: 18px; }
+.cbx .cbx-shutter:disabled { opacity: 0.5; }
+
+/* ---------------------------------------------------------------- pickers (look, pose) */
+.cbx .cbc-seg {
+  display: inline-flex; padding: 4px; gap: 2px; border-radius: 999px; background: var(--cb-glass);
+  border: 1px solid var(--cb-glass-line); -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur);
+  pointer-events: auto;
+}
+.cbx .cbc-seg button {
+  min-height: 40px; min-width: 64px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--cb-white); font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s;
+}
+.cbx .cbc-seg button[aria-checked="true"] { background: var(--cb-white); color: var(--cb-pink-deep); }
+
+.cbx .cbc-skip {
+  min-height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--cb-glass-line); background: var(--cb-glass);
+  color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur);
+}
+.cbx .cbc-still { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%; object-fit: cover; object-position: left bottom; pointer-events: none !important; transition: opacity 0.4s; }
+
+/* ---------------------------------------------------------------- buttons */
+.cbx .cbc-btn {
+  min-height: 52px; padding: 0 20px; border-radius: 999px; border: 0; cursor: pointer; font-size: 16px; font-weight: 650;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: 1 1 0; min-width: 0;
+  background: var(--cb-pink); color: var(--cb-white); box-shadow: 0 4px 0 var(--cb-pink-deep);
+}
+.cbx .cbc-btn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cbx .cbc-btn svg { width: 22px; height: 22px; flex: none; }
+.cbx .cbc-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--cb-pink-deep); }
+.cbx .cbc-btn.alt { background: var(--cb-pink-soft); color: var(--cb-pink-deep); box-shadow: none; }
+.cbx .cbc-btn.alt:active { box-shadow: none; }
+.cbx .cbc-btn.ghost { background: transparent; color: var(--cb-ink-soft); box-shadow: none; flex: none; min-height: 44px; padding: 0 12px; font-size: 14px; font-weight: 600; }
+.cbx .cbc-btn.ghost svg { width: 20px; height: 20px; }
+.cbx .cbc-ib {
+  width: 48px; height: 48px; border-radius: 50%; border: 0; padding: 0; display: grid; place-items: center; cursor: pointer;
+  background: var(--cb-pink-soft); color: var(--cb-pink-deep); flex: none;
+}
+.cbx .cbc-ib svg { width: 22px; height: 22px; }
+
+/* ---------------------------------------------------------------- review sheet */
+.cbx .cbc-review {
+  position: absolute; inset: 0; z-index: 60; background: var(--cb-white); color: var(--cb-ink);
+  display: flex; flex-direction: column; pointer-events: auto; touch-action: manipulation;
+  padding: calc(var(--cb-safe-top) + 10px) calc(var(--cb-safe-right) + 14px) 0 calc(var(--cb-safe-left) + 14px);
+  animation: cbc-in 0.28s var(--cb-ease);
+}
+@keyframes cbc-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cbx .cbc-review { animation: cbc-fade 0.2s linear; } }
+@keyframes cbc-fade { from { opacity: 0; } to { opacity: 1; } }
+.cbx .cbc-rv-top { display: flex; align-items: center; gap: 10px; min-height: 52px; flex: none; }
+.cbx .cbc-rv-top h2 { margin: 0; font-size: 22px; font-weight: 650; color: var(--cb-pink-deep); }
+.cbx .cbc-rv-photo { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px 0 10px; }
+.cbx .cbc-rv-photo img {
+  display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 18px;
+  border: 4px solid var(--cb-pink-soft); background: var(--cb-sky);
+  -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; pointer-events: auto;
+}
+.cbx .cbc-rv-actions {
+  flex: none; display: flex; flex-direction: column; gap: 10px; width: min(100%, 460px); margin: 0 auto;
+  /* the app's talk button lives in the bottom-right corner: keep the whole bottom strip under the buttons free */
+  padding-bottom: calc(var(--cb-safe-bottom) + max(12px, var(--cbx-reserved, 88px)));
+}
+.cbx .cbc-rv-actions .row { display: flex; gap: 10px; }
+/* Retake keeps its natural width so "Watch photo animation" fits on a 375 px phone */
+.cbx .cbc-rv-actions .row .cbc-btn.alt:first-child:not(:only-child) { flex: 0 0 auto; padding: 0 16px; }
+.cbx .cbc-rv-actions .row .cbc-btn.alt { padding: 0 14px; gap: 6px; }
+.cbx .cbc-rv-actions .row.foot { align-items: center; justify-content: space-between; min-height: 44px; gap: 6px; }
+.cbx .cbc-status { margin: 0; font-size: 14px; font-weight: 600; color: var(--cb-pink-deep); text-align: right; flex: 1 1 auto; }
+.cbx .cbc-status.light { color: var(--cb-white); text-align: center; flex-basis: 100%; }
+@media (max-height: 700px) {
+  .cbx .cbc-btn { min-height: 46px; font-size: 15px; }
+  .cbx .cbc-rv-actions { gap: 8px; }
+}
+@media (min-width: 900px) and (min-aspect-ratio: 1/1) {
+  /* computers / landscape tablets: photo left, buttons right */
+  .cbx .cbc-review { display: grid; grid-template-columns: 1fr minmax(300px, 420px); grid-template-rows: auto 1fr; column-gap: 28px; padding-bottom: 24px; }
+  .cbx .cbc-rv-top { grid-column: 1 / -1; }
+  .cbx .cbc-rv-photo { grid-row: 2; }
+  .cbx .cbc-rv-actions { grid-row: 2; align-self: center; padding-bottom: var(--cbx-reserved, 88px); }
+  .cbx .cbc-rv-actions .row:not(.foot) { flex-direction: column; }
+}
+
+/* ---------------------------------------------------------------- players (reveal, behind the scenes) */
+.cbx .cbc-player {
+  position: absolute; inset: 0; z-index: 62; background: var(--cb-ink); display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; touch-action: manipulation;
+  padding: calc(var(--cb-safe-top) + 8px) 8px calc(var(--cb-safe-bottom) + 8px);
+}
+.cbx .cbc-pl-stage { position: relative; height: 100%; max-width: 100%; aspect-ratio: 9 / 16; display: flex; align-items: center; justify-content: center; }
+.cbx .cbc-pl-stage canvas, .cbx .cbc-pl-stage video {
+  display: block; max-width: 100%; max-height: 100%; width: auto; height: 100%; aspect-ratio: 9 / 16; object-fit: contain; border-radius: 16px; background: #000;
+}
+.cbx .cbc-pl-close { position: absolute; top: calc(var(--cb-safe-top) + 12px); left: calc(var(--cb-safe-left) + 12px); background: var(--cb-white); }
+.cbx .cbc-pl-skip { position: absolute; top: calc(var(--cb-safe-top) + 14px); right: calc(var(--cb-safe-right) + 12px); color: var(--cb-white) !important; background: rgba(8, 8, 10, 0.56) !important; }
+.cbx .cbc-pl-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
+  padding: 14px calc(var(--cb-safe-right) + 16px) calc(var(--cb-safe-bottom) + max(16px, var(--cbx-reserved, 88px))) calc(var(--cb-safe-left) + 16px);
+  background: rgba(59, 33, 64, 0.82);
+}
+.cbx .cbc-pl-bar .cbc-btn { flex: 1 1 0; max-width: 220px; }

@@ -1,0 +1,126 @@
+// The photo review sheet: full screen (z-index 60, over the HUD), the photo, Save, Share, Retake, and optionally
+// "Watch photo animation" and "Behind the scenes". The bottom of the sheet keeps the app's talk-button corner free
+// (padding = --cbx-reserved), so no control sits under it.
+import { actionButton, CICON, el, iconButton } from './ui';
+import { photoFile, saveBlob, shareFile } from './share';
+
+export interface ReviewOptions {
+  container: HTMLElement;
+  /** File name stem, e.g. 'cheer-bear-selfie'. */
+  name: string;
+  share: { title: string; text: string };
+  title?: string;
+  onRetake(): void;
+  /** Show "Watch photo animation". */
+  onReveal?: (blob: Blob) => void;
+  /** Show "Behind the scenes". */
+  onBts?: () => void;
+}
+
+export class ReviewSheet {
+  private node: HTMLElement | null = null;
+  private url: string | null = null;
+  private blob: Blob | null = null;
+  private file: File | null = null;
+  private status: HTMLElement | null = null;
+  private statusT = 0;
+  private prevFocus: Element | null = null;
+
+  constructor(private o: ReviewOptions) {}
+
+  get open(): boolean {
+    return !!this.node;
+  }
+  get photoUrl(): string | null {
+    return this.url;
+  }
+
+  show(blob: Blob): void {
+    this.close();
+    this.blob = blob;
+    this.file = photoFile(blob, `${this.o.name}-${stamp()}.jpg`);
+    this.url = URL.createObjectURL(blob);
+    this.prevFocus = document.activeElement;
+
+    const n = el('div', 'cbc-review');
+    n.setAttribute('role', 'dialog');
+    n.setAttribute('aria-modal', 'true');
+    n.setAttribute('aria-label', this.o.title ?? 'Your photo');
+    const top = el('div', 'cbc-rv-top');
+    top.appendChild(iconButton(CICON.close, 'Back to the camera', () => this.retake()));
+    top.appendChild(el('h2', '', this.o.title ?? 'Your photo'));
+    const ph = el('div', 'cbc-rv-photo');
+    const img = el('img');
+    img.src = this.url;
+    img.alt = 'Your photo with Cheer Bear';
+    ph.appendChild(img);
+
+    const acts = el('div', 'cbc-rv-actions');
+    const r1 = el('div', 'row');
+    r1.append(
+      actionButton('Save', CICON.save, () => this.save()),
+      actionButton('Share', CICON.share, () => void this.share()),
+    );
+    const r2 = el('div', 'row');
+    r2.append(actionButton('Retake', CICON.retake, () => this.retake(), 'alt'));
+    if (this.o.onReveal) r2.append(actionButton('Watch photo animation', CICON.play, () => this.blob && this.o.onReveal!(this.blob), 'alt'));
+    acts.append(r1, r2);
+    const foot = el('div', 'row foot');
+    if (this.o.onBts) foot.append(actionButton('Behind the scenes', CICON.clapper, () => this.o.onBts!(), 'ghost'));
+    this.status = el('p', 'cbc-status');
+    this.status.setAttribute('role', 'status');
+    this.status.setAttribute('aria-live', 'polite');
+    foot.append(this.status);
+    acts.append(foot);
+
+    n.append(top, ph, acts);
+    n.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.retake(); });
+    this.o.container.appendChild(n);
+    this.node = n;
+    (r1.firstElementChild as HTMLElement).focus({ preventScroll: true });
+  }
+
+  private say(text: string): void {
+    if (!this.status) return;
+    this.status.textContent = text;
+    clearTimeout(this.statusT);
+    this.statusT = window.setTimeout(() => { if (this.status) this.status.textContent = ''; }, 3500);
+  }
+
+  private save(): void {
+    if (!this.file) return;
+    this.say(saveBlob(this.file, this.file.name) ? 'Saved to your downloads' : 'Press and hold the photo to save it');
+  }
+
+  private async share(): Promise<void> {
+    if (!this.file) return;
+    const r = await shareFile(this.file, this.o.share); // first thing in the tap: keeps the user activation
+    if (r === 'saved') this.say('Saved. Share it from your photos');
+    else if (r === 'failed') this.say('Press and hold the photo to save it');
+  }
+
+  private retake(): void {
+    this.close();
+    this.o.onRetake();
+  }
+
+  close(): void {
+    clearTimeout(this.statusT);
+    this.node?.remove();
+    this.node = null;
+    this.status = null;
+    if (this.url) URL.revokeObjectURL(this.url);
+    this.url = null;
+    this.blob = null;
+    this.file = null;
+    const f = this.prevFocus as HTMLElement | null;
+    this.prevFocus = null;
+    if (f && f.isConnected && typeof f.focus === 'function') f.focus({ preventScroll: true });
+  }
+}
+
+function stamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
