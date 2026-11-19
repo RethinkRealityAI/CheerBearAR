@@ -23,7 +23,7 @@ export function TalkOrb() {
   const text = useApp((s) => s.ui.text);
   const canCall = useApp((s) => s.ui.show.call);
   // the first-time nudge only in the 3D view: in camera modes the bottom centre holds Place / shutter pills
-  const quietCorner = useApp((s) => s.expMode !== 'showcase' || s.expBusy);
+  const quietCorner = useApp((s) => s.expMode !== 'showcase' || s.expBusy || s.captionOn);
   const [holding, setHolding] = useState(false);
   const holdTimer = useRef<number | null>(null);
   const held = useRef(false);

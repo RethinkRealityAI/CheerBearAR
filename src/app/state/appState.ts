@@ -47,6 +47,8 @@ export interface AppState {
   muted: boolean;
   /** Cheer Bear is talking (from her transcript events). */
   speaking: boolean;
+  /** Her words are showing in the scene's speech bubble (the talk button's nudge stays out of its way). */
+  captionOn: boolean;
   transcription: Record<Speaker, { state: TranscriptionState; message?: string }>;
   messages: ChatMessage[];
   uiMode: UiMode;
@@ -83,6 +85,7 @@ export function createAppStore() {
     callDemo: false,
     muted: false,
     speaking: false,
+    captionOn: false,
     transcription: { cheer_bear: { state: 'off' }, user: { state: 'off' } },
     messages: [],
     uiMode: prefs.uiMode ?? ui.modeDefault,

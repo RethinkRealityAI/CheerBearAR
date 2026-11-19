@@ -247,7 +247,7 @@ export class AppController {
     this.cancel('caption');
     this.cancel('speaking');
     this.experience?.setSpeechText(null);
-    this.set({ speaking: false });
+    this.set({ speaking: false, captionOn: false });
   }
 
   private onTranscript(t: TranscriptEvent) {
@@ -263,7 +263,8 @@ export class AppController {
     const s = this.s;
     if (t.final && (t.chat || transcriptsVisible(s.ui.transcriptVisibility, s.uiMode, s.staffTranscripts))) {
       this.experience?.setSpeechText(t.text);
-      this.timer('caption', Math.min(9000, 2500 + t.text.length * 50), () => this.experience?.setSpeechText(null));
+      this.set({ captionOn: true });
+      this.timer('caption', Math.min(9000, 2500 + t.text.length * 50), () => { this.experience?.setSpeechText(null); this.set({ captionOn: false }); });
     }
   }
 
