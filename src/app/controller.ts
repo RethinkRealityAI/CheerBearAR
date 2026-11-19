@@ -200,6 +200,10 @@ export class AppController {
         this.experience?.setSpeechStream(stream);
         if (!stream) this.set({ speaking: false });
       }),
+      voice.on('visemes', (frame) => {
+        this.experience?.setVisemes?.(frame);
+        this.set({ speaking: !!frame?.speaking });
+      }),
       voice.on('transcript', (t) => this.onTranscript(t)),
       voice.on('trigger', (t) => this.onTrigger(t)),
       voice.on('transcription', ({ speaker, state, message }) =>

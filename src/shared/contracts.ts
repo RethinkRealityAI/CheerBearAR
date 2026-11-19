@@ -102,6 +102,11 @@ export interface ExperienceApi {
   say(audioUrl: string, caption?: string): Promise<void>;
   /** Keep this many CSS pixels free at the bottom right for the app's talk button (default 88). */
   setReservedCorner(px: number): void;
+  /**
+   * Drive the mouth directly (speech with no audio stream to analyse, e.g. the browser's speech synthesis in the
+   * demo call). Null hands the mouth back to the audio lip sync.
+   */
+  setVisemes?(frame: VisemeFrame | null): void;
   /** Lip sync tuning from the admin config (mouth size and timing). Optional: mocks may leave it out. */
   setLipSync?(tuning: { intensity?: number; attackMs?: number; releaseMs?: number }): void;
   on<K extends keyof ExperienceEvents>(event: K, cb: (payload: ExperienceEvents[K]) => void): () => void;
@@ -143,6 +148,11 @@ export interface VoiceEvents {
   trigger: TriggerEvent;
   /** Cheer Bear's audio (the remote side of the call), or null when it stops. Feed to ExperienceApi.setSpeechStream. */
   remoteStream: MediaStream | null;
+  /**
+   * Mouth shapes for speech that has no stream to analyse (the demo call's browser voice). Feed to
+   * ExperienceApi.setVisemes; null when she stops talking.
+   */
+  visemes: VisemeFrame | null;
   /** Transcription connection state, for the debug view. */
   transcription: { speaker: Speaker; state: 'off' | 'connecting' | 'live' | 'error'; message?: string };
   muted: boolean;

@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import '../shared/theme.css';
 import type {
+  VisemeFrame,
   ActionName, BearCharacter, ExperienceApi, ExperienceEvents, ExperienceMode, ExperienceOptions,
 } from '../shared/contracts';
 import { loadBear, unlockAudio } from '@/bear';
@@ -201,6 +202,10 @@ class Experience implements ExperienceApi {
   setSpeechStream(stream: MediaStream | null): void {
     this.speech = stream;
     this.bear?.setSpeechStream(stream);
+  }
+
+  setVisemes(frame: VisemeFrame | null): void {
+    this.bear?.setVisemes(frame);
   }
 
   private lipTuning: { intensity?: number; attackMs?: number; releaseMs?: number } | null = null;
