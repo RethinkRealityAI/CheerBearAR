@@ -324,7 +324,7 @@ class Experience implements ExperienceApi {
       .then(() => this.switchTo(first))
       .then(() => {
         this.ev.emit('started', { mode: this.mode });
-        if (this.mode === 'showcase') window.setTimeout(() => this.runners?.showcase.trigger('Wave'), this.showcase && !reducedMotion() ? 900 : 100);
+        if (this.mode === 'showcase') window.setTimeout(() => { if (this.mode === 'showcase' && this.entered) this.runners?.showcase.trigger('Wave'); }, reducedMotion() ? 100 : 900);
       })
       .catch((e) => console.error('[experience] start failed', e));
   }
@@ -381,7 +381,7 @@ class Experience implements ExperienceApi {
     for (const m of this.modes.values()) { try { m.reset?.(); } catch (e) { console.warn(e); } }
     this.media?.reset();
     this.hud?.speech(null);
-    const goHome = () => window.setTimeout(() => this.runners?.showcase.trigger('Wave'), 500);
+    const goHome = () => window.setTimeout(() => { if (this.mode === 'showcase') this.runners?.showcase.trigger('Wave'); }, 500);
     if (this.mode === 'showcase') goHome();
     else void this.setMode('showcase').then(goHome);
   }
@@ -420,6 +420,8 @@ class Experience implements ExperienceApi {
       entered: this.entered,
       started: this.started,
       phone: IS_PHONE,
+      fps: Math.round(sc?.fps ?? 0),
+      engineFps: Math.round(this.engine?.fps ?? 0),
       showcasePrograms: sc?.renderer?.info.programs?.length ?? null,
       showcaseProgramsAfterWarm: sc?.programsAfterWarm ?? null,
       enginePrograms: xr?.renderer.info.programs?.length ?? null,
@@ -428,7 +430,7 @@ class Experience implements ExperienceApi {
       settled: this.engine?.settled(),
       moment: { showcase: this.runners?.showcase.current, ar: this.runners?.ar.current },
       asleep: { showcase: this.stages?.showcase.actor.asleep, ar: this.stages?.ar.actor.asleep },
-      ar: ar ? { placed: ar.placed, inside: ar.inside } : null,
+      ar: ar ? { placed: ar.placed, inside: ar.inside, restoring: ar.waitingToRestore, visible: ar.stageVisible } : null,
       themeOn: this.media?.themeOn,
     };
   }

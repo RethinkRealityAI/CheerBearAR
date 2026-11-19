@@ -76,7 +76,7 @@
 .cbx-load { width: 170px; height: 6px; border-radius: 3px; background: var(--cb-pink-soft); overflow: hidden; }
 .cbx-load i { display: block; height: 100%; width: 0; background: var(--cb-pink); border-radius: 3px; transition: width 0.3s; }
 .cbx-load.done { visibility: hidden; }
-.cbx-splash .act-by { height: 42px; width: auto; display: block; }
+.cbx-splash .act-by { height: 42px; width: auto; display: block; filter: brightness(0); opacity: 0.72; } /* white artwork on the white card */
 .cbx-splash.gone .sp-top { transform: translateY(-110%); }
 .cbx-splash.gone .sp-bottom { transform: translateY(110%); }
 .cbx-splash.gone { pointer-events: none; }

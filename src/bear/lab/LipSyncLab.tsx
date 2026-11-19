@@ -17,7 +17,8 @@ const CLIPS: BearClip[] = ['idle', 'talkIdle', 'wave', 'walk', 'run', 'dance', '
 const EXPRS: BearExpression[] = ['neutral', 'happy', 'surprised', 'sleepy', 'cold', 'wink'];
 const EXTRA_CLIPS = ['backflip', 'sad', 'angry', 'danceSmall', 'flap'];
 
-type Source = 'none' | 'sample' | 'vowels' | 'syllables' | 'file' | 'mic';
+type SynthName = keyof typeof SYNTH_SCRIPTS;
+type Source = 'none' | 'sample' | SynthName | 'file' | 'mic';
 
 const css = `
 .lsl{position:fixed;inset:0;display:grid;grid-template-columns:minmax(0,1fr) 380px;background:var(--cb-cloud);color:var(--cb-ink);font-family:var(--cb-font)}
@@ -136,7 +137,7 @@ export default function LipSyncLab() {
       const bear = bearRef.current;
       // camera framing
       const face = camModeRef.current === 'face';
-      camPos.set(0, face ? 0.74 : 0.62, face ? 1.05 : 3.1);
+      camPos.set(0, face ? 0.74 : 0.62, face ? 1.4 : 3.1);
       camAim.set(0, face ? 0.69 : 0.5, 0);
       cam.position.lerp(camPos, 1 - Math.exp(-dt * 6));
       cam.lookAt(camAim);
@@ -259,7 +260,7 @@ export default function LipSyncLab() {
     await playBuffer(await decodeUrl(sampleUrl), 'sample', asPhone);
   }, [phone, playBuffer]);
 
-  const playSynth = useCallback(async (name: 'vowels' | 'syllables', asPhone = phone) => {
+  const playSynth = useCallback(async (name: SynthName, asPhone = phone) => {
     unlockAudio();
     const ctx = getAudioContext();
     const data = synthSpeech(name, ctx.sampleRate);
@@ -321,12 +322,12 @@ export default function LipSyncLab() {
     window.__lab = {
       bear: () => bearRef.current,
       playSample: (p: boolean) => playSample(p),
-      playSynth: (n: 'vowels' | 'syllables', p: boolean) => playSynth(n, p),
+      playSynth: (n: SynthName, p: boolean) => playSynth(n, p),
       camera: (m: 'face' | 'body') => {
         camModeRef.current = m;
         setCamMode(m);
         const cam = camRef.current;
-        if (cam) cam.position.set(0, m === 'face' ? 0.74 : 0.62, m === 'face' ? 1.05 : 3.1);
+        if (cam) cam.position.set(0, m === 'face' ? 0.74 : 0.62, m === 'face' ? 1.4 : 3.1);
       },
       shape: (name: string | null, w = 1) => {
         const b = bearRef.current;
@@ -350,7 +351,7 @@ export default function LipSyncLab() {
           <div className="lsl-pill">{status}</div>
           <div className="lsl-pill lsl-shape" ref={shapeLabelRef} style={{ display: sweeping ? undefined : 'none' }} />
         </div>
-        <canvas className="lsl-meters" ref={meterRef} width={220} height={300} />
+        <canvas className="lsl-meters" ref={meterRef} width={220} height={318} />
       </div>
       <div className="lsl-panel">
         <h1>Lip Sync Lab</h1>
@@ -362,8 +363,11 @@ export default function LipSyncLab() {
         </label>
         <div className="lsl-row">
           <button disabled={!ready} className={source === 'sample' ? 'on' : ''} onClick={() => void playSample()}>Sample voice</button>
-          <button disabled={!ready} className={source === 'vowels' ? 'on' : ''} onClick={() => void playSynth('vowels')}>{SYNTH_SCRIPTS.vowels.label}</button>
-          <button disabled={!ready} className={source === 'syllables' ? 'on' : ''} onClick={() => void playSynth('syllables')}>{SYNTH_SCRIPTS.syllables.label}</button>
+          {(Object.keys(SYNTH_SCRIPTS) as SynthName[]).map((k) => (
+            <button key={k} disabled={!ready} className={source === k ? 'on' : ''} onClick={() => void playSynth(k)}>
+              {SYNTH_SCRIPTS[k].label}
+            </button>
+          ))}
           <button disabled={!ready} className={source === 'mic' ? 'on' : ''} onClick={() => void startMic()}>Microphone</button>
           <button disabled={!ready || source === 'none'} onClick={stopAll}>Stop</button>
         </div>
@@ -487,5 +491,5 @@ function drawMeters(c: HTMLCanvasElement | null, bear: Bear) {
   g.fillText(`${d.gate ? 'SPEECH' : 'quiet '} lvl ${d.levelDb.toFixed(0)} floor ${d.floorDb.toFixed(0)} dB`, 4, y0 + 28);
   g.fillText(`F1 ${d.f1.toFixed(0)} F2 ${d.f2.toFixed(0)} voi ${d.voicing.toFixed(2)}`, 4, y0 + 42);
   g.fillText(`open ${d.openness.toFixed(2)} front ${d.frontness.toFixed(2)}`, 4, y0 + 56);
-  g.fillText(`fric ${d.fricative.toFixed(2)} clos ${d.closure.toFixed(2)} ${d.fullBand ? 'FULL' : 'PHONE'}`, 4, y0 + 70);
+  g.fillText(`fric ${d.fricative.toFixed(2)} clos ${d.closure.toFixed(2)} ${d.fullBand ? 'full band' : 'narrow band'}`, 4, y0 + 70);
 }

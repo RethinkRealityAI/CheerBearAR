@@ -22,7 +22,7 @@ What it does (see docs/handoff/bear-lipsync.md for the why):
      (sleep, wakeUp, shiver, talkIdle) and names them by the app's BearClip names.
   8. Re-encodes textures (JPEG for opaque maps) and writes sparse morph targets + int16 rotation keys.
 No Blender is required: the source of truth is the two GLBs exported from the Faceit scene (the .blend in the project
-folder is the heavy Meshy bear, not this one). `pip install bpy` is only needed for the optional preview script.
+folder is the heavy Meshy bear, not this one). Needs only python3 + numpy + Pillow.
 """
 from __future__ import annotations
 
@@ -422,6 +422,40 @@ def fix_materials(body: Glb):
 
 
 # ------------------------------------------------------------------ main
+def tear_report(path: str, title: str) -> None:
+    """Per morph target at weight 1.0: flipped triangles and worst edge stretch (moved triangles only)."""
+    g = Glb(path)
+    j = g.json
+    print(f'\n{title}: {path}')
+    print(f'  {"shape":24s} {"flipped":>7s} {"max stretch":>11s}')
+    for mesh in j['meshes']:
+        names = mesh.get('extras', {}).get('targetNames', [])
+        for prim in mesh['primitives']:
+            if not prim.get('targets') or 'indices' not in prim:
+                continue
+            P = g.get(prim['attributes']['POSITION']).astype(np.float64)
+            tri = g.get(prim['indices'], as_float=False).astype(np.int64).reshape(-1, 3)
+            a, b, c = P[tri[:, 0]], P[tri[:, 1]], P[tri[:, 2]]
+            n0 = np.cross(b - a, c - a)
+            e0 = np.stack([np.linalg.norm(b - a, axis=1), np.linalg.norm(c - b, axis=1), np.linalg.norm(a - c, axis=1)], 1)
+            ok = (np.linalg.norm(n0, axis=1) > 1e-12) & (e0.min(1) > 1e-9)
+            print(f'  [{mesh.get("name", "?")}]')
+            for ti, t in enumerate(prim['targets']):
+                if 'POSITION' not in t:
+                    continue
+                Q = P + g.get(t['POSITION']).astype(np.float64)
+                A, B, C = Q[tri[:, 0]], Q[tri[:, 1]], Q[tri[:, 2]]
+                moved = ok & ((np.abs(Q - P).max(1)[tri] > 1e-6).any(1))
+                if not moved.any() or (np.abs(Q - P).max() < 1e-5):
+                    continue
+                n1 = np.cross(B - A, C - A)
+                flips = int(((n0 * n1).sum(1)[moved] < 0).sum())
+                e1 = np.stack([np.linalg.norm(B - A, axis=1), np.linalg.norm(C - B, axis=1), np.linalg.norm(A - C, axis=1)], 1)
+                stretch = float((e1[moved] / e0[moved]).max())
+                name = names[ti] if ti < len(names) else f'#{ti}'
+                print(f'  {name:24s} {flips:7d} {stretch:10.1f}x')
+
+
 def main():
     log('body', BODY)
     body = Glb(BODY)
@@ -433,6 +467,9 @@ def main():
     body.json['asset'] = {'version': '2.0', 'generator': 'cheerbearar tools/blender/build_cheer_bear.py'}
     size = body.save(OUT)
     log(f'wrote {OUT} ({size / 1024 / 1024:.2f} MB)')
+    if '--report' in sys.argv:
+        tear_report(FACE, 'BEFORE (old face file, the shapes the old app drove)')
+        tear_report(OUT, 'AFTER (shipped model)')
 
 
 if __name__ == '__main__':

@@ -144,7 +144,7 @@ export class Stage {
     // ---- magic orb (Mattercraft "Magic Orb": blue glass, emissive cycling)
     this.orb = new THREE.Mesh(
       new THREE.SphereGeometry(1, 28, 18),
-      new THREE.MeshStandardMaterial({ color: 0x80ccff, emissive: 0x4d99ff, emissiveIntensity: 1, roughness: 0.25, metalness: 0, transparent: true, opacity: 0.85 }),
+      new THREE.MeshStandardMaterial({ color: 0x3d8bff, emissive: 0x4d99ff, emissiveIntensity: 1.6, roughness: 0.2, metalness: 0, transparent: true, opacity: 0.92 }),
     );
     this.orb.visible = false;
     this.content.add(this.orb);
@@ -167,12 +167,12 @@ export class Stage {
     const g = new THREE.Group();
     const tv = kit.make('tv', height);
     g.add(tv);
-    const s = height; // TV model: 1 tall, screen about 0.53 x 0.40 at y 0.71 (measured on a render)
+    const s = height; // TV model 1 tall: the screen opening is about 0.36 x 0.29 at (-0.06, 0.78) (measured on a render)
     const screen = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.5 * s, 0.37 * s),
+      new THREE.PlaneGeometry(0.355 * s, 0.285 * s),
       new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
     );
-    screen.position.set(-0.075 * s, 0.735 * s, 0.215 * s);
+    screen.position.set(-0.058 * s, 0.782 * s, 0.215 * s);
     screen.name = 'screen';
     g.add(screen);
     return g;

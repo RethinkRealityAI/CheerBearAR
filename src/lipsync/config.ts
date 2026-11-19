@@ -21,17 +21,20 @@ export interface LipSyncConfig {
   floorRiseDbPerSec: number;
 
   // ---- loudness -> openness
-  /** dB above the gate that counts as "fully open". The top tracks recent peaks (auto gain) from here. */
+  /** Loudness window: the recent peak (decaying 4 dB/s) is fully open, this many dB below it is closed (auto gain). */
   dynamicRangeDb: number;
   /** Curve on the 0..1 loudness (<1 opens the mouth earlier on quiet syllables). */
   loudnessGamma: number;
   /** Overall mouth size multiplier (applied to every viseme). */
   intensity: number;
 
-  // ---- vowels (soft classification on normalised formant estimates)
+  // ---- vowels (LPC formants F1/F2 -> soft nearest-prototype classification in log-formant space)
   /** How sharply the vowel classifier commits to one vowel (higher = crisper, lower = more blended). */
   vowelSharpness: number;
-  /** How fast the speaker's formant normalisation adapts (seconds of speech). */
+  /**
+   * Seconds of speech over which the speaker's average formants are learned. The difference from a typical female
+   * voice (capped at +-15%) shifts the vowel map, so deeper or brighter voices still land on the right vowels.
+   */
   speakerAdaptSec: number;
 
   // ---- consonant cues
@@ -72,7 +75,7 @@ export const DEFAULT_LIPSYNC_CONFIG: LipSyncConfig = {
   intensity: 1,
 
   vowelSharpness: 1,
-  speakerAdaptSec: 4,
+  speakerAdaptSec: 6,
 
   fricativeGain: 0.8,
   closureGain: 0.9,

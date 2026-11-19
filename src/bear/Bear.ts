@@ -84,6 +84,12 @@ export class Bear implements BearCharacter {
   private head: THREE.Object3D | null = null;
   private neck: THREE.Object3D | null = null;
   private spine: THREE.Object3D | null = null;
+  /**
+   * The clip pose of the bones we add rotations to, saved after each mixer update. three.js only writes a bone when
+   * its animated value CHANGES (PropertyMixer.apply), so on a held or constant track an additive rotation would
+   * otherwise be applied on top of last frame's result and accumulate. Restoring this before the mixer runs fixes it.
+   */
+  private additiveBase: Array<[THREE.Object3D, THREE.Quaternion]> = [];
   private eyeMid = new THREE.Object3D();
   private lookTarget: THREE.Vector3 | null = null;
   private headYaw = 0;
@@ -127,6 +133,7 @@ export class Bear implements BearCharacter {
     this.head = model.getObjectByName('mixamorigHead') ?? null;
     this.neck = model.getObjectByName('mixamorigNeck') ?? null;
     this.spine = model.getObjectByName('mixamorigSpine2') ?? null;
+    for (const b of [this.head, this.neck, this.spine]) if (b) this.additiveBase.push([b, b.quaternion.clone()]);
     const eyeL = model.getObjectByName('CB_Eye_L');
     if (this.head && eyeL) {
       // A point between the eyes, riding on the head, for look-at maths.
@@ -328,8 +335,10 @@ export class Bear implements BearCharacter {
     this.ampSlow += (this.amp - this.ampSlow) * (1 - Math.exp(-dt / 0.35));
     this.autoTalkBody(dt);
 
-    // 2. body clips
+    // 2. body clips (bones with additive layers start from last frame's clip pose, see `additiveBase`)
+    for (const [b, q] of this.additiveBase) b.quaternion.copy(q);
     this.mixer.update(dt);
+    for (const [b, q] of this.additiveBase) q.copy(b.quaternion);
     this.model.updateMatrixWorld(true);
 
     // 3. additive layers on top of the clip: look-at + talking energy on the head/neck/spine
@@ -392,8 +401,8 @@ export class Bear implements BearCharacter {
     const pitch = Math.atan2(-_v.y, Math.hypot(_v.x, _v.z));
     // The head takes part of a big look; the eyes do the rest.
     const k = 1 - Math.exp(-dt / 0.35);
-    this.headYaw += (THREE.MathUtils.clamp(yaw * 0.45, -0.5, 0.5) - this.headYaw) * k;
-    this.headPitch += (THREE.MathUtils.clamp(pitch * 0.35, -0.3, 0.3) - this.headPitch) * k;
+    this.headYaw += (THREE.MathUtils.clamp(yaw * 0.6, -0.6, 0.6) - this.headYaw) * k;
+    this.headPitch += (THREE.MathUtils.clamp(pitch * 0.45, -0.35, 0.35) - this.headPitch) * k;
     return { yaw: yaw - this.headYaw, pitch: pitch - this.headPitch };
   }
 

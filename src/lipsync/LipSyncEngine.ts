@@ -3,8 +3,8 @@
 //
 // Pipeline per rendered frame:
 //   level + noise floor -> speech gate (hysteresis + hold)
-//   loudness above the gate (auto-ranged) -> openness
-//   formant estimates (F1/F2, speaker-normalised) -> soft vowel classification (aa, E, I, O, U)
+//   loudness relative to recent peaks (auto gain) -> how far the mouth opens (jaw envelope, viseme amount)
+//   LPC formants F1/F2 (phone-safe, robust to strong low harmonics) -> soft vowel classification (aa, E, I, O, U, RR)
 //   tilt / hiss / periodicity -> fricatives (SS, CH, FF);  level dips -> closures (PP);  murmur -> nn;  onsets -> DD/kk
 //   critically damped motion per viseme (attack/release), caps so shapes blend
 //
@@ -18,14 +18,31 @@ import { FeatureExtractor, type Features } from './features';
 type VisemeMap = Record<Viseme, number>;
 const zeroMap = (): VisemeMap => Object.fromEntries(VISEMES.map((v) => [v, 0])) as VisemeMap;
 
-/** Vowel prototypes in normalised (openness, frontness) space, 0..1. */
-const VOWELS: Array<[Viseme, number, number]> = [
-  ['aa', 0.9, 0.45],
-  ['E', 0.62, 0.82],
-  ['I', 0.18, 0.92],
-  ['O', 0.6, 0.15],
-  ['U', 0.15, 0.12],
+/**
+ * Vowel prototypes: (viseme, F1 Hz, F2 Hz) for an adult female voice (Peterson & Barney / Hillenbrand averages).
+ * Several English vowels share a mouth shape, so each viseme has a few prototypes. Classification is a soft
+ * nearest-prototype in log-formant space (log Hz is close to how vowel space scales between speakers).
+ */
+const VOWEL_PROTOS: Array<[Viseme, number, number]> = [
+  ['aa', 850, 1220], // father
+  ['aa', 760, 1400], // cup
+  ['aa', 860, 2000], // cat
+  ['E', 610, 2330], // bed
+  ['E', 540, 2500], // bait
+  ['I', 310, 2790], // beet
+  ['I', 430, 2480], // bit
+  ['O', 590, 920], // bought
+  ['O', 500, 1000], // boat
+  ['U', 370, 950], // boot
+  ['U', 470, 1160], // book
+  ['RR', 500, 1640], // bird
 ];
+const PROTO_L = VOWEL_PROTOS.map(([v, f1, f2]) => [v, Math.log(f1), Math.log(f2)] as const);
+/** Typical long-term mean of log F1 / log F2 in running speech (female); the speaker shift is measured against it. */
+const REF_L1 = Math.log(540);
+const REF_L2 = Math.log(1600);
+/** Openness / frontness of each vowel viseme, for the debug read-out only. */
+const OPEN: Partial<Record<Viseme, [number, number]>> = { aa: [1, 0.5], E: [0.6, 0.85], I: [0.2, 1], O: [0.6, 0.1], U: [0.2, 0.1], RR: [0.4, 0.5] };
 
 /** Snapshot for meters and debugging. */
 export interface LipSyncDebug {
@@ -43,6 +60,7 @@ export interface LipSyncDebug {
   f2: number;
 }
 
+const VOWEL_VISEMES: Viseme[] = ['aa', 'E', 'I', 'O', 'U', 'RR'];
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
@@ -63,13 +81,15 @@ export class LipSyncEngine {
   private gate = false;
   private gateHeld = 0;
   private quietFor = 0;
-  private m1 = Math.log(620);
-  private v1 = 0.06;
-  private m2 = Math.log(1750);
-  private v2 = 0.04;
+  private dipFor = 0;
+  private m1 = REF_L1;
+  private m2 = REF_L2;
+  private l1 = REF_L1;
+  private l2 = REF_L2;
   private burst = 0;
   private burstKind: Viseme = 'DD';
   private target = zeroMap();
+  private vw = zeroMap();
   private x = zeroMap();
   private v = zeroMap();
   private amp = 0;
@@ -241,9 +261,9 @@ export class LipSyncEngine {
 
     // ---- loudness, auto-ranged between the gate and recent peaks
     this.peakDb = Math.max(lvl, this.peakDb - 4 * dt);
-    const base = this.floorDb + c.gateCloseDb;
-    const range = Math.max(10, Math.min(c.dynamicRangeDb, this.peakDb - base));
-    let loud = clamp01((lvl - base) / range);
+    // 1 at the recent peak, 0 at dynamicRangeDb below it (or at the gate, whichever is higher).
+    const base = Math.max(this.floorDb + c.gateCloseDb, this.peakDb - c.dynamicRangeDb);
+    let loud = clamp01((lvl - base) / Math.max(6, this.peakDb - base));
     loud = Math.pow(loud, c.loudnessGamma);
     // Syllable peak: decays fast, so a quick dip after a vowel shows up as a closure.
     this.sylPeakDb = Math.max(lvl, this.sylPeakDb - 45 * dt);
@@ -268,28 +288,26 @@ export class LipSyncEngine {
     const t = this.target;
     const k = c.intensity;
 
-    // ---- speaker-normalised formants -> openness / frontness
-    const l1 = Math.log(Math.max(150, f.f1));
-    const l2 = Math.log(Math.max(500, f.f2));
-    const voiced = f.voicing > 0.5 && loud > 0.15;
+    // ---- formants: smoothed in log Hz while voiced; speaker shift from their long-term mean (capped)
+    const voiced = f.voicing > 0.45 && loud > 0.12 && f.f1 > 0;
     if (voiced) {
+      const fa = 1 - Math.exp(-dt / 0.02);
+      this.l1 += (Math.log(f.f1) - this.l1) * fa;
+      if (f.f2 > 0) this.l2 += (Math.log(f.f2) - this.l2) * fa;
       const a = Math.min(1, dt / c.speakerAdaptSec);
-      this.m1 += (l1 - this.m1) * a;
-      this.m2 += (l2 - this.m2) * a;
-      this.v1 += ((l1 - this.m1) ** 2 - this.v1) * a;
-      this.v2 += ((l2 - this.m2) ** 2 - this.v2) * a;
+      this.m1 += (this.l1 - this.m1) * a;
+      this.m2 += (this.l2 - this.m2) * a;
     }
-    const z1 = (l1 - this.m1) / Math.sqrt(Math.max(this.v1, 0.004));
-    const z2 = (l2 - this.m2) / Math.sqrt(Math.max(this.v2, 0.003));
-    // Open vowels are also the loud ones: blend in loudness so the jaw tracks the syllable rhythm.
-    const open = clamp01(0.65 * sigmoid(1.5 * z1) + 0.35 * loud);
-    const front = sigmoid(1.5 * z2);
-    d.openness = open;
-    d.frontness = front;
+    const s1 = Math.max(-0.15, Math.min(0.15, this.m1 - REF_L1));
+    const s2 = Math.max(-0.15, Math.min(0.15, this.m2 - REF_L2));
+    const x1 = this.l1 - s1;
+    const x2 = this.l2 - s2;
 
     // ---- fricatives (S/Z, SH/CH/J, F/V/TH): unvoiced-ish, energy tilted up
     const tiltScore = f.fullBand ? Math.max(f.tiltDb, f.hissDb + 6) : f.tiltDb;
     let fric = sigmoid((tiltScore + 4) / 2.5) * (1 - clamp01((f.voicing - 0.35) / 0.4));
+    // Frication needs real energy: near the floor (pauses, digital silence) the tilt is meaningless.
+    fric *= clamp01((above - c.gateCloseDb) / 6);
     fric = clamp01(fric * c.fricativeGain);
     d.fricative = fric;
 
@@ -298,40 +316,59 @@ export class LipSyncEngine {
     let closure = clamp01((dip - c.closureDipDb * 0.6) / (c.closureDipDb * 0.6)) * (1 - fric);
     // nasal murmur (m, n): voiced, quiet, all energy low
     const nasal = clamp01((f.nasalDb - 10) / 8) * clamp01((f.voicing - 0.4) / 0.3) * (1 - loud);
+    // A stop closure lasts ~50-120 ms. A longer dip is a phrase ending or a pause, where the lips just rest.
+    this.dipFor = closure > 0.25 ? this.dipFor + dt : 0;
+    closure *= 1 - clamp01((this.dipFor - 0.08) / 0.07);
     closure = clamp01(closure + nasal * 0.5) * c.closureGain;
     d.closure = closure;
 
     // ---- bursts (T/D/K): a fast onset right after a closure
-    if (onsetRate > 180 && dip < 4) {
+    // A plosive release is aperiodic; a voiced onset after a pause is just the vowel starting.
+    if (onsetRate > 180 && dip < 4 && f.voicing < 0.55) {
       this.burst = 1;
-      this.burstKind = front > 0.45 ? 'DD' : 'kk';
+      this.burstKind = this.l2 - s2 > Math.log(1500) ? 'DD' : 'kk';
     }
     this.burst = Math.max(0, this.burst - dt / 0.07);
 
-    // ---- vowels: soft classification around prototypes
+    // ---- vowels: soft nearest-prototype classification in log-formant space
     const sharp = c.vowelSharpness;
-    const sig2 = 2 * (0.3 / sharp) ** 2;
+    const s1w = 0.17 / sharp;
+    const s2w = 0.13 / sharp;
+    const vw = this.vw;
+    for (const k of VOWEL_VISEMES) vw[k] = 0;
     let sum = 0;
-    const p: number[] = [];
-    for (const [, vo, vf] of VOWELS) {
-      const e = Math.exp(-((open - vo) ** 2 + (front - vf) ** 2) / sig2);
-      p.push(e);
+    for (const [name, p1, p2] of PROTO_L) {
+      const e = Math.exp(-0.5 * (((x1 - p1) / s1w) ** 2 + ((x2 - p2) / s2w) ** 2));
+      vw[name] += e;
       sum += e;
     }
+    // Far from every prototype (a glide, noise, a non-English vowel): fall back to a neutral open shape.
+    const neutral = 0.02;
+    vw.aa += neutral * 0.6;
+    vw.E += neutral * 0.4;
+    sum += neutral;
+    let openness = 0;
+    let frontness = 0;
+    for (const k of VOWEL_VISEMES) {
+      vw[k] /= sum;
+      openness += vw[k] * OPEN[k]![0];
+      frontness += vw[k] * OPEN[k]![1];
+    }
+    d.openness = openness;
+    d.frontness = frontness;
     const vowelAmt = loud * (1 - fric) * (1 - closure) * k;
-    VOWELS.forEach(([name], i) => {
-      t[name] += vowelAmt * (p[i] / sum);
-    });
+    for (const v of VOWEL_VISEMES) t[v] += vowelAmt * vw[v];
 
     // fricative shape: phone audio cannot see S (4-8 kHz), so S vs SH comes from where the 1.8-3.4 kHz energy sits
-    const fricAmt = fric * k * Math.max(0.45, Math.min(1, loud * 1.6));
-    let sh: number;
-    if (f.fullBand) sh = clamp01((-f.hissDb - 2) / 8);
-    else sh = clamp01((2600 - f.hiCentroid) / 600);
-    const weak = clamp01((0.3 - loud) / 0.3); // quiet frication reads as F/TH
-    t.SS += fricAmt * (1 - sh) * (1 - weak * 0.6);
-    t.CH += fricAmt * sh * (1 - weak * 0.6);
-    t.FF += fricAmt * weak * 0.6;
+    const fricAmt = fric * k * (0.6 + 0.4 * clamp01(loud * 2));
+    // S vs SH: with energy above 4.5 kHz (full band) S is the one that has most of it. On a phone line that band is
+    // gone, so fall back to where the 1.8-3.4 kHz energy sits (SH a little lower); it is a soft guess, so blend.
+    const sh = f.hissDb > -25 ? clamp01((-f.hissDb - 3) / 8) : 0.15 + 0.6 * clamp01((2650 - f.hiCentroid) / 500);
+    // Quiet AND spectrally flat frication reads as F/V/TH (S/SH rise steeply toward the top of the band).
+    const weak = clamp01((0.3 - loud) / 0.3) * clamp01((6 - f.tiltDb) / 6);
+    t.SS += fricAmt * (1 - sh) * (1 - weak);
+    t.CH += fricAmt * sh * (1 - weak);
+    t.FF += fricAmt * weak;
 
     t.PP += closure * Math.max(0.5, 1 - nasal);
     t.nn += nasal * 0.6 * c.closureGain;

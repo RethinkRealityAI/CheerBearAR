@@ -23,6 +23,9 @@ export class Media {
     this.themeTexture.colorSpace = THREE.SRGBColorSpace;
     this.themeTexture.minFilter = THREE.LinearFilter;
     this.themeTexture.generateMipmaps = false;
+    // the theme is 4:3 pillarboxed in a 16:9 frame: show the middle 75 % on the (4:3-ish) TV screens
+    this.themeTexture.repeat.set(0.75, 1);
+    this.themeTexture.offset.set(0.125, 0);
   }
 
   /** Resolves when both videos can show a first frame (or after `ms`). For the loading bar. */

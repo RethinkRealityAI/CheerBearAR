@@ -86,6 +86,13 @@ export class ArMode implements Mode {
   get placed(): boolean {
     return this.state === 'placed';
   }
+  /** Placed earlier, waiting for tracking to settle to put the stage back (after returning to AR). */
+  get waitingToRestore(): boolean {
+    return this.restoring;
+  }
+  get stageVisible(): boolean {
+    return this.anchor.visible;
+  }
 
   private buildReticle(): void {
     const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false });
@@ -451,8 +458,10 @@ export class ArMode implements Mode {
     const hud = this.sh.hud;
     const placing = this.state === 'placing';
     const walking = !placing && !this.restoring;
-    if (placing) hud.centre.appendChild(this.placeBtn);
-    else this.placeBtn.remove();
+    if (placing) {
+      this.placeBtn.disabled = !this.reticle.visible; // update() enables it once the reticle is on the floor
+      hud.centre.appendChild(this.placeBtn);
+    } else this.placeBtn.remove();
     this.stick = walking ? hud.joystick(true) : null;
     if (!walking) hud.joystick(false);
     // Move: bottom left, always there once placed; Leave stacks above it while you're inside

@@ -294,7 +294,7 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
     const st = c.st, orb = st.orb, mat = orb.material as THREE.MeshStandardMaterial, a = st.actor;
     const keys: Array<[number, [number, number, number]]> = []; // in her frame: x = side, y = up, z = towards camera
     keys.push([0, [0, 0.45, 0.22]], [0.99, [0, 0.62, 0.3]], [1.24, [0, 0.75, 0.62]], [2.48, [-0.75, 0.82, 0]], [3.72, [0, 0.9, -0.7]], [4.96, [0.75, 0.82, 0]], [6.0, [0, 0.75, 0.55]], [6.8, [0, 0.72, 0.32]]);
-    const scaleK: Array<[number, number]> = [[0, 0.02], [0.99, 0.13], [3.31, 0.12], [4.96, 0.1], [6.8, 0.12]];
+    const scaleK: Array<[number, number]> = [[0, 0.02], [0.99, 0.17], [3.31, 0.16], [4.96, 0.14], [6.8, 0.16]];
     const glow: Array<[number, [number, number, number]]> = [[0, [0.3, 0.6, 1]], [1.32, [1, 0.8, 0.2]], [2.64, [1, 0.3, 0.8]], [3.97, [0.2, 1, 0.6]], [4.96, [0.3, 0.6, 1]], [6.3, [1, 0.8, 0.2]], [7, [0.3, 0.6, 1]]];
     const loc = v3(), g = v3();
     const place = (t: number) => {
@@ -306,7 +306,7 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
     };
     let trail = 0, prev = 0;
     const tl = new Timeline();
-    tl.at(0, () => { place(0); orb.visible = true; mat.opacity = 0.85; c.play('present'); a.face('surprised', 1); })
+    tl.at(0, () => { place(0); orb.visible = true; mat.opacity = 0.92; c.play('present'); a.face('surprised', 1); })
       .tween(0, 6.8, (_k, t) => {
         place(t);
         trail -= t - prev;
@@ -321,10 +321,10 @@ const BUILD: Record<MomentName, (c: Ctx) => MomentDef> = {
         c.emit({ count: 60, glyph: ['sparkle', 'star', 'dot'], colors: [0x80ccff, PAL.yellow, PAL.pink, PAL.white, PAL.green], at: orb.position.clone(), burst: 1.3, drag: 1.7, gravity: 0.12, life: [1, 1.7], size: [0.05, 0.12] });
         c.play('cheer');
       })
-      .tween(6.8, 0.25, (k) => { orb.scale.setScalar(0.12 * (1 + k * 0.8)); mat.opacity = 0.85 * (1 - k); }, ease.out)
+      .tween(6.8, 0.25, (k) => { orb.scale.setScalar(0.16 * (1 + k * 0.8)); mat.opacity = 0.92 * (1 - k); }, ease.out)
       .at(7.1, () => { orb.visible = false; })
       .hold(8.6);
-    return { tl, tidy: () => { orb.visible = false; mat.opacity = 0.85; mat.emissive.setRGB(0.3, 0.6, 1); } };
+    return { tl, tidy: () => { orb.visible = false; mat.opacity = 0.92; mat.emissive.setRGB(0.3, 0.6, 1); } };
   },
 
   Cold: (c) => {

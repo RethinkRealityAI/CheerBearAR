@@ -5,7 +5,7 @@
 export interface Features {
   /** Frame level, dBFS. */
   levelDb: number;
-  /** Rough first/second formant estimates (Hz), from a harmonic-smoothed spectral envelope. */
+  /** First/second formant estimates (Hz), from LPC (order 12 at ~11-12 kHz) peak picking; 0 when not found. */
   f1: number;
   f2: number;
   /** 0..1 periodicity (voiced speech ~0.6+, fricatives / noise low). */
@@ -30,6 +30,15 @@ export class FeatureExtractor {
   private env: Float32Array<ArrayBuffer>;
   private wave: Float32Array<ArrayBuffer>;
   private hissAvg = -60;
+  // LPC
+  private readonly dec: number;
+  private readonly lpRate: number;
+  private readonly taps: Float32Array<ArrayBuffer>;
+  private lpBuf: Float32Array<ArrayBuffer>;
+  private readonly order = 12;
+  private r = new Float64Array(13);
+  private a = new Float64Array(13);
+  private tmp = new Float64Array(13);
   readonly out: Features = {
     levelDb: -120, f1: 600, f2: 1700, voicing: 0, tiltDb: -20, hissDb: -40, hiCentroid: 2400, nasalDb: 0, fullBand: false,
   };
@@ -40,6 +49,22 @@ export class FeatureExtractor {
     this.pow = new Float32Array(n);
     this.env = new Float32Array(n);
     this.wave = new Float32Array(analyser.fftSize);
+    // Decimate to ~11-12 kHz for LPC (formants live below 4 kHz; fewer samples = cheaper and better conditioned).
+    this.dec = Math.max(1, Math.round(sampleRate / 11025));
+    this.lpRate = sampleRate / this.dec;
+    const nt = this.dec > 1 ? 4 * this.dec + 1 : 1;
+    this.taps = new Float32Array(nt);
+    let sum = 0;
+    for (let k = 0; k < nt; k++) {
+      const m = k - (nt - 1) / 2;
+      const fc = 0.9 / this.dec / 2; // cycles/sample
+      const sinc = m === 0 ? 2 * fc : Math.sin(2 * Math.PI * fc * m) / (Math.PI * m);
+      const win = 0.54 - 0.46 * Math.cos((2 * Math.PI * k) / Math.max(1, nt - 1));
+      this.taps[k] = nt === 1 ? 1 : sinc * win;
+      sum += this.taps[k];
+    }
+    for (let k = 0; k < nt; k++) this.taps[k] /= sum;
+    this.lpBuf = new Float32Array(Math.floor((analyser.fftSize - nt) / this.dec) + 1);
   }
 
   compute(bandTopHz: number, dt: number): Features {
@@ -102,8 +127,9 @@ export class FeatureExtractor {
       }
       return den > 0 ? num / den : (lo + hi) / 2;
     };
-    o.f1 = centroid(220, 1100, 2);
-    o.f2 = centroid(Math.max(900, o.f1 + 250), Math.min(3000, top), 2);
+    this.formants(Math.min(top, 3600));
+    if (!o.f1) o.f1 = centroid(250, 1100, 2);
+    if (!o.f2) o.f2 = centroid(Math.max(900, o.f1 + 250), Math.min(3000, top), 2);
     o.hiCentroid = centroid(1800, top, 1);
     const low = band(150, 900);
     o.tiltDb = 10 * Math.log10(band(1800, top) / low);
@@ -120,6 +146,96 @@ export class FeatureExtractor {
     }
     o.voicing = this.periodicity();
     return o;
+  }
+
+  /**
+   * LPC formant estimate: decimate, pre-emphasise, Hamming window, autocorrelation + Levinson-Durbin (order 12), then
+   * pick peaks of the all-pole envelope. Robust to strong low harmonics and to the 300 Hz phone high-pass.
+   */
+  private formants(topHz: number): void {
+    const o = this.out;
+    o.f1 = 0;
+    o.f2 = 0;
+    const w = this.wave;
+    const h = this.taps;
+    const D = this.dec;
+    const y = this.lpBuf;
+    const M = y.length;
+    for (let m = 0; m < M; m++) {
+      let acc = 0;
+      const base = m * D;
+      for (let k = 0; k < h.length; k++) acc += h[k] * w[base + k];
+      y[m] = acc;
+    }
+    // pre-emphasis + window (in place, backwards so y[m-1] is still the raw sample)
+    for (let m = M - 1; m >= 1; m--) y[m] = y[m] - 0.94 * y[m - 1];
+    y[0] = 0;
+    for (let m = 0; m < M; m++) y[m] *= 0.54 - 0.46 * Math.cos((2 * Math.PI * m) / (M - 1));
+    const p = this.order;
+    const r = this.r;
+    for (let lag = 0; lag <= p; lag++) {
+      let acc = 0;
+      for (let m = lag; m < M; m++) acc += y[m] * y[m - lag];
+      r[lag] = acc;
+    }
+    if (r[0] < 1e-10) return;
+    r[0] *= 1.0001;
+    // Levinson-Durbin
+    const a = this.a;
+    const t = this.tmp;
+    a.fill(0);
+    a[0] = 1;
+    let err = r[0];
+    for (let i = 1; i <= p; i++) {
+      let acc = r[i];
+      for (let j = 1; j < i; j++) acc += a[j] * r[i - j];
+      const k = -acc / err;
+      t.set(a);
+      for (let j = 1; j < i; j++) a[j] = t[j] + k * t[i - j];
+      a[i] = k;
+      err *= 1 - k * k;
+      if (err <= 0) return;
+    }
+    // envelope 1/|A|^2 on a 25 Hz grid, peaks with parabolic interpolation
+    const step = 25;
+    const lo = 150;
+    const nPts = Math.floor((Math.min(topHz, this.lpRate / 2 - 100) - lo) / step);
+    let p0 = 0;
+    let p1 = 0;
+    let found = 0;
+    const peaks: number[] = [];
+    const levels: number[] = [];
+    for (let q = 0; q <= nPts; q++) {
+      const f = lo + q * step;
+      const om = (2 * Math.PI * f) / this.lpRate;
+      let re = 0;
+      let im = 0;
+      for (let j = 0; j <= p; j++) {
+        re += a[j] * Math.cos(om * j);
+        im -= a[j] * Math.sin(om * j);
+      }
+      const v = -10 * Math.log10(re * re + im * im + 1e-20);
+      if (q >= 2 && p1 > p0 && p1 >= v) {
+        const den = p0 - 2 * p1 + v;
+        const off = den < 0 ? (0.5 * (p0 - v)) / den : 0;
+        peaks.push(lo + (q - 1 + off) * step);
+        levels.push(p1);
+        found++;
+      }
+      p0 = p1;
+      p1 = v;
+    }
+    if (!found) return;
+    const i1 = peaks.findIndex((f) => f >= 250 && f <= 1100);
+    if (i1 < 0) return;
+    const f1 = peaks[i1];
+    o.f1 = f1;
+    const i2 = peaks.findIndex((f) => f >= Math.max(700, f1 + 200) && f <= 3200);
+    if (i2 < 0) return;
+    // Back vowels (o, a, u) can have F1 and F2 merged into one LPC peak; the next peak is then F3, far weaker.
+    // Real front-vowel F2 peaks sit within ~25 dB of F1 after pre-emphasis.
+    if (peaks[i2] > 2000 && levels[i2] < levels[i1] - 28) o.f2 = f1 * 1.45;
+    else o.f2 = peaks[i2];
   }
 
   /** Normalised autocorrelation peak over 70..450 Hz pitch lags, on a 2x decimated frame. */

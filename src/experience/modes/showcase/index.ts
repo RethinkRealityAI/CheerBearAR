@@ -16,15 +16,16 @@ import { damp, ease } from '../../core/timeline';
 import { IS_PHONE } from '../../core/device';
 import { bindGestures, keyStick, type Shared } from '../shared';
 
-const FOV = 38;
-const PLAY = { dist: IS_PHONE ? 3.6 : 3.3, pitch: 0.16, targetY: 0.5 };
+const FOV_WIDE = 50; // portrait screens: a taller view shows more of Care-a-Lot
+const FOV_LAND = 38;
+const PLAY = { dist: 3.5, pitch: 0.14, targetY: 0.78 }; // looking a little above her: she stands in the lower half, clear of the top bar
 const LIM = { yaw: 1.0, pitchMin: 0.02, pitchMax: 0.6, distMin: 1.9, distMax: 6, area: 3.4 };
 
 export class ShowcaseMode implements Mode {
   readonly id = 'showcase' as const;
   readonly camera = 'none' as const;
   readonly scene = new THREE.Scene();
-  readonly cam = new THREE.PerspectiveCamera(FOV, 1, 0.05, 200);
+  readonly cam = new THREE.PerspectiveCamera(FOV_LAND, 1, 0.05, 200);
   renderer: THREE.WebGLRenderer | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private env: THREE.WebGLRenderTarget | null = null;
@@ -50,6 +51,9 @@ export class ShowcaseMode implements Mode {
   private frames = 0;
   private dpr = 1;
   private hintT = 0;
+  /** Smoothed frames per second (tests, diagnostics). */
+  fps = 60;
+  private wide = 0; // extra camera distance while a big moment plays
   private stick: { readonly vector: THREE.Vector2; readonly active: boolean } | null = null;
   /** Programs compiled after warm-up (pitfall 13 check: must not grow when moments appear). */
   programsAfterWarm = 0;
@@ -58,7 +62,7 @@ export class ShowcaseMode implements Mode {
     backdrop.mapping = THREE.EquirectangularReflectionMapping;
     this.scene.background = backdrop;
     // the panorama's floating island (its centre column) straight ahead of the default view
-    this.scene.backgroundRotation.set(0, -Math.PI / 2, 0);
+    this.scene.backgroundRotation.set(0, Math.PI / 2, 0);
     this.scene.add(stage.root);
     this.scene.add(cloudFloor());
   }
@@ -139,6 +143,7 @@ export class ShowcaseMode implements Mode {
     const w = Math.max(1, this.sh.container.clientWidth), h = Math.max(1, this.sh.container.clientHeight);
     r.setSize(w, h, false);
     this.cam.aspect = w / h;
+    this.cam.fov = w < h ? FOV_WIDE : FOV_LAND;
     this.cam.updateProjectionMatrix();
   }
 
@@ -205,7 +210,8 @@ export class ShowcaseMode implements Mode {
     const r = this.renderer;
     if (!r) return;
     const t = performance.now();
-    const dt = Math.min(0.05, (t - this.last) / 1000);
+    const dt = Math.min(0.1, (t - this.last) / 1000);
+    this.fps += ((dt > 0 ? 1 / dt : 60) - this.fps) * 0.05;
     this.last = t;
     this.adapt(dt);
     const st = this.stage, a = st.actor;
@@ -229,6 +235,9 @@ export class ShowcaseMode implements Mode {
     this.target.x += (a.position.x - this.target.x) * damp(3.5, dt);
     this.target.z += (a.position.z - this.target.z) * damp(3.5, dt);
     this.framing += (this.framingTo - this.framing) * (this.framingTo < this.framing ? damp(3.2, dt) : 1);
+    // pull back a little while a big moment plays (the house, the party set, the rainbow, a lap)
+    const wantWide = WIDE[this.runner.current ?? ''] ?? 0;
+    this.wide += (wantWide - this.wide) * damp(wantWide > this.wide ? 2.2 : 1.2, dt);
     this.placeCamera(dt);
     st.root.updateMatrixWorld();
     st.update(dt, this.cam);
@@ -241,13 +250,13 @@ export class ShowcaseMode implements Mode {
     const k = ease.inOut(this.framing);
     // play framing
     const yaw = this.yaw * (1 - k), pitch = this.pitch * (1 - k) + 0.08 * k;
-    let dist = this.dist;
-    let ty = PLAY.targetY;
+    let dist = this.dist + this.wide;
+    let ty = PLAY.targetY + this.wide * 0.18;
     const W = Math.max(1, this.sh.container.clientWidth), H = Math.max(1, this.sh.container.clientHeight);
     if (this.hero && k > 0.001) {
       // splash framing: bear (1 unit + a margin) fills the hero window's height, centred in it
-      const want = 1.22 / (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2))) * (H / Math.max(60, this.hero.h));
-      const wantW = 1.0 / (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * (W / H)) * (W / Math.max(60, this.hero.w));
+      const want = 1.22 / (2 * Math.tan(THREE.MathUtils.degToRad(this.cam.fov / 2))) * (H / Math.max(60, this.hero.h));
+      const wantW = 1.0 / (2 * Math.tan(THREE.MathUtils.degToRad(this.cam.fov / 2)) * (W / H)) * (W / Math.max(60, this.hero.w));
       dist = dist * (1 - k) + Math.max(want, wantW) * k;
       ty = PLAY.targetY * (1 - k) + 0.52 * k;
       const ox = (W / 2 - (this.hero.x + this.hero.w / 2)) * k, oy = (H / 2 - (this.hero.y + this.hero.h / 2)) * k;
@@ -298,6 +307,7 @@ export class ShowcaseMode implements Mode {
 }
 
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
+const WIDE: Record<string, number> = { House: 3.4, Party: 1.6, Rainbow: 1.0, Running: 1.2, Magic: 0.8, Cold: 0.6 };
 
 /** A soft white cloud under her (one colour fading out), so walking reads against the far-away panorama. */
 function cloudFloor(): THREE.Mesh {
@@ -314,7 +324,7 @@ function cloudFloor(): THREE.Mesh {
   tex.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(
     new THREE.CircleGeometry(5.2, 64),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false }),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.78, depthWrite: false, toneMapped: false }),
   );
   m.rotation.x = -Math.PI / 2;
   m.renderOrder = -3;

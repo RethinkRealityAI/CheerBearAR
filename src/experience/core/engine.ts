@@ -74,6 +74,7 @@ export class Engine implements EngineView {
   private texQueue: THREE.Texture[] = [];
   private xrReady: Promise<boolean>;
   private hiddenPaused = false;
+  private lastRenderer: THREE.WebGLRenderer | null = null;
   readonly diag = { swaps: [] as number[], errors: [] as string[], runs: 0, adopted: 0, programs: 0 };
 
   constructor(private host: HTMLElement, private hooks: EngineHooks) {
@@ -161,14 +162,26 @@ export class Engine implements EngineView {
     // (pitfall, three r180): detach it for the call, then put it back.
     parent?.remove(root);
     root.visible = true;
-    try {
-      const p = renderer.compileAsync(root, camera, scene);
-      parent?.add(root);
-      root.visible = wasVisible;
-      await p;
-    } catch {
+    // compile gathers lights with traverseVisible: a light under a hidden group (e.g. the AR stage before it is
+    // placed) would be missed and every program built for the wrong light count, then rebuilt when it shows up.
+    // Show the lights' ancestors for the (synchronous) gathering, then put them back.
+    const forced: THREE.Object3D[] = [];
+    root.traverse((o) => {
+      if (!(o as THREE.Light).isLight) return;
+      for (let p: THREE.Object3D | null = o; p && p !== root; p = p.parent) if (!p.visible) { p.visible = true; forced.push(p); }
+    });
+    const restore = () => {
+      for (const o of forced) o.visible = false;
+      forced.length = 0;
       if (root.parent !== parent) parent?.add(root);
       root.visible = wasVisible;
+    };
+    try {
+      const p = renderer.compileAsync(root, camera, scene);
+      restore();
+      await p;
+    } catch {
+      restore();
     }
     glTidy(renderer);
     // textures: a few per frame from onUpdate (an upload burst is a stall)
@@ -293,6 +306,7 @@ export class Engine implements EngineView {
       }
     });
     glTidy(r);
+    this.lastRenderer = r; // same canvas, same GL context: the next run's renderer adopts the textures
     this.xr = null;
     this.texQueue.length = 0;
   }
@@ -374,7 +388,7 @@ export class Engine implements EngineView {
     },
     onUpdate: ({ processCpuResult }: { processCpuResult?: { reality?: { trackingStatus?: string } } }) => {
       const t = now();
-      const dt = Math.min(0.05, this.last ? (t - this.last) / 1000 : 0.016);
+      const dt = Math.min(0.1, this.last ? (t - this.last) / 1000 : 0.016);
       this.last = t;
       const r = processCpuResult?.reality;
       if (r?.trackingStatus) this.tracking = r.trackingStatus;
@@ -425,7 +439,8 @@ export class Engine implements EngineView {
   };
 
   private setup(xr: XrScene): void {
-    const prev = this.xr?.renderer;
+    const prev = this.xr?.renderer ?? this.lastRenderer;
+    this.lastRenderer = null;
     this.xr = xr;
     const { scene, camera, renderer } = xr;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -448,6 +463,7 @@ export class Engine implements EngineView {
   }
 
   private onContextLost = () => {
+    this.lastRenderer = null;
     this.diag.errors.push('webglcontextlost');
     this.hooks.onRuntimeError(new EngineError('error', 'The graphics restarted.'));
   };
