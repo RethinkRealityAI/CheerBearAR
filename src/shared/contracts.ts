@@ -124,6 +124,11 @@ export interface TranscriptEvent {
   /** False for streaming partials of the same `id`. */
   final: boolean;
   at: number;
+  /**
+   * True when this is the demo Cheer Bear answering a TYPED chat message (not words heard on a call): the chat shows
+   * it like a chat reply, whatever the call-transcript visibility policy says.
+   */
+  chat?: boolean;
 }
 export interface TriggerEvent {
   keyword: string;
@@ -162,7 +167,7 @@ export interface VoiceSession {
   readonly status: CallStatus;
   readonly muted: boolean;
   /** Must be called from a tap (microphone permission + audio unlock). */
-  /** `mock: true` starts the demo call (no Twilio, scripted Cheer Bear audio). */
+  /** `mock: true` starts the demo call (no Twilio; Cheer Bear answers with the browser's voice). */
   startCall(opts?: { to?: string; mock?: boolean }): Promise<void>;
   endCall(): Promise<void>;
   setMuted(muted: boolean): void;

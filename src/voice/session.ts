@@ -4,14 +4,19 @@
 //                -> on answer: emit remoteStream (for lip sync), start OpenAI transcription of Cheer Bear's audio
 //                   (and of the user's mic only when allowUserAudioToOpenAI) -> transcript events
 //                -> TriggerPipeline -> trigger events (cooldown, dedupe, dispatch interval, AI fallback)
-//   demo mode    -> MockCall: scripted transcripts + a sample voice stream, same pipeline, no accounts needed.
+//   demo mode    -> MockCall: rings, Cheer Bear greets once, then answers what the child says (browser speech
+//                   recognition) or types; her side is DemoBear (local/AI brain + browser voice + text-driven mouth
+//                   shapes on `visemes`). Her words go through the same pipeline, so moments fire from what she says.
+//   typed chat with no call live -> DemoBear answers too (config.demoVoice.speakTypedChatOutsideCall).
 import type { AppConfig } from '../shared/config';
 import type { CallStatus, Speaker, TranscriptEvent, TriggerEvent, VoiceEvents, VoiceSession } from '../shared/contracts';
-import { sanitizeEnglishText } from '../shared/classifier';
+import { extractKeywordMatches, sanitizeEnglishText } from '../shared/classifier';
 import { getAudioContext } from '../audio/context';
 import { api, ApiError } from './api';
 import { Emitter } from './emitter';
+import { DemoBear } from './demoBear';
 import { MockCall, mockFlagsFromUrl, type MockFlags } from './mock';
+import type { SpeechInputState } from './speechInput';
 import { RealtimeTranscriber } from './transcriber';
 import { TriggerPipeline } from './triggerPipeline';
 import { TwilioCaller } from './twilioCall';
@@ -44,6 +49,8 @@ export interface CreateVoiceSessionOptions {
 export interface VoiceSessionExt extends VoiceSession {
   startCall(opts?: { to?: string; mock?: boolean }): Promise<void>;
   readonly isMock: boolean;
+  /** `replied`: the demo Cheer Bear will answer this message out loud (demo call, or no call live). */
+  sendText(text: string): Promise<{ triggers: string[]; smsSent: boolean; replied: boolean }>;
   readonly transcriptionState: Record<Speaker, VoiceEvents['transcription']['state']>;
   // `status` payloads are VoiceStatusEvent at runtime (extra `code` and `mock`): `(e as VoiceStatusEvent).code`.
 }
@@ -66,7 +73,9 @@ class VoiceSessionImpl implements VoiceSessionExt {
   private callSeq = 0;
   private disposed = false;
   private mockFlags: MockFlags;
-  private replies = 0;
+  private bear: DemoBear | null = null;
+  /** A "can't listen, type instead" message from before the demo call connected (shown once it has). */
+  private listenNotice: string | null = null;
   transcriptionState: Record<Speaker, VoiceEvents['transcription']['state']> = { cheer_bear: 'off', user: 'off' };
 
   constructor(private opts: CreateVoiceSessionOptions) {
@@ -121,6 +130,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
     if (this._status !== 'idle' && this._status !== 'error') return; // double tap
     const seq = ++this.callSeq;
     if (opts.mock || this.mockFlags.enabled) return this.startMock(seq);
+    this.bear?.cancel(); // a demo chat answer still playing gives way to the real call
 
     this.setStatus('connecting', { message: 'Calling Cheer Bear…' });
     // Ask for the microphone once, up front (one prompt on iOS instead of two), then release it: the SDK opens its own.
@@ -205,26 +215,66 @@ class VoiceSessionImpl implements VoiceSessionExt {
     t.start();
   }
 
-  private startMock(seq: number, message?: string) {
-    this.setStatus('connecting', { message: message ?? 'Calling Cheer Bear (demo)…', code: 'demo', mock: true });
-    const call = new MockCall(this.mockFlags, {
-      ringing: () => seq === this.callSeq && this.setStatus('ringing', { message: 'Ringing…', code: 'demo', mock: true }),
-      accepted: (stream) => {
-        if (seq !== this.callSeq) return;
-        this.setStatus('in-call', { message: 'Connected (demo call)', code: 'demo', mock: true });
-        this.setRemote(stream);
-        this.setTranscription('cheer_bear', 'live', 'Demo transcripts');
-      },
-      transcript: (id, text, final) => seq === this.callSeq && this.onTranscript('cheer_bear', id, text, final),
+  /** Cheer Bear's demo side (brain + browser voice + mouth), shared by the demo call and typed chat. */
+  private demoBear(): DemoBear {
+    this.bear ||= new DemoBear({
+      getConfig: () => this.opts.getConfig(),
+      flags: this.mockFlags,
+      onTranscript: (id, text, final, chat) => !this.disposed && this.onTranscript('cheer_bear', id, text, final, chat),
+      onVisemes: (frame) => !this.disposed && this.events.emit('visemes', frame),
+      claim: (id, keywords) => this.pipeline.claim(id, keywords),
     });
-    this.mockCall = call;
-    void call.start();
+    return this.bear;
   }
 
-  private onTranscript(speaker: Speaker, id: string, raw: string, final: boolean) {
+  /** Keywords the child's own words fire (only when user triggers are allowed). */
+  private userKeywords(text: string): string[] {
+    const cfg = this.opts.getConfig();
+    if (!cfg.allowUserTriggers) return [];
+    const clean = cfg.englishOnlyTranscripts ? sanitizeEnglishText(text) : text;
+    return extractKeywordMatches(clean, cfg.localClassifier);
+  }
+
+  private startMock(seq: number, message?: string) {
+    this.setStatus('connecting', { message: message ?? 'Calling Cheer Bear (demo)…', code: 'demo', mock: true });
+    this.listenNotice = null;
+    const bear = this.demoBear();
+    bear.cancel(); // a chat answer still playing gives way to the call
+    const call = new MockCall(this.mockFlags, bear, {
+      ringing: () => seq === this.callSeq && this.setStatus('ringing', { message: 'Ringing…', code: 'demo', mock: true }),
+      accepted: () => {
+        if (seq !== this.callSeq) return;
+        this.setStatus('in-call', { message: 'Connected (demo call)', code: 'demo', mock: true });
+        this.setTranscription('cheer_bear', 'live', bear.voice.supported ? 'Demo: browser voice' : 'Demo: no browser voice, words only');
+        if (this.listenNotice) this.setStatus('in-call', { message: this.listenNotice, code: 'demo', mock: true });
+        this.listenNotice = null;
+      },
+      userTranscript: (id, text, final) => seq === this.callSeq && this.onTranscript('user', id, text, final),
+      userKeywords: (text) => this.userKeywords(text),
+      listening: (state, msg) => seq === this.callSeq && this.onListening(state, msg),
+    });
+    this.mockCall = call;
+    call.start(); // synchronous part runs inside the tap (speech + recognition unlock)
+  }
+
+  /** The demo call's speech recognition state -> transcription state (debug view) and a status message. */
+  private onListening(state: SpeechInputState, message?: string) {
+    const map: Record<SpeechInputState, VoiceEvents['transcription']['state']> = {
+      off: 'off', starting: 'connecting', live: 'live', paused: 'off', unsupported: 'error', denied: 'error', error: 'error',
+    };
+    this.setTranscription('user', map[state], message ?? (state === 'live' ? 'Demo: browser speech recognition' : undefined));
+    if (message && (state === 'unsupported' || state === 'denied' || state === 'error') && this.mockCall) {
+      // The call goes on (type instead); the app shows the message once the call is connected.
+      if (this._status === 'in-call') this.setStatus('in-call', { message, code: 'demo', mock: true });
+      else this.listenNotice = message;
+    }
+  }
+
+  private onTranscript(speaker: Speaker, id: string, raw: string, final: boolean, chat = false) {
     const config = this.opts.getConfig();
     const text = config.englishOnlyTranscripts ? sanitizeEnglishText(raw) : raw.trim();
     const evt: TranscriptEvent = { id, speaker, text, final, at: Date.now() };
+    if (chat) evt.chat = true;
     if (text) this.events.emit('transcript', evt);
     void this.pipeline.handleTranscript(evt);
     if (final && text && speaker === 'user' && config.smsPolicy.sendSpeechToSms && !this.mockCall) void this.sendSms(text);
@@ -263,6 +313,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
     if (this.mockCall) {
       if (this._muted !== muted) {
         this._muted = muted;
+        this.mockCall.setMuted(muted);
         this.events.emit('muted', muted);
       }
       return;
@@ -273,17 +324,30 @@ class VoiceSessionImpl implements VoiceSessionExt {
 
   // ---------------------------------------------------------------- text + manual triggers
 
-  async sendText(text: string): Promise<{ triggers: string[]; smsSent: boolean }> {
+  /**
+   * Typed chat. Real call: to Cheer Bear by SMS (smsPolicy) as before. Demo call: the demo Cheer Bear answers out
+   * loud. No call live: she answers too when config.demoVoice.speakTypedChatOutsideCall. `replied` says she will.
+   */
+  async sendText(text: string): Promise<{ triggers: string[]; smsSent: boolean; replied: boolean }> {
     const clean = String(text || '').trim().slice(0, MAX_TEXT);
-    if (!clean || this.disposed) return { triggers: [], smsSent: false };
+    if (!clean || this.disposed) return { triggers: [], smsSent: false, replied: false };
+    const config = this.opts.getConfig();
+    const noCall = this._status === 'idle' || this._status === 'error';
+    const demoAnswers = !!this.mockCall || (noCall && config.demoVoice.speakTypedChatOutsideCall);
+    if (demoAnswers) this.demoBear().unlock(); // still inside the tap/keypress (iOS speech unlock)
     const triggers = await this.pipeline.classifyTyped(clean);
     let smsSent = false;
-    const config = this.opts.getConfig();
-    if (this._status === 'in-call' && config.smsPolicy.sendTypedChatToSms) {
-      if (this.mockCall) this.mockCall.reply(this.replies++);
-      else smsSent = await this.sendSms(clean);
+    let replied = false;
+    if (this.mockCall) {
+      this.mockCall.userTyped(clean, triggers);
+      replied = true;
+    } else if (this._status === 'in-call') {
+      if (config.smsPolicy.sendTypedChatToSms) smsSent = await this.sendSms(clean);
+    } else if (demoAnswers && (this._status === 'idle' || this._status === 'error')) {
+      void this.demoBear().answer(clean, { chat: true, claimed: triggers });
+      replied = true;
     }
-    return { triggers, smsSent };
+    return { triggers, smsSent, replied };
   }
 
   fireTrigger(keyword: string, speaker: TriggerEvent['speaker'] = 'quick-action'): void {
@@ -328,6 +392,8 @@ class VoiceSessionImpl implements VoiceSessionExt {
     this.disposed = true;
     this.callSeq += 1;
     this.pipeline.dispose();
+    this.bear?.dispose();
+    this.bear = null;
     this.caller?.destroy();
     this.caller = null;
     if (typeof window !== 'undefined') {

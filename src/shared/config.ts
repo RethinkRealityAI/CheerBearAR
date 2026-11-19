@@ -137,6 +137,18 @@ export interface LipSyncDisplayConfig {
   releaseMs: number;
 }
 
+/** Cheer Bear's browser voice and local "brain" (the demo call, and answers to typed chat when no call is live). */
+export interface DemoVoiceConfig {
+  /** Outside a call, Cheer Bear answers typed chat out loud with the browser's voice (and her mouth moves). */
+  speakTypedChatOutsideCall: boolean;
+  /** Browser voice pitch: 1 is the voice's normal pitch (0.5 to 2). */
+  pitch: number;
+  /** Browser voice speed: 1 is normal (0.5 to 2). */
+  rate: number;
+  /** Her answers may come from the AI chat function (/api/chat) when the server has an OpenAI key; else the local brain. */
+  useAiBrain: boolean;
+}
+
 export interface UiPrefs {
   useCallMode: boolean;
   isCommandMode: boolean;
@@ -179,6 +191,7 @@ export interface AppConfig {
   gameModes: GameMode[];
   activeGameMode: string | null;
   lipSync: LipSyncDisplayConfig;
+  demoVoice: DemoVoiceConfig;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -271,6 +284,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
   },
   lipSync: { showControlsPanel: true, showDebugHud: true, intensity: 1, attackMs: 55, releaseMs: 95 },
+  demoVoice: { speakTypedChatOutsideCall: true, pitch: 1.3, rate: 1.05, useAiBrain: true },
   gameModes: [
     {
       id: 'chat-time',
@@ -598,6 +612,14 @@ export function validateConfig(config: unknown): string[] {
     c.num(cfg.lipSync.releaseMs, 20, 300, 'lipSync.releaseMs');
   }
 
+  if (!isPlainObject(cfg.demoVoice)) c.fail('demoVoice', 'must be an object');
+  else {
+    c.bool(cfg.demoVoice.speakTypedChatOutsideCall, 'demoVoice.speakTypedChatOutsideCall');
+    c.num(cfg.demoVoice.pitch, 0.5, 2, 'demoVoice.pitch');
+    c.num(cfg.demoVoice.rate, 0.5, 2, 'demoVoice.rate');
+    c.bool(cfg.demoVoice.useAiBrain, 'demoVoice.useAiBrain');
+  }
+
   if (!Array.isArray(cfg.gameModes)) c.fail('gameModes', 'must be a list');
   else {
     if (cfg.gameModes.length > LIMITS.gameModes) c.fail('gameModes', `at most ${LIMITS.gameModes} game modes`);
@@ -713,6 +735,6 @@ export function diffConfigPaths(a: unknown, b: unknown, path = '', out: string[]
 export interface PublicConfigResponse {
   config: AppConfig;
   /** Which server-side services are set up (never the values). */
-  services: { calls: boolean; transcription: boolean; sms: boolean; intentAi: boolean };
+  services: { calls: boolean; transcription: boolean; sms: boolean; intentAi: boolean; chatAi?: boolean };
   updatedAt: string | null;
 }

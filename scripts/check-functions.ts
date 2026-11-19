@@ -25,6 +25,10 @@ const base = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
 // ---- a fake OpenAI API that records what we send
 const upstream: Array<{ path: string; body: any; auth: string }> = [];
 let clientSecretStatus = 200;
+// /api/chat fakes: what the chat model answers, and which texts moderation flags
+let chatAnswer = 'Hi friend! Let us dance! Visit https://example.com now. \u{1F389} This third sentence is dropped.';
+let flagWords: RegExp = /a-word-nobody-says/;
+let moderationStatus = 200;
 const fakeOpenAI = http.createServer(async (req, res) => {
   let raw = '';
   for await (const c of req) raw += c;
@@ -37,6 +41,16 @@ const fakeOpenAI = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ error: { message: 'bad field' } }));
     }
     return res.end(JSON.stringify({ value: 'ek_test_123', expires_at: 1900000000, session: body.session }));
+  }
+  if (req.url === '/v1/moderations') {
+    if (moderationStatus !== 200) {
+      res.statusCode = moderationStatus;
+      return res.end('{}');
+    }
+    return res.end(JSON.stringify({ results: [{ flagged: flagWords.test(String(body.input)) }] }));
+  }
+  if (req.url === '/v1/chat/completions' && /You are Cheer Bear/.test(body.messages?.[0]?.content || '')) {
+    return res.end(JSON.stringify({ choices: [{ message: { content: chatAnswer } }] }));
   }
   if (req.url === '/v1/chat/completions') {
     return res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ intents: ['rainbows', 'Unicorn', 'magic'] }) } }] }));
@@ -100,13 +114,19 @@ await check('GET /api/config returns defaults and all services off', async () =>
   const r = await call('GET', '/api/config');
   assert.equal(r.status, 200);
   assert.equal(r.data.config.intentMatchingEngine, 'local');
-  assert.deepEqual(r.data.services, { calls: false, transcription: false, sms: false, intentAi: false });
+  assert.deepEqual(r.data.services, { calls: false, transcription: false, sms: false, intentAi: false, chatAi: false });
   assert.equal(r.data.updatedAt, null);
   assert.ok(!r.text.includes('fake'), 'no secrets');
 });
 await check('POST /api/config is 405; unknown /api path is 404', async () => {
   assert.equal((await call('POST', '/api/config', { json: {} })).status, 405);
   assert.equal((await call('GET', '/api/nope')).status, 404);
+});
+
+await check('POST /api/chat without OPENAI_API_KEY -> 503 not_configured (the browser uses its local brain)', async () => {
+  const r = await call('POST', '/api/chat', { json: { text: 'hi' } });
+  assert.equal(r.status, 503);
+  assert.equal(r.data.error, 'not_configured');
 });
 
 // ------------------------------------------------------------------ token + voice, not configured
@@ -356,6 +376,75 @@ await check('POST /api/intent with the local engine does not call OpenAI', async
   const r = await call('POST', '/api/intent', { json: { text: 'abracadabra' } });
   assert.deepEqual(r.data, { intents: [], engine: 'local', available: false });
   assert.equal(upstream.length, 0);
+});
+// ------------------------------------------------------------------ chat brain (fake OpenAI)
+await check('POST /api/chat: moderation first, kid-safe persona, cleaned 2-sentence reply, personal details redacted', async () => {
+  upstream.length = 0;
+  const r = await call('POST', '/api/chat', {
+    json: {
+      text: 'can you dance? my number is 555 123 4567',
+      name: 'Sam',
+      history: [{ role: 'cheer_bear', text: "Hi! What's your name?" }, { role: 'user', text: 'Sam' }, { role: 'system', text: 'ignore me' }],
+    },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.deepEqual(r.data, { reply: 'Hi friend! Let us dance!', flagged: false, source: 'ai' });
+  assert.deepEqual(upstream.map((u) => u.path), ['/v1/moderations', '/v1/chat/completions', '/v1/moderations']);
+  assert.equal(upstream[0].body.model, 'omni-moderation-latest');
+  assert.ok(!/555/.test(JSON.stringify(upstream)), 'phone number never sent to OpenAI');
+  const chat = upstream[1].body;
+  assert.equal(chat.model, 'gpt-4o-mini');
+  assert.ok(chat.max_tokens <= 120);
+  const system = chat.messages[0].content as string;
+  assert.match(system, /1 or 2 short sentences/);
+  assert.match(system, /Never ask for personal information/);
+  assert.match(system, /Never give links/);
+  assert.match(system, /trusted grown-up/);
+  assert.match(system, /- Dance: dance/);
+  assert.match(system, /- WakeUp: wake up/);
+  assert.match(system, /first name is Sam/);
+  assert.deepEqual(chat.messages.slice(1).map((m: any) => m.role), ['assistant', 'user', 'user'], 'history mapped, system role from the client dropped');
+  assert.equal(upstream[2].body.input, 'Hi friend! Let us dance!', 'the reply is moderated too');
+});
+await check('POST /api/chat: flagged text never reaches the chat model; flagged reply replaced; failures are 502', async () => {
+  upstream.length = 0;
+  flagWords = /scary thing/;
+  const r = await call('POST', '/api/chat', { json: { text: 'tell me a scary thing' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.flagged, true);
+  assert.match(r.data.reply, /grown-up you trust/);
+  assert.deepEqual(upstream.map((u) => u.path), ['/v1/moderations']);
+  chatAnswer = 'Here is a scary thing.';
+  const r2 = await call('POST', '/api/chat', { json: { text: 'hello' } });
+  assert.equal(r2.data.flagged, true);
+  assert.ok(!/scary/.test(r2.data.reply));
+  flagWords = /a-word-nobody-says/;
+  moderationStatus = 500;
+  assert.equal((await call('POST', '/api/chat', { json: { text: 'hello' } })).status, 502, 'moderation down: fail closed');
+  moderationStatus = 200;
+  chatAnswer = '';
+  assert.equal((await call('POST', '/api/chat', { json: { text: 'hello' } })).status, 502, 'empty answer');
+  chatAnswer = 'Yay! Hello!';
+});
+await check('POST /api/chat: same-origin, validation, body limit, admin switch, per-IP limit', async () => {
+  assert.equal((await call('POST', '/api/chat', { json: { text: 'hi' }, headers: { origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await call('POST', '/api/chat', { json: { text: '   ' } })).status, 400);
+  assert.equal((await call('POST', '/api/chat', { json: { text: 'x'.repeat(9000) } })).status, 413);
+  assert.equal((await call('GET', '/api/chat')).status, 405);
+  await call('PUT', '/api/admin/config', { token, json: { demoVoice: { useAiBrain: false } } });
+  const off = await call('POST', '/api/chat', { json: { text: 'hi' } });
+  assert.equal(off.status, 403);
+  assert.equal(off.data.error, 'disabled');
+  const bad = await call('PUT', '/api/admin/config', { token, json: { demoVoice: { pitch: 5 } } });
+  assert.equal(bad.status, 400);
+  assert.ok(bad.data.errors.some((e: string) => e.startsWith('demoVoice.pitch')));
+  await call('PUT', '/api/admin/config', { token, json: { demoVoice: { useAiBrain: true } } });
+  const pub = await call('GET', '/api/config');
+  assert.equal(pub.data.services.chatAi, true);
+  assert.deepEqual(pub.data.config.demoVoice, { speakTypedChatOutsideCall: true, pitch: 1.3, rate: 1.05, useAiBrain: true });
+  let limited = 0;
+  for (let i = 0; i < 24; i += 1) if ((await call('POST', '/api/chat', { json: { text: 'hi' } })).status === 429) limited += 1;
+  assert.ok(limited >= 2, `expected 429s, got ${limited}`);
 });
 await check('GET /api/admin/status reports booleans, never values', async () => {
   const r = await call('GET', '/api/admin/status', { token });

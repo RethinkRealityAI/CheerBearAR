@@ -109,4 +109,15 @@ await check('diffConfigPaths summarises changes', () => {
   assert.deepEqual(diffConfigPaths(defaultConfig(), c).sort(), ['localClassifier.synonyms', 'triggerPolicy.triggerCooldownMs']);
 });
 
+await check('demoVoice: defaults, validation, an old stored config without it gets the defaults', () => {
+  assert.deepEqual(defaultConfig().demoVoice, { speakTypedChatOutsideCall: true, pitch: 1.3, rate: 1.05, useAiBrain: true });
+  rejects({ demoVoice: { pitch: 3 } }, 'demoVoice.pitch');
+  rejects({ demoVoice: { rate: 0.1 } }, 'demoVoice.rate');
+  rejects({ demoVoice: { useAiBrain: 'yes' } }, 'demoVoice.useAiBrain');
+  const c = applyConfigPatch(defaultConfig(), { demoVoice: { speakTypedChatOutsideCall: false, pitch: 1.1 } });
+  assert.deepEqual(c.demoVoice, { speakTypedChatOutsideCall: false, pitch: 1.1, rate: 1.05, useAiBrain: true });
+  const old = defaultConfig() as unknown as Record<string, unknown>;
+  delete old.demoVoice;
+  assert.deepEqual(coerceConfig(old).demoVoice, defaultConfig().demoVoice);
+});
 console.log(`config: ${passed} passed${process.exitCode ? ', SOME FAILED' : ''}`);

@@ -18,6 +18,7 @@ import { NO_GAME, savePrefs, type Prefs } from './state/prefs';
 import { normaliseConfig, settingOn, transcriptsVisible } from './state/uiConfig';
 import { loadExperience, loadVoice, preloadAudioUnlock, unlockAudio } from './loaders';
 import { actionLabel } from './actions';
+import { VoiceLevel } from './state/voiceLevel';
 
 const MAX_MESSAGES = 200;
 let msgSeq = 0;
@@ -42,6 +43,8 @@ export function friendlyCallError(message: string | null | undefined, code?: str
 export class AppController {
   experience: ExperienceApi | null = null;
   voice: VoiceSession | null = null;
+  /** Cheer Bear's voice level for the talk button (subscribe; no React state). */
+  readonly level = new VoiceLevel();
   private configClient: ConfigClient | null = null;
   private config: AppConfig = DEFAULT_CONFIG;
   private configLoaded = false;
@@ -198,11 +201,13 @@ export class AppController {
       voice.on('muted', (muted) => this.set({ muted })),
       voice.on('remoteStream', (stream) => {
         this.experience?.setSpeechStream(stream);
+        this.level.setStream(stream);
         if (!stream) this.set({ speaking: false });
       }),
       voice.on('visemes', (frame) => {
         this.experience?.setVisemes?.(frame);
-        this.set({ speaking: !!frame?.speaking });
+        this.level.setAmplitude(frame?.amplitude ?? 0);
+        if (this.s.speaking !== !!frame?.speaking) this.set({ speaking: !!frame?.speaking });
       }),
       voice.on('transcript', (t) => this.onTranscript(t)),
       voice.on('trigger', (t) => this.onTrigger(t)),
@@ -221,6 +226,8 @@ export class AppController {
       this.showToast('info', 'Connected! Say hi to Cheer Bear.', 2400);
       this.experience?.trigger('WakeUp');
     }
+    // demo call: e.g. "This browser can't listen here, so type to Cheer Bear instead."
+    if (status === 'in-call' && prev === 'in-call' && code === 'demo' && message) this.showToast('info', message, 5000);
     if (status !== 'in-call' && status !== 'ending') this.set({ callStartedAt: null });
     if (status === 'idle' && (prev === 'in-call' || prev === 'ending')) {
       this.addMessage({ kind: 'system', text: 'Call ended.', final: true, source: 'system' });
@@ -247,13 +254,14 @@ export class AppController {
     const kind = t.speaker === 'cheer_bear' ? 'bear' : 'user';
     const exists = this.s.messages.some((m) => m.id === t.id);
     if (exists) this.patchMessage(t.id, { text: t.text, final: t.final });
-    else this.addMessage({ id: t.id, kind, text: t.text, final: t.final, source: 'call' });
+    // `chat`: the demo Cheer Bear answering a typed message: shown like a chat reply (not a call transcript)
+    else this.addMessage({ id: t.id, kind, text: t.text, final: t.final, source: t.chat ? 'typed' : 'call' });
 
     if (t.speaker !== 'cheer_bear') return;
     this.set({ speaking: true });
     this.timer('speaking', t.final ? 900 : 1600, () => this.set({ speaking: false }));
     const s = this.s;
-    if (t.final && transcriptsVisible(s.ui.transcriptVisibility, s.uiMode, s.staffTranscripts)) {
+    if (t.final && (t.chat || transcriptsVisible(s.ui.transcriptVisibility, s.uiMode, s.staffTranscripts))) {
       this.experience?.setSpeechText(t.text);
       this.timer('caption', Math.min(9000, 2500 + t.text.length * 50), () => this.experience?.setSpeechText(null));
     }
@@ -352,9 +360,10 @@ export class AppController {
     }
     const id = this.addMessage({ kind: 'user', text, final: true, source: 'typed', note: 'Sending…' });
     try {
-      const res = await this.voice.sendText(text);
+      const res = await this.voice.sendText(text) as { smsSent: boolean; replied?: boolean };
       const inCall = this.s.call === 'in-call';
-      this.patchMessage(id, { note: res.smsSent ? 'Sent' : inCall ? undefined : 'Call Cheer Bear to send this' });
+      // `replied`: the demo Cheer Bear answers out loud (voice module extra)
+      this.patchMessage(id, { note: res.smsSent ? 'Sent' : inCall || res.replied ? undefined : 'Call Cheer Bear to send this' });
     } catch (err) {
       console.warn('[app] sendText failed', err);
       this.patchMessage(id, { note: 'Not sent. Try again.' });
@@ -443,6 +452,7 @@ export class AppController {
     this.voice?.endCall().catch(() => {});
     this.voice?.dispose();
     this.experience?.dispose();
+    this.level.setStream(null);
     this.voice = null;
     this.experience = null;
   }

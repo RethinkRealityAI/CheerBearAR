@@ -15,6 +15,8 @@ w.__ready = false;
 const push = (t: string, data: Record<string, unknown>) => log.push({ t, at: Math.round(performance.now()), ...data });
 
 await configClient.load();
+// ?noai: keep the demo on the local brain even though the test server has a (fake) OpenAI key
+if (new URLSearchParams(location.search).has('noai')) (configClient.services as { chatAi?: boolean }).chatAi = false;
 const mode = (new URLSearchParams(location.search).get('mode') || 'url') as 'url' | 'auto' | 'always' | 'never';
 const session = createVoiceSession({ getConfig: () => configClient.current, mock: mode, endCallWhenHidden: false });
 w.__session = session;
@@ -25,6 +27,24 @@ session.on('transcript', (e) => push('transcript', { ...e }));
 session.on('trigger', (e) => push('trigger', { ...e }));
 session.on('transcription', (e) => push('transcription', { ...e }));
 session.on('muted', (m) => push('muted', { muted: m }));
+// Mouth shapes from the demo voice: counted, not logged frame by frame.
+const vis = { frames: 0, nulls: 0, maxTotal: 0, maxAmp: 0, visemes: {} as Record<string, number> };
+w.__vis = vis;
+session.on('visemes', (f) => {
+  if (!f) {
+    vis.nulls += 1;
+    push('visemes', { frame: null });
+    return;
+  }
+  vis.frames += 1;
+  let total = 0;
+  for (const [k, v] of Object.entries(f.weights)) {
+    total += v ?? 0;
+    if ((v ?? 0) > 0.3) vis.visemes[k] = (vis.visemes[k] ?? 0) + 1;
+  }
+  vis.maxTotal = Math.max(vis.maxTotal, total);
+  vis.maxAmp = Math.max(vis.maxAmp, f.amplitude);
+});
 
 let meter: ReturnType<typeof setInterval> | null = null;
 session.on('remoteStream', (stream) => {
@@ -53,6 +73,16 @@ start.onclick = () => {
   void session.startCall();
 };
 document.body.append(start);
+// A chat box, so typed messages are sent from a real key press (like the app).
+const input = document.createElement('input');
+input.id = 'chat';
+input.onkeydown = (e) => {
+  if (e.key !== 'Enter') return;
+  const text = input.value;
+  input.value = '';
+  void session.sendText(text).then((r) => push('sent', { text, ...r }));
+};
+document.body.append(input);
 
 /** Loopback test of the OpenAI WebRTC transcriber (the "OpenAI" side is faked by the test runner). */
 w.__runTranscriber = async () => {

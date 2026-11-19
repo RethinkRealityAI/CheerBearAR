@@ -1,5 +1,8 @@
 # Handoff: server-voice
 
+> Round 2: the demo call, Cheer Bear's brain/browser voice and `/api/chat` changed; see `docs/handoff/voice-2.md`.
+> `mock.ts`'s scripted reel, `mockAudio.ts` and `public/media/voice/mock-cheer-bear.wav` described below are gone.
+
 Backend moved from Express + WebSockets on Cloud Run / Cloud SQL / GCS to Netlify Functions + Blobs. Realtime work
 (transcription, trigger matching, dispatch) moved into the browser (`src/voice`). Everything below was tested with
 **no real credentials**; the "Not verified" section says exactly what Dapo must check and how.

@@ -20,7 +20,7 @@ export interface ConfigClientExt extends ConfigClient {
 
 class ConfigClientImpl implements ConfigClientExt {
   private _current: AppConfig;
-  private _services: Services = { calls: false, transcription: false, sms: false, intentAi: false };
+  private _services: Services = { calls: false, transcription: false, sms: false, intentAi: false, chatAi: false };
   private _loaded = false;
   private signature: string;
   private subs = new Set<(c: AppConfig) => void>();

@@ -22,10 +22,12 @@ PORT=5180 npm run dev       # another port (functions on PORT+1000, or set API_P
 
 - Without any `.env` everything still runs: `/api/config` serves the defaults, calls report "not set up", and the
   admin panel accepts `admin` / `admin` **locally only** (never on a deployed site).
-- **Demo call without accounts:** open `http://localhost:5173/?mockVoice` and tap the talk button. Cheer Bear
-  "rings", answers and says scripted lines containing every trigger word; transcripts, triggers and lip sync run
-  through the real pipeline. `?mockVoice=fast` (3x speed), `?mockVoice=silent` (no sound), or both:
-  `?mockVoice=fast,silent`.
+- **Demo call without accounts:** open `http://localhost:5173/?mockVoice` and tap the talk button. It rings, Cheer
+  Bear greets you once and waits: talk (browser speech recognition) or type, and she answers out loud with the
+  browser's voice, her mouth moving with the words. Asking for something ("can you dance?") makes her say the trigger
+  word, so the moment fires through the real pipeline; small talk fires nothing. Typed chat with no call live gets a
+  spoken answer too (admin: `demoVoice`). Her answers come from a built-in kid-safe brain, or from `POST /api/chat`
+  when `OPENAI_API_KEY` is set. `?mockVoice=fast` (3x speed), `?mockVoice=silent` (no sound), or both.
 - Real services: copy `.env.example` to `.env` and fill in what you have (Twilio, OpenAI, admin). For a real call
   locally, Twilio must still reach `/api/voice` on a public URL: use a deploy preview for that (see below).
 - Config saved from `/admin` is kept in `.tmp/config-store/` (delete it to reset).
@@ -48,7 +50,7 @@ line each: `.env.example`. None of them reach the browser; `/api/config` only sa
 |---|---|
 | Calls | `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_TWIML_APP_SID`, `TWILIO_PHONE_NUMBER`, `CHEER_BEAR_NUMBER`, `TWILIO_AUTH_TOKEN` (signature checks), optional `ALLOWED_DIAL_TARGETS`, `TWILIO_RECORD_CALLS`, `TWILIO_WEBHOOK_URL` |
 | SMS bridge | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` (or `TWILIO_SMS_FROM`), `CHEER_BEAR_NUMBER` |
-| Transcription / intent | `OPENAI_API_KEY`, optional `OPENAI_TRANSCRIBE_MODEL`, `OPENAI_INTENT_MODEL` |
+| Transcription / intent / demo chat brain | `OPENAI_API_KEY`, optional `OPENAI_TRANSCRIBE_MODEL`, `OPENAI_INTENT_MODEL`, `OPENAI_CHAT_MODEL`, `OPENAI_MODERATION_MODEL` |
 | Admin | `ADMIN_USERNAME`, `ADMIN_PASSWORD` (or a bcrypt hash), `JWT_SECRET` (32+ chars) |
 
 ## Deploying on Netlify

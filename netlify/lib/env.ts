@@ -67,6 +67,9 @@ export const openaiEnv = () => ({
   /** Realtime transcription model. gpt-4o-mini-transcribe works with server VAD (the old default). */
   transcribeModel: env('OPENAI_TRANSCRIBE_MODEL') || 'gpt-4o-mini-transcribe',
   intentModel: env('OPENAI_INTENT_MODEL') || 'gpt-4o-mini',
+  /** Cheer Bear's AI chat brain (/api/chat): a small, fast chat model. */
+  chatModel: env('OPENAI_CHAT_MODEL') || 'gpt-4o-mini',
+  moderationModel: env('OPENAI_MODERATION_MODEL') || 'omni-moderation-latest',
   baseUrl: env('OPENAI_BASE_URL') || 'https://api.openai.com/v1',
 });
 
@@ -78,5 +81,6 @@ export function services() {
     transcription: !!o.apiKey,
     sms: missingTwilioForSms(t).length === 0,
     intentAi: !!o.apiKey,
+    chatAi: !!o.apiKey,
   };
 }

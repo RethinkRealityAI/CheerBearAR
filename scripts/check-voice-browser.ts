@@ -1,7 +1,9 @@
 // @ts-nocheck -- test runner: Playwright is a global, untyped install here; run with tsx (no typecheck).
 // Headless Chromium checks for src/voice (no Twilio / OpenAI accounts):
-//   1. Demo call (?mockVoice): status flow, transcripts (partials + finals), triggers in script order, a remote
-//      stream that carries audio (what lip sync uses), sendText / fireTrigger / mute / endCall.
+//   1. Demo call (?mockVoice) with faked speechSynthesis + speech recognition: rings, greets once and waits; typed and
+//      spoken turns get spoken answers; her words stream as transcripts with mouth shapes (visemes); "can you dance"
+//      fires Dance once from what she says, small talk fires nothing; mute / endCall; typed chat with no call; the AI
+//      brain through /api/chat against a fake OpenAI.
 //   2. Real mode with Twilio not configured: a clear 'not_configured' error, no crash; mode 'auto' falls back to demo.
 //   3. The OpenAI WebRTC transcriber end to end against a fake "OpenAI" peer (a second page answers the SDP offer and
 //      sends transcription events on the oai-events data channel), plus the real /api/realtime-session function.
@@ -22,9 +24,18 @@ const require = createRequire(import.meta.url);
 const { chromium } = require('playwright') as { chromium: any };
 
 // ---- fake OpenAI REST (client_secrets) for the /api/realtime-session function
+const chatLog: string[] = [];
 const fakeOpenAI = http.createServer((req, res) => {
   res.setHeader('Content-Type', 'application/json');
   if (req.url === '/v1/realtime/client_secrets') return res.end(JSON.stringify({ value: 'ek_browser_test', expires_at: 1900000000 }));
+  if (req.url === '/v1/moderations') {
+    chatLog.push(req.url);
+    return res.end(JSON.stringify({ results: [{ flagged: false }] }));
+  }
+  if (req.url === '/v1/chat/completions') {
+    chatLog.push(req.url);
+    return res.end(JSON.stringify({ choices: [{ message: { content: "Ooh, wiggles! Let's dance!" } }] }));
+  }
   res.statusCode = 404;
   res.end('{}');
 });
@@ -95,70 +106,254 @@ async function openHarness(query: string) {
 
 console.log('voice in headless Chromium');
 
-const EXPECTED = ['House', 'Rainbow', 'Sparkle', 'Dance', 'Party', 'Wave', 'Cold', 'Magic', 'Running', 'Sleep', 'WakeUp'];
+// The browser's speech synthesis and recognition, faked (headless Chromium has neither working): the fake voice
+// records each utterance, then sends start, a word boundary every 110 ms and end; the fake recognition lets the test
+// "speak" as the child. Plain JS strings (see the note on __name in the server-voice handoff).
+const FAKE_SPEECH = `
+  window.__spoken = [];
+  window.__cancels = 0;
+  class FakeUtterance { constructor(text) { this.text = text; this.pitch = 1; this.rate = 1; this.volume = 1; this.voice = null; this.lang = ''; } }
+  const voices = [
+    { name: 'Albert', lang: 'en-US', localService: true, default: false, voiceURI: 'albert' },
+    { name: 'Samantha', lang: 'en-US', localService: true, default: true, voiceURI: 'samantha' },
+    { name: 'Amelie', lang: 'fr-CA', localService: true, default: false, voiceURI: 'amelie' },
+  ];
+  const synth = {
+    speaking: false, pending: false, cur: null,
+    getVoices() { return voices; },
+    speak(u) {
+      window.__spoken.push({ text: u.text, pitch: u.pitch, rate: u.rate, volume: u.volume, voice: u.voice ? u.voice.name : null });
+      if (!u.text.trim()) return;
+      this.cur = u; this.speaking = true;
+      const words = [...u.text.matchAll(/[A-Za-z0-9'’]+/g)];
+      let i = 0;
+      setTimeout(() => {
+        if (this.cur !== u) return;
+        u.onstart && u.onstart({});
+        const next = () => {
+          if (this.cur !== u) return;
+          if (i < words.length) { u.onboundary && u.onboundary({ name: 'word', charIndex: words[i].index }); i++; setTimeout(next, 110); }
+          else { this.cur = null; this.speaking = false; u.onend && u.onend({}); }
+        };
+        next();
+      }, 40);
+    },
+    cancel() { const u = this.cur; this.cur = null; this.speaking = false; window.__cancels++; if (u && u.onerror) u.onerror({ error: 'interrupted' }); },
+    resume() {}, pause() {}, addEventListener() {}, removeEventListener() {},
+  };
+  if (!location.search.includes('nosynth')) {
+    Object.defineProperty(window, 'speechSynthesis', { value: synth, configurable: true });
+    window.SpeechSynthesisUtterance = FakeUtterance;
+  } else {
+    Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true });
+  }
+  window.__recs = [];
+  class FakeRec {
+    constructor() { window.__recs.push(this); this.results = []; this.aborted = false; }
+    start() { setTimeout(() => this.onstart && this.onstart(), 5); }
+    stop() { this.onend && this.onend(); }
+    abort() { this.aborted = true; }
+  }
+  window.__userSays = (text) => {
+    const r = window.__recs.filter((x) => !x.aborted).pop();
+    if (!r || !r.onresult) return false;
+    const words = text.split(' ');
+    const idx = r.results.length;
+    for (let i = 1; i <= words.length; i++) {
+      r.results[idx] = { isFinal: i === words.length, 0: { transcript: words.slice(0, i).join(' ') } };
+      r.onresult({ resultIndex: idx, results: r.results });
+    }
+    return true;
+  };
+  if (location.search.includes('norec')) { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = undefined; }
+  else { window.SpeechRecognition = undefined; window.webkitSpeechRecognition = FakeRec; }
+`;
 
-await check('demo call: status flow, transcripts and all 11 core triggers in order, with audio for lip sync', async () => {
-  const { page, context, errors, getLog } = await openHarness('?mockVoice=fast,silent');
-  await page.click('#start');
-  await page.waitForFunction((n) => ((window as any).__log as Entry[]).filter((e) => e.t === 'trigger').length >= n, EXPECTED.length, { timeout: 60_000 });
-  const log = await getLog();
+async function openSpeechHarness(query: string) {
+  const context = await browser.newContext({ permissions: ['microphone'] });
+  await context.addInitScript({ content: FAKE_SPEECH });
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  await page.goto(`${webBase}/__voice-harness${query}`);
+  await page.waitForFunction(() => (window as any).__ready === true, null, { timeout: 30_000 });
+  const getLog = () => page.evaluate(() => (window as any).__log as Entry[]);
+  const bearFinals = async () => (await getLog()).filter((e) => e.t === 'transcript' && e.speaker === 'cheer_bear' && e.final);
+  const waitBearFinals = (n: number, timeout = 20_000) =>
+    page.waitForFunction((k) => ((window as any).__log as Entry[]).filter((e) => e.t === 'transcript' && e.speaker === 'cheer_bear' && e.final).length >= k, n, { timeout });
+  const type = async (text: string) => {
+    await page.fill('#chat', text);
+    await page.press('#chat', 'Enter');
+  };
+  return { page, context, errors, getLog, bearFinals, waitBearFinals, type };
+}
+
+await check('demo call: rings, Cheer Bear greets ONCE out loud with a friendly voice, mouth moves, then she waits (no loop)', async () => {
+  const h = await openSpeechHarness('?mockVoice=fast&noai');
+  (globalThis as any).__demo = h; // the next checks continue this call
+  await h.page.click('#start');
+  await h.waitBearFinals(1);
+  await h.page.waitForTimeout(4000); // the old demo looped through a script here
+  const log = await h.getLog();
   const statuses = log.filter((e) => e.t === 'status').map((e) => e.status);
   assert.deepEqual(statuses.slice(0, 3), ['connecting', 'ringing', 'in-call']);
   assert.ok(log.filter((e) => e.t === 'status').every((e) => e.mock === true), 'status says mock');
-  const remote = log.find((e) => e.t === 'remoteStream');
-  assert.ok(remote?.present && remote.tracks === 1, 'remote stream with one audio track');
-
-  const transcripts = log.filter((e) => e.t === 'transcript');
-  const first = transcripts.filter((e) => e.id === 'mock-1');
-  assert.ok(first.length > 3 && first.slice(0, -1).every((e) => !e.final) && first[first.length - 1].final, 'partials then a final');
-  assert.match(first[first.length - 1].text, /welcome to my house/i);
-
-  const triggers = log.filter((e) => e.t === 'trigger');
-  assert.deepEqual(triggers.slice(0, EXPECTED.length).map((e) => e.keyword), EXPECTED);
-  for (const trig of triggers) {
-    assert.equal(trig.speaker, 'cheer_bear');
-    assert.equal(trig.via, 'local');
-    const fin = transcripts.find((e) => e.id === trig.transcriptId && e.final);
-    assert.ok(fin, `trigger ${trig.keyword} has a final transcript`);
-    assert.ok(trig.at >= fin!.at, `trigger ${trig.keyword} comes after its transcript`);
-  }
-  // Two triggers from one line are spaced by dispatchIntervalMs (1000 ms default).
-  const rainbow = triggers.find((e) => e.keyword === 'Rainbow')!;
-  const sparkle = triggers.find((e) => e.keyword === 'Sparkle')!;
-  assert.ok(sparkle.at - rainbow.at >= 900, `spacing ${sparkle.at - rainbow.at} ms`);
-
-  const levels = await page.evaluate(() => (window as any).__levels as number[]);
-  const loud = levels.filter((l) => l > 0.01).length;
-  assert.ok(loud > 10, `remote stream carries sound (${loud} loud samples of ${levels.length}, max ${Math.max(...levels).toFixed(3)})`);
-  assert.ok(levels.some((l) => l < 0.002), 'and silence between lines');
-  assert.deepEqual(errors, []);
-  (globalThis as any).__demo = { page, context, getLog, errors };
+  const finals = await h.bearFinals();
+  assert.equal(finals.length, 1, `greets once, then waits: ${finals.map((f) => f.text).join(' | ')}`);
+  assert.match(finals[0].text, /Cheer Bear/);
+  const partials = log.filter((e) => e.t === 'transcript' && e.id === finals[0].id && !e.final);
+  assert.ok(partials.length >= 4, `her words stream as partials (${partials.length})`);
+  assert.ok(partials.every((p, i) => i === 0 || p.text.length > partials[i - 1].text.length), 'partials grow word by word');
+  assert.ok(finals[0].text.startsWith(partials[partials.length - 1].text.replace(/\W+$/, '')));
+  assert.equal(log.filter((e) => e.t === 'trigger').length, 0, 'small talk fires nothing');
+  const spoken = await h.page.evaluate(() => (window as any).__spoken.filter((u: any) => u.text.trim()));
+  assert.equal(spoken.length, 1);
+  assert.equal(spoken[0].text, finals[0].text, 'what she says is what the transcript says');
+  assert.equal(spoken[0].voice, 'Samantha', 'friendly English voice (not Albert, not French)');
+  assert.ok(spoken[0].pitch > 1 && spoken[0].rate > 1, 'a bit higher and a bit faster');
+  const vis = await h.page.evaluate(() => (window as any).__vis);
+  // ~45 fps while she talks; under heavy CPU load timers run slower, so only a floor is checked
+  assert.ok(vis.frames > 20, `mouth frames while she talks (${vis.frames})`);
+  assert.ok(vis.nulls >= 1, 'null when she stops');
+  assert.ok(vis.maxTotal <= 1.0001 && vis.maxAmp > 0.4, JSON.stringify(vis));
+  assert.ok(Object.keys(vis.visemes).length >= 5, `several mouth shapes: ${JSON.stringify(vis.visemes)}`);
+  const lastVis = log.filter((e) => e.t === 'visemes').pop();
+  assert.equal(lastVis?.frame, null);
+  assert.equal(log.find((e) => e.t === 'remoteStream')?.present ?? false, false, 'no fake audio stream in the demo');
+  assert.deepEqual(h.errors, []);
 });
 
-await check('demo call: sendText, fireTrigger, mute and endCall', async () => {
-  const { page, context, getLog, errors } = (globalThis as any).__demo;
-  const sent = await page.evaluate(() => (window as any).__session.sendText('Hello Cheer Bear, do you like rainbows?'));
-  assert.deepEqual(sent, { triggers: [], smsSent: false }, 'user triggers are off by default; no SMS in demo');
-  await page.evaluate(() => (window as any).__session.fireTrigger('Fireworks'));
-  await page.evaluate(() => (window as any).__session.setMuted(true));
-  await page.waitForTimeout(1200);
-  let log: Entry[] = await getLog();
-  const manual = log.filter((e) => e.t === 'trigger' && e.via === 'manual');
-  assert.deepEqual(manual.map((e) => [e.keyword, e.speaker]), [['Fireworks', 'quick-action']]);
-  assert.ok(log.some((e) => e.t === 'muted' && e.muted === true));
-  await page.evaluate(() => (window as any).__session.endCall());
-  await page.waitForTimeout(300);
-  log = await getLog();
-  const tail = log.filter((e) => e.t === 'status').slice(-2).map((e) => e.status);
-  assert.deepEqual(tail, ['ending', 'idle']);
-  assert.equal(log.filter((e) => e.t === 'remoteStream').pop()?.present, false, 'remoteStream null after the call');
+await check('demo call: typed small talk -> spoken answer, nothing fires; "can you dance?" -> "...dance..." fires Dance ONCE', async () => {
+  const h = (globalThis as any).__demo as Awaited<ReturnType<typeof openSpeechHarness>>;
+  await h.type('hi, how are you?');
+  await h.waitBearFinals(2);
+  await h.page.waitForTimeout(800);
+  let log = await h.getLog();
+  assert.equal(log.filter((e) => e.t === 'trigger').length, 0, 'small talk fires nothing');
+  const sent = log.find((e) => e.t === 'sent');
+  assert.deepEqual([sent?.triggers, sent?.smsSent, sent?.replied], [[], false, true]);
+  await h.type('Can you dance?');
+  await h.waitBearFinals(3);
+  await h.page.waitForTimeout(2500);
+  log = await h.getLog();
+  const finals = await h.bearFinals();
+  const answer = finals[2];
+  assert.match(answer.text, /dance/i);
+  assert.equal(answer.chat, true, 'an answer to a typed message is marked chat');
+  const triggers = log.filter((e) => e.t === 'trigger');
+  assert.deepEqual(triggers.map((t) => [t.keyword, t.speaker, t.via]), [['Dance', 'cheer_bear', 'local']]);
+  assert.equal(triggers[0].transcriptId, answer.id, 'fired from what she said');
+  const fin = log.find((e) => e.t === 'transcript' && e.id === answer.id && e.final)!;
+  assert.ok(triggers[0].at >= fin.at, 'after her sentence');
+  const spoken = await h.page.evaluate(() => (window as any).__spoken.filter((u: any) => u.text.trim()).map((u: any) => u.text));
+  assert.deepEqual(spoken, finals.map((f) => f.text), 'every answer was spoken out loud');
+  assert.deepEqual(h.errors, []);
+});
+
+await check('demo call: the child talks (fake speech recognition) -> user transcripts -> her answer fires Rainbow; mute pauses listening', async () => {
+  const h = (globalThis as any).__demo as Awaited<ReturnType<typeof openSpeechHarness>>;
+  assert.equal(await h.page.evaluate(() => (window as any).__userSays('please make a rainbow')), true);
+  await h.waitBearFinals(4);
+  await h.page.waitForTimeout(2200);
+  const log = await h.getLog();
+  const user = log.filter((e) => e.t === 'transcript' && e.speaker === 'user');
+  assert.ok(user.length >= 2 && user.some((u) => !u.final) && user.filter((u) => u.final).length === 1, 'partials then one final');
+  assert.equal(user.find((u) => u.final)!.text, 'please make a rainbow');
+  const answer = (await h.bearFinals())[3];
+  assert.match(answer.text, /rainbow/i);
+  assert.ok(!answer.chat, 'a spoken answer is a normal call transcript');
+  assert.deepEqual(log.filter((e) => e.t === 'trigger').map((t) => t.keyword), ['Dance', 'Rainbow']);
+  assert.ok(log.some((e) => e.t === 'transcription' && e.speaker === 'user' && e.state === 'live'));
+  await h.page.evaluate(() => (window as any).__session.setMuted(true));
+  const recs = await h.page.evaluate(() => (window as any).__recs.map((r: any) => r.aborted));
+  assert.equal(recs[recs.length - 1], true, 'mute stops recognition');
+  assert.equal(await h.page.evaluate(() => (window as any).__userSays('can you dance')), false, 'nothing listening while muted');
+  await h.page.evaluate(() => (window as any).__session.setMuted(false));
+  await h.page.waitForTimeout(100);
+  assert.equal(await h.page.evaluate(() => (window as any).__recs.filter((r: any) => !r.aborted).length), 1, 'listening again');
+  assert.deepEqual(h.errors, []);
+});
+
+await check('demo call: fireTrigger, endCall stops her mid-sentence, nothing after hang up', async () => {
+  const h = (globalThis as any).__demo as Awaited<ReturnType<typeof openSpeechHarness>>;
+  await h.page.evaluate(() => (window as any).__session.fireTrigger('Fireworks'));
+  await h.type('tell me a joke');
+  await h.page.waitForFunction(() => ((window as any).__log as Entry[]).filter((e) => e.t === 'transcript' && e.speaker === 'cheer_bear' && !e.final).length > 0 && (window as any).speechSynthesis.speaking, null, { timeout: 10_000 });
+  await h.page.evaluate(() => (window as any).__session.endCall());
+  await h.page.waitForTimeout(300);
+  let log: Entry[] = await h.getLog();
+  assert.deepEqual(log.filter((e) => e.t === 'trigger' && e.via === 'manual').map((e) => [e.keyword, e.speaker]), [['Fireworks', 'quick-action']]);
+  assert.deepEqual(log.filter((e) => e.t === 'status').slice(-2).map((e) => e.status), ['ending', 'idle']);
+  assert.equal(log.filter((e) => e.t === 'visemes').pop()?.frame, null, 'mouth closed');
+  assert.ok(await h.page.evaluate(() => (window as any).__cancels > 0 && !(window as any).speechSynthesis.speaking), 'speech cancelled');
   assert.equal(log.filter((e) => e.t === 'transcription').pop()?.state, 'off');
-  assert.ok(log.some((e) => e.t === 'muted' && e.muted === false), 'unmuted on hang up');
   const count = log.filter((e) => e.t === 'transcript').length;
-  await page.waitForTimeout(1500);
-  assert.equal((await getLog()).filter((e: Entry) => e.t === 'transcript').length, count, 'no transcripts after hang up');
-  assert.deepEqual(errors, []);
-  await context.close();
+  await h.page.waitForTimeout(2000);
+  log = await h.getLog();
+  assert.equal(log.filter((e) => e.t === 'transcript').length, count, 'no transcripts after hang up');
+  assert.deepEqual(h.errors, []);
+  await h.context.close();
+});
+
+await check('no call: typed chat gets a spoken answer (chat-marked) and fires from her words; no voice at all still works', async () => {
+  const h = await openSpeechHarness('?noai');
+  await h.type('can you show me your house?');
+  await h.waitBearFinals(1);
+  await h.page.waitForTimeout(1500);
+  let log = await h.getLog();
+  const ans = (await h.bearFinals())[0];
+  assert.match(ans.text, /house/i);
+  assert.equal(ans.chat, true);
+  assert.deepEqual(log.filter((e) => e.t === 'trigger').map((t) => t.keyword), ['House']);
+  assert.equal(log.find((e) => e.t === 'sent')?.replied, true);
+  assert.equal(log.filter((e) => e.t === 'status').length, 0, 'no call was started');
+  assert.deepEqual(h.errors, []);
+  await h.context.close();
+
+  const n = await openSpeechHarness('?noai&nosynth');
+  await n.type('what is your name?');
+  await n.waitBearFinals(1);
+  const vis = await n.page.evaluate(() => (window as any).__vis);
+  assert.ok(vis.frames > 20, 'mouth still moves on the timed estimate');
+  log = await n.getLog();
+  assert.ok(log.filter((e) => e.t === 'transcript' && !e.final).length >= 2, 'words still stream');
+  assert.deepEqual(n.errors, []);
+  await n.context.close();
+});
+
+await check("demo call where the browser can't listen: a status message says to type instead, typing works", async () => {
+  const h = await openSpeechHarness('?mockVoice=fast&noai&norec');
+  await h.page.click('#start');
+  await h.waitBearFinals(1);
+  const log = await h.getLog();
+  const notice = log.find((e) => e.t === 'status' && e.status === 'in-call' && /type/i.test(e.message || ''));
+  assert.ok(notice, 'status message about typing');
+  assert.ok(log.some((e) => e.t === 'transcription' && e.speaker === 'user' && e.state === 'error'));
+  await h.type('make a rainbow');
+  await h.waitBearFinals(2);
+  await h.page.waitForTimeout(1500);
+  assert.deepEqual((await h.getLog()).filter((e) => e.t === 'trigger').map((t) => t.keyword), ['Rainbow']);
+  await h.page.evaluate(() => (window as any).__session.endCall());
+  assert.deepEqual(h.errors, []);
+  await h.context.close();
+});
+
+await check('AI brain (fake OpenAI behind /api/chat): used when the server has a key; moderation then chat; answer fires from her words', async () => {
+  chatLog.length = 0;
+  const h = await openSpeechHarness('');
+  assert.equal(await h.page.evaluate(() => (window as any).__services.chatAi), true);
+  await h.type('wiggle wiggle');
+  await h.waitBearFinals(1);
+  await h.page.waitForTimeout(1500);
+  const ans = (await h.bearFinals())[0];
+  assert.equal(ans.text, "Ooh, wiggles! Let's dance!");
+  assert.deepEqual((await h.getLog()).filter((e) => e.t === 'trigger').map((t) => t.keyword), ['Dance']);
+  assert.deepEqual(chatLog, ['/v1/moderations', '/v1/chat/completions', '/v1/moderations']);
+  assert.deepEqual(h.errors, []);
+  await h.context.close();
 });
 
 await check('real mode without Twilio: clear not_configured error, no crash', async () => {

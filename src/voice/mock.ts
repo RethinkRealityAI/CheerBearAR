@@ -1,28 +1,13 @@
-// Demo call: no Twilio, no OpenAI. Rings, "connects", then Cheer Bear "says" scripted lines that contain every core
-// trigger word: word-by-word partial transcripts, then a final, while a sample voice plays into `remoteStream`.
-// The transcripts go through the real trigger pipeline, so transcript -> trigger -> animation and stream -> lip sync
-// can be demoed and tested with no accounts.
+// The demo call: no Twilio, no OpenAI, no accounts. It rings, connects, Cheer Bear greets you ONCE, then waits for
+// you. Talk (the browser's speech recognition, while the call is live; mute pauses it) or type in the chat; she
+// answers each turn out loud with the browser's voice, her mouth moving with the words (demoBear.ts). Her words go
+// through the real trigger pipeline as `cheer_bear` transcripts, so "can you dance?" fires Dance because she
+// answers "Let's dance!", and small talk fires nothing, exactly like a real call.
 //
 // Turn on: ?mockVoice in the URL (options: ?mockVoice=fast for 3x speed, ?mockVoice=silent for no sound, combine
 // with a comma: ?mockVoice=fast,silent), or startCall({ mock: true }), or createVoiceSession({ mock: 'always' }).
-import { createMockVoiceAudio, type MockVoiceAudio } from './mockAudio';
-
-export const MOCK_SCRIPT: readonly string[] = [
-  "Hi friend! It's me, Cheer Bear. Welcome to my house in Care-a-Lot!",
-  'Look at the rainbow on my tummy. It makes everything sparkle!',
-  "Do you want to dance with me? Let's have a party!",
-  'I love to wave hello to all my friends.',
-  'Brrr, it feels a little cold up here in the clouds.',
-  'Sometimes I do a little magic to cheer everyone up.',
-  'All that running around makes me feel sleepy.',
-  'Good morning! Time to wake up and play again!',
-];
-
-const REPLIES: readonly string[] = [
-  'Ooh, I love that! It makes me want to dance!',
-  'That sounds like magic to me!',
-  "Let's celebrate with a party!",
-];
+import type { DemoBear } from './demoBear';
+import { SpeechInput, type RecognitionFactory, type SpeechInputState } from './speechInput';
 
 export interface MockFlags {
   enabled: boolean;
@@ -40,20 +25,36 @@ export function mockFlagsFromUrl(search = typeof location !== 'undefined' ? loca
 
 export interface MockCallHandlers {
   ringing(): void;
-  accepted(stream: MediaStream | null): void;
-  transcript(id: string, text: string, final: boolean): void;
+  accepted(): void;
+  /** The child's own words from speech recognition (partials and finals). */
+  userTranscript(id: string, text: string, final: boolean): void;
+  /** Keywords the child's words fire themselves (so her answer does not fire them a second time). */
+  userKeywords(text: string): string[];
+  listening(state: SpeechInputState, message?: string): void;
 }
 
 export class MockCall {
   private timers = new Set<ReturnType<typeof setTimeout>>();
-  private audio: MockVoiceAudio | null = null;
   private stopped = false;
-  private line = 0;
-  private seq = 0;
-  private speaking = false;
-  private pendingReplies: string[] = [];
+  private live = false;
+  private speech: SpeechInput;
+  private offTalking: () => void;
 
-  constructor(private flags: MockFlags, private on: MockCallHandlers) {}
+  constructor(
+    private flags: MockFlags,
+    private bear: DemoBear,
+    private on: MockCallHandlers,
+    recognition?: RecognitionFactory | null,
+  ) {
+    this.speech = new SpeechInput(
+      {
+        onResult: (id, text, final) => this.onSpeech(id, text, final),
+        onState: (state, message) => !this.stopped && this.on.listening(state, message),
+      },
+      recognition === undefined ? undefined : recognition,
+    );
+    this.offTalking = bear.onTalking((t) => this.speech.setBearTalking(t));
+  }
 
   private wait(ms: number): Promise<void> {
     return new Promise((resolve) => {
@@ -65,65 +66,52 @@ export class MockCall {
     });
   }
 
-  async start(): Promise<void> {
-    // Load the sample while "ringing" (the AudioContext was unlocked by the tap that started the call).
-    const audioReady = createMockVoiceAudio({ audible: this.flags.audible });
+  /** Call from the tap that starts the call: unlocks speech and the microphone inside the gesture. */
+  start(): void {
+    this.bear.unlock();
+    this.speech.start();
+    void this.run();
+  }
+
+  private async run() {
     await this.wait(600);
     if (this.stopped) return;
     this.on.ringing();
-    this.audio = await audioReady;
     await this.wait(1400);
-    if (this.stopped) {
-      this.audio?.dispose();
-      return;
-    }
-    this.on.accepted(this.audio?.stream ?? null);
-    await this.wait(800);
-    void this.loop();
-  }
-
-  private async loop() {
-    while (!this.stopped) {
-      const text = this.pendingReplies.shift() ?? MOCK_SCRIPT[this.line++ % MOCK_SCRIPT.length];
-      await this.say(text);
-      await this.wait(1800);
-    }
-  }
-
-  /** Cheer Bear "answers" a typed message in the demo (next line she says). */
-  reply(index = 0): void {
-    this.pendingReplies.push(REPLIES[index % REPLIES.length]);
-  }
-
-  private async say(text: string) {
     if (this.stopped) return;
-    this.speaking = true;
-    const id = `mock-${++this.seq}`;
-    const words = text.split(/\s+/);
-    const perWord = 300;
-    this.audio?.speak((words.length * perWord + 200) / this.flags.speed);
-    for (let i = 1; i <= words.length && !this.stopped; i += 1) {
-      await this.wait(perWord);
-      if (this.stopped) break;
-      if (i < words.length) this.on.transcript(id, words.slice(0, i).join(' '), false);
-    }
-    if (!this.stopped) {
-      await this.wait(250);
-      if (!this.stopped) this.on.transcript(id, text, true);
-    }
-    this.audio?.silence();
-    this.speaking = false;
+    this.on.accepted();
+    await this.wait(700);
+    if (this.stopped) return;
+    await this.bear.greet();
+    if (!this.stopped) this.live = true;
   }
 
-  get isSpeaking() {
-    return this.speaking;
+  get isLive(): boolean {
+    return this.live && !this.stopped;
+  }
+
+  private onSpeech(id: string, text: string, final: boolean) {
+    if (this.stopped || !this.live) return; // nothing before she has said hello
+    this.on.userTranscript(id, text, final);
+    if (final) void this.bear.answer(text, { chat: false, claimed: this.on.userKeywords(text) });
+  }
+
+  /** A message typed in the chat during the demo call. */
+  userTyped(text: string, claimed: string[]): void {
+    if (this.stopped) return;
+    void this.bear.answer(text, { chat: true, claimed });
+  }
+
+  setMuted(muted: boolean): void {
+    this.speech.setPaused(muted);
   }
 
   stop(): void {
     this.stopped = true;
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
-    this.audio?.dispose();
-    this.audio = null;
+    this.speech.stop();
+    this.offTalking();
+    this.bear.cancel();
   }
 }

@@ -1,7 +1,8 @@
 // Trigger pipeline (browser). Port of the old server's transcript -> intent -> trigger queue logic:
 //   - Cheer Bear's transcripts always classify; the user's only when config.allowUserTriggers.
 //   - Partial transcripts fire (local matching only) when triggerPolicy.partialTriggerEnabled.
-//   - Per-transcript dedupe: a keyword fires once per transcript (partials + final together).
+//   - Per-transcript dedupe: a keyword fires once per transcript (partials + final together). A transcript id that
+//     has had its final is remembered (last 200), so a late or repeated partial/final for it never fires again.
 //   - Finals use the configured engine (local / hybrid / openai, the AI part via POST /api/intent).
 //   - Queue: per speaker+keyword cooldown, no duplicate queued items, one dispatch every dispatchIntervalMs.
 //     (Fix: the old server dispatched a burst enqueued one by one all at once, because the queue emptied after each
@@ -39,6 +40,8 @@ export class TriggerPipeline {
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** transcript id -> keywords already fired for it (partials + final). */
   private perTranscript = new Map<string, Set<string>>();
+  /** Transcript ids that already had their final (a late partial or a repeated final must not fire again). */
+  private finished = new Set<string>();
   private disposed = false;
   private lastDispatchAt = -Infinity;
   private now: () => number;
@@ -62,7 +65,9 @@ export class TriggerPipeline {
 
   /** Feed every transcript event (partials and finals) here. */
   async handleTranscript(evt: TranscriptEvent): Promise<void> {
+    if (this.finished.has(evt.id)) return;
     if (this.disposed || !this.speakerMayTrigger(evt.speaker)) {
+      if (evt.final) this.markFinished(evt.id);
       if (evt.final) this.perTranscript.delete(evt.id);
       return;
     }
@@ -82,6 +87,7 @@ export class TriggerPipeline {
     }
     // Final: forget the partial cache afterwards whatever happens.
     this.perTranscript.delete(evt.id);
+    this.markFinished(evt.id);
     if (!text) return;
     const intents = await resolveIntents(text, cfg.localClassifier, cfg.intentMatchingEngine, (t, k) => this.opts.classifyWithAI(t, k));
     if (this.disposed) return;
@@ -89,6 +95,22 @@ export class TriggerPipeline {
       if (fired?.has(r.keyword.toLowerCase())) continue;
       this.enqueue({ keyword: r.keyword, speaker: evt.speaker, via: r.via, transcriptId: evt.id });
     }
+  }
+
+  /**
+   * Keywords that must not fire again for transcript `id` (the demo: the child's own words already fired them, so
+   * Cheer Bear's answer saying the same word does not fire a second time).
+   */
+  claim(id: string, keywords: string[]): void {
+    if (!keywords.length) return;
+    let set = this.perTranscript.get(id);
+    if (!set) this.perTranscript.set(id, (set = new Set()));
+    for (const k of keywords) set.add(k.toLowerCase());
+  }
+
+  private markFinished(id: string) {
+    this.finished.add(id);
+    if (this.finished.size > 200) this.finished.delete(this.finished.values().next().value as string);
   }
 
   /** Classify typed text (when user triggers are allowed) and queue the matches. Returns the matched keywords. */
