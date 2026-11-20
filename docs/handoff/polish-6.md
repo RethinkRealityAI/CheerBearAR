@@ -204,7 +204,10 @@ The 3D size is unchanged.
 5. **The orb comes back in Selfie and Photo only during a live call** or the mic explainer.
 6. **The 1440 desktop AR tour sometimes shows "The camera had a hiccup".** This was already a known chrome-5 issue and
    I did not cause it.
-7. **Leftover `gamesBtn` fields** in `modes/ar/index.ts` and `modes/showcase/index.ts` are already unused. I left them
+7. **The coloured discs along the bottom of the Selfie shots are not app UI.** They are in the fake camera video
+   (`capture2/face.webm`), which is a stock clip with a dark bar of colour swatches at the bottom. A raw frame of the
+   webm shows the bar; the round-5 clip shows it too. Real camera feeds will not have them.
+8. **Leftover `gamesBtn` fields** in `modes/ar/index.ts` and `modes/showcase/index.ts` are already unused. I left them
    alone.
 
 ## Changes outside the capture, HUD and AR lanes
