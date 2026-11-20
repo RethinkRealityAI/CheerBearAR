@@ -6,10 +6,10 @@ import * as THREE from 'three';
 
 // The art is a render of the real Happi model (waving), with a white die-cut edge and the hole cut into Happi's white
 // face panel: /home/user/happi-work/tools/render_pose.py + build_cutout.py -> public/img/happi/cutout.webp.
-const W = 0.75625; // board width (units) = the art's aspect; height 1
+const W = 0.78889; // board width (units) = the art's aspect; height 1
 /** The face hole in board units (centre x from the middle, y from the feet; radii). At the default 2.3 m it is a
  *  30 x 38 cm vertical oval with its centre about 1.39 m up. */
-export const CUTOUT_HOLE = { x: 0.0243, y: 0.6122 - 16 / 1440, rx: 0.0652, ry: 0.0826 };
+export const CUTOUT_HOLE = { x: 0.0040, y: 0.6122 - 16 / 1440, rx: 0.0652, ry: 0.0826 };
 /** The art has 16 px of clear margin under the shoes (of 1440): the board is lowered by that much so the shoes stand
  *  on the floor, not 1 % of the height above it (Dapo, 2026-11-20: "floating slightly above the reticle"). */
 const FOOT_PAD = 16 / 1440;

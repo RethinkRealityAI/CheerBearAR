@@ -267,17 +267,33 @@ for s, L in ((1, 'Left'), (-1, 'Right')):
     cx = (ank.x + toe.x) / 2 + s * 0.004
     y_heel, y_toe = ank.y + 0.062, toe.y - 0.105
     Ls = y_heel - y_toe
-    def foot_ring(t, z, hw, top, rr):   # t 0 heel -> 1 toe; a rounded box section
+    def foot_ring(t, z, hw, top, ex=0.85):   # t 0 heel -> 1 toe; a rounded section (ex 1 = ellipse, lower = boxier)
         y = y_heel - Ls * t
-        return [Vector((cx + hw * math.copysign(abs(math.sin(a)) ** 0.55, math.sin(a)), y, z + (top - z) * (0.5 + 0.5 * math.copysign(abs(math.cos(a)) ** 0.55, math.cos(a))))) for a in [i * 2 * math.pi / 32 for i in range(32)]]
+        # the heel and toe close up in height too (an egg-shaped end, not a flat cap)
+        k = 1.0
+        if t < 0.1: k = math.sqrt(max(0.0, 1 - ((0.1 - t) / 0.1) ** 2))
+        elif t > 0.9: k = math.sqrt(max(0.0, 1 - ((t - 0.9) / 0.1) ** 2))
+        k = max(k, 0.02); zm = (z + top) / 2; z, top = zm - (zm - z) * k, zm + (top - zm) * k
+        return [Vector((cx + hw * math.copysign(abs(math.sin(a)) ** ex, math.sin(a)), y, z + (top - z) * (0.5 + 0.5 * math.copysign(abs(math.cos(a)) ** ex, math.cos(a))))) for a in [i * 2 * math.pi / 32 for i in range(32)]]
+    # round in plan view too (Dapo, round 6: "very blocky... more round, especially at the front"): elliptic heel and toe
+    def plan(t, W, heel=0.16, toe=0.5, hk=0.86):
+        if t < heel: return W * hk * math.sqrt(max(0.0, 1 - ((heel - t) / heel) ** 2)) + 0.0005
+        if t > toe: return W * math.sqrt(max(0.0, 1 - ((t - toe) / (1 - toe)) ** 2)) + 0.0005
+        return W * (hk + (1 - hk) * min(1, (t - heel) / (toe - heel)))
     # Matches the art (Dapo, round 6: "missing the blue strings"): a low, round sneaker; thick white sole with a rim,
     # orange upper, a white rubber toe cap, and three navy laces raised on the instep.
-    st = [0.0, 0.03, 0.15, 0.4, 0.7, 0.9, 0.97, 1.0]
-    hw = [0.034, 0.052, 0.060, 0.059, 0.062, 0.056, 0.043, 0.006]
-    sole = loft('HappiSole' + L, [foot_ring(t, 0.0, w, 0.032, 0) for t, w in zip(st, hw)], 32, cap0=True, cap1=True, matl=M['white'])
-    tops = [0.100, 0.106, 0.100, 0.084, 0.066, 0.056, 0.048, 0.038]
-    uw = [0.030, 0.047, 0.054, 0.053, 0.056, 0.050, 0.038, 0.005]
-    up = loft('HappiShoe' + L, [foot_ring(t, 0.024, w, tp, 0) for t, w, tp in zip(st, uw, tops)], 32, cap0=True, cap1=True, matl=M['orange'])
+    st = [0.0, 0.006, 0.02, 0.04, 0.07, 0.1, 0.16, 0.3, 0.45, 0.55, 0.65, 0.74, 0.82, 0.88, 0.93, 0.96, 0.98, 0.994, 1.0]
+    hw = [plan(t, 0.059) for t in st]
+    def lift(t):     # a rocker: the sole curves up at the toe and the heel, so the side view is an oval, not a slab
+        return 0.016 * (max(0.0, t - 0.78) / 0.22) ** 2 + 0.008 * (max(0.0, 0.12 - t) / 0.12) ** 2
+    sole = loft('HappiSole' + L, [foot_ring(t, lift(t), w, 0.028 + lift(t) * 0.7, 1.0) for t, w in zip(st, hw)], 32, cap0=False, cap1=False, matl=M['white'])
+    def top_at(t):   # high at the ankle, a round dome down to the toe
+        if t < 0.12: return 0.084 + 0.022 * math.sqrt(t / 0.12)   # a round heel, not a vertical back
+        if t < 0.5: return 0.106 - (t - 0.12) / 0.38 * 0.034
+        return 0.026 + (0.072 - 0.026) * math.sqrt(max(0.0, 1 - ((t - 0.5) / 0.5) ** 2))
+    tops = [top_at(t) for t in st]
+    uw = [plan(t, 0.055) for t in st]
+    up = loft('HappiShoe' + L, [foot_ring(t, 0.024 + lift(t), w, max(tp + lift(t) * 0.5, 0.032 + lift(t)), 0.95) for t, w, tp in zip(st, uw, tops)], 32, cap0=False, cap1=False, matl=M['orange'])
     up.data.materials.append(M['white'])
     y_cap = y_heel - Ls * 0.74           # the toe cap starts here
     for pl in up.data.polygons:
@@ -296,8 +312,8 @@ for s, L in ((1, 'Left'), (-1, 'Right')):
         path = []
         for i in range(11):
             a = -0.6 + 1.2 * i / 10
-            q = Vector((cx + w * math.copysign(abs(math.sin(a)) ** 0.55, math.sin(a)), y,
-                        0.024 + (tp - 0.024) * (0.5 + 0.5 * math.copysign(abs(math.cos(a)) ** 0.55, math.cos(a)))))
+            q = Vector((cx + w * math.copysign(abs(math.sin(a)) ** 0.85, math.sin(a)), y,
+                        0.024 + (tp - 0.024) * (0.5 + 0.5 * math.copysign(abs(math.cos(a)) ** 0.85, math.cos(a)))))
             q += (q - ctr).normalized() * 0.0035
             q.y += s * 0.012 * (i - 5) / 5   # tilted like the art's strokes (outer end further back)
             path.append(q)
@@ -323,9 +339,9 @@ for s, L in ((1, 'Left'), (-1, 'Right')):
     root = Vector((s * 0.11, a.y, a.z + 0.005))
     path = [root, a, a.lerp(e, 0.5), e, e.lerp(w, 0.45), w - (w - e).normalized() * 0.012]
     # kimono sleeve: round at the shoulder, widening to a tall boxy opening that hangs a little
-    rx = [0.050, 0.058, 0.066, 0.074, 0.080, 0.084]   # across (front-back)
-    ry = [0.052, 0.066, 0.084, 0.102, 0.116, 0.124]   # up-down
-    drop = [0.0, 0.0, 0.012, 0.026, 0.040, 0.050]
+    rx = [0.048, 0.054, 0.060, 0.066, 0.071, 0.074]   # across (front-back)
+    ry = [0.050, 0.060, 0.074, 0.088, 0.098, 0.104]   # up-down
+    drop = [0.0, 0.0, 0.010, 0.020, 0.030, 0.036]
     rings = []
     for idx, p in enumerate(path):
         t = (path[min(idx + 1, len(path) - 1)] - path[max(idx - 1, 0)]).normalized()
@@ -388,7 +404,7 @@ def swing_only(q):
     q = q.normalized(); tw = Quaternion((q.w, 0, q.y, 0))
     if tw.magnitude < 1e-6: return q
     return q @ tw.normalized().inverted()
-NUDGE = [0]
+NUDGE = [0]; BODYN = [0]
 rest_hips = (arm.matrix_world @ arm.data.bones['Hips'].matrix_local).to_3x3().normalized()
 rest_of = {n: (arm.matrix_world @ arm.data.bones[n].matrix_local).to_3x3().normalized() for n in ('Spine', 'Head')}
 clips = [st.action for t in ad.nla_tracks for st in t.strips if st.action]
@@ -445,6 +461,30 @@ for act in clips:
                 rotate_bone(L + 'Arm', d0, Quaternion(f2, sg * math.radians(3)) @ d0)
                 v, q = inside(); tries += 1
             if tries: NUDGE[0] += 1
+            # the sleeves must stay outside the coat too (Dapo, round 6: "the cloth of the arms is clipping into the
+            # body"): elbow, mid forearm and wrist kept outside the torso's ellipse (rest chest frame) plus the sleeve
+            Sr = arm.matrix_world @ arm.data.bones['Spine'].matrix_local
+            def body_in():
+                Sm = arm.matrix_world @ pb['Spine'].matrix
+                T = Sr @ Sm.inverted()
+                pe, ph = arm.matrix_world @ F.head, arm.matrix_world @ H.head
+                worst = 9.0
+                for pt, m in ((pe, 0.07), (pe.lerp(ph, 0.5), 0.075), (ph, 0.075)):
+                    q = T @ pt
+                    if not (0.2 < q.z < 0.58): continue
+                    rx = np.interp(q.z, zs, [c[1] for c in coat_prof]); ry = np.interp(q.z, zs, [c[2] for c in coat_prof])
+                    worst = min(worst, (q.x / (rx + m)) ** 2 + ((q.y - 0.004) / (ry + m)) ** 2)
+                return worst
+            tries2 = 0
+            while body_in() < 1 and tries2 < 20:
+                o2, f2, u2 = chest_axes()
+                pa = arm.matrix_world @ A.head; pf = arm.matrix_world @ F.head
+                r = (arm.matrix_world @ H.head) - pa
+                sg = 1 if f2.cross(r).dot(o2 * s) > 0 else -1
+                d0 = (pf - pa).normalized()
+                rotate_bone(L + 'Arm', d0, Quaternion(f2, sg * math.radians(2)) @ d0)
+                tries2 += 1
+            if tries2: BODYN[0] += 1
             # drop the twist the corrections pile up (minimal-arc turns near 180 degrees spin the bone round its own axis,
             # which pops the sleeve and thumb): keep each bone's direction, take its roll from the rest pose
             ph_keep = arm.matrix_world @ H.head
@@ -467,7 +507,7 @@ for act in clips:
             Q = [Q[0]] + [Quaternion([(Q[j - 1][i] + 2 * Q[j][i] + Q[j + 1][i]) / 4 for i in range(4)]).normalized() for j in range(1, n - 1)] + [Q[-1]]
         for j in range(n):
             for i in range(4): kp[i][j].co[1] = Q[j][i]; kp[i][j].handle_left[1] = kp[i][j].handle_right[1] = Q[j][i]
-    print('BAKED', act.name, f1 - f0 + 1, 'nudged', NUDGE[0]); NUDGE[0] = 0
+    print('BAKED', act.name, f1 - f0 + 1, 'nudged', NUDGE[0], 'body', BODYN[0]); NUDGE[0] = 0; BODYN[0] = 0
 ad.action = None
 for t in ad.nla_tracks: t.mute = False
 

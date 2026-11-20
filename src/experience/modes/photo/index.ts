@@ -36,7 +36,8 @@ const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // the frame's height in metres
 // the camera starts (responsive scale, CAM_H 1.3), so 2.3 units is about 2.3 m held at chest height.
 const CUT = { def: 2.3, min: 1.2, max: 4.6 };
 /** Happi beside the frame (model units: the frame is 1 tall), turned a little toward it, his right hand on its edge. */
-const BESIDE = { x: 0.74, z: 0.02, yaw: -0.38, h: 0.92, grip: new THREE.Vector3(0.47, 0.6, 0.15) };
+// grip at chest height (round 6: higher up, the raised arm ran through the big cheek and the frame's corner)
+const BESIDE = { x: 0.74, z: 0.02, yaw: -0.38, h: 0.92, grip: new THREE.Vector3(0.47, 0.42, 0.15) };
 type Variant = 'frame' | 'cutout';
 const REACH = { min: 0.9, max: 4.0 };
 /** The frame opening in model units (feet on y = 0, 1 unit tall, facing +z); the plane is a touch bigger, inside. */
@@ -847,7 +848,24 @@ export class PhotoMode implements Mode {
     if (!a) return;
     this.beside.updateWorldMatrix(true, true);
     const grip = this.framed.localToWorld(this.v3.copy(BESIDE.grip));
-    this.aim(a.up, a.fore, grip);
+    // two-bone reach: the hand lands ON the grip with the elbow bent down and back (aiming both bones straight at
+    // the grip overshot it, so the hand and sleeve went through the frame)
+    const S = a.up.getWorldPosition(new THREE.Vector3());
+    const E0 = a.fore.getWorldPosition(new THREE.Vector3());
+    const H0 = a.hand.getWorldPosition(new THREE.Vector3());
+    const l1 = E0.distanceTo(S), l2 = H0.distanceTo(E0);
+    const toT = grip.clone().sub(S);
+    const d = Math.min(toT.length(), (l1 + l2) * 0.999);
+    const dir = toT.normalize();
+    if (d < l1 + l2 - 1e-4 && d > Math.abs(l1 - l2)) {
+      const along = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+      const h = Math.sqrt(Math.max(0, l1 * l1 - along * along));
+      const back = new THREE.Vector3(0, 0, -1).applyQuaternion(this.beside.getWorldQuaternion(this.q2));
+      const pole = new THREE.Vector3(0, -1, 0).add(back.multiplyScalar(0.6));
+      pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+      const elbow = S.clone().addScaledVector(dir, along).addScaledVector(pole, h);
+      this.aim(a.up, a.fore, elbow);
+    } else this.aim(a.up, a.fore, grip);
     this.aim(a.fore, a.hand, grip);
   }
 
