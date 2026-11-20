@@ -61,7 +61,7 @@ export interface AppState {
   /** The current call is a simulated demo call (voice ?mockVoice, or calling not set up). */
   callDemo: boolean;
   muted: boolean;
-  /** Cheer Bear is talking (from her transcript events). */
+  /** Happi is talking (from her transcript events). */
   speaking: boolean;
   /** Her words are showing in the scene's speech bubble (the talk button's nudge stays out of its way). */
   captionOn: boolean;

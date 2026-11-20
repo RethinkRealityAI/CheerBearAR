@@ -3,7 +3,7 @@
 // tab hidden, Move in AR, the pause button), the scoreboard / countdown / results UI and a clean teardown.
 //
 // A game runs inside ONE mode (3D showcase or AR), which hands it a PlayHost (its stage, runner, kit, HUD bits) and
-// calls `update(dt)` every frame (instead of the free heart toss) and `walk(dt)` when the game moves Cheer Bear.
+// calls `update(dt)` every frame (instead of the free heart toss) and `walk(dt)` when the game moves Happi.
 import * as THREE from 'three';
 import type { PlayGameId, PlayStatus } from '../../shared/contracts';
 import type { Stage } from '../scene/stage';
@@ -151,7 +151,7 @@ export abstract class PlayGame {
     // the app's sheet covers the scene and lets go when it closes, so it needs no card of its own
     const hard = this.holds.has('user') || this.holds.has('hidden');
     if (hard && !this.ui.cardOpen) this.ui.pauseCard(() => this.resume('all'), () => this.quit(), this.pauseExtra());
-    if (!hard && (this.holds.has('move') || this.holds.has('place'))) this.host.hint('Place her to keep playing');
+    if (!hard && (this.holds.has('move') || this.holds.has('place'))) this.host.hint('Place Happi to keep playing');
     this.emit(true);
     this.host.sync();
   }

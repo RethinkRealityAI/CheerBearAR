@@ -102,7 +102,7 @@ export function problemHelp(problem: HoldProblem, p: VoicePlatform, opts: { repe
       return { text: 'Tap Allow when you’re asked, then hold me again!', chips: true, block: false };
     case 'service-not-allowed':
       if (p.ios) return { text: 'Turn on Siri & Dictation so I can hear you!', help: 'Grown-ups: Settings > General > Keyboard > Enable Dictation (and check Screen Time allows Siri & Dictation), then reload.', chips: true, block: true };
-      return { text: 'I can’t listen in this browser. Tap a magic word!', help: p.inApp ? 'Grown-ups: open this page in Chrome or Safari to talk to Cheer Bear.' : 'Grown-ups: the browser’s speech service is switched off. Chrome or Safari work best.', chips: true, block: true };
+      return { text: 'I can’t listen in this browser. Tap a magic word!', help: p.inApp ? 'Grown-ups: open this page in Chrome or Safari to talk to Happi.' : 'Grown-ups: the browser’s speech service is switched off. Chrome or Safari work best.', chips: true, block: true };
     case 'network':
       return { text: 'I need the internet to hear you!', help: p.brave ? 'Grown-ups: Brave blocks speech recognition. Chrome or Safari work.' : 'Grown-ups: speech recognition runs online. Check Wi-Fi or data, then hold again.', chips: true, block: false };
     case 'audio-capture':
@@ -112,7 +112,7 @@ export function problemHelp(problem: HoldProblem, p: VoicePlatform, opts: { repe
     case 'start-failed':
       return { text: 'Oops! Hold me and try again.', chips: again, block: false };
     case 'unsupported':
-      return { text: 'This browser can’t hear you, so tap a magic word!', help: p.firefox ? 'Grown-ups: Firefox has no speech recognition. Chrome or Safari work.' : p.inApp ? 'Grown-ups: open this page in Chrome or Safari to talk to Cheer Bear.' : undefined, chips: true, block: true };
+      return { text: 'This browser can’t hear you, so tap a magic word!', help: p.firefox ? 'Grown-ups: Firefox has no speech recognition. Chrome or Safari work.' : p.inApp ? 'Grown-ups: open this page in Chrome or Safari to talk to Happi.' : undefined, chips: true, block: true };
     case 'error':
     default:
       return { text: 'Oops! Hold me and try again.', chips: again, block: false };

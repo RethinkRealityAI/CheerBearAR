@@ -12,8 +12,8 @@ export { PlayGame } from './game';
 export { SVG as PLAY_SVG } from './ui';
 
 export const PLAY_GAMES: readonly PlayGameInfo[] = [
-  { id: 'heart-run', label: 'Heart Run', lead: 'Run Cheer Bear around and grab hearts and rainbows in 60 seconds.' },
-  { id: 'heart-hoops', label: 'Heart Hoops', lead: 'Swipe up to throw 10 hearts through her rainbow ring.' },
+  { id: 'heart-run', label: 'Parade Dash', lead: 'Dash Happi round the square and catch cherry blossoms and fans in 60 seconds.' },
+  { id: 'heart-hoops', label: 'Blossom Toss', lead: 'Swipe up to toss 10 blossoms through the festival ring.' },
 ];
 
 /** What a mode offers the director. */

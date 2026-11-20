@@ -27,7 +27,7 @@ export function LipSyncSection() {
   const { draft, setPath, errors } = useAdmin();
   const ls = (draft.lipSync ?? {}) as unknown as Record<string, unknown>;
   return (
-    <Section title="Lip sync" description="How Cheer Bear's mouth follows her voice."
+    <Section title="Lip sync" description="How Happi's mouth follows her voice."
       actions={<a className="adm-btn" href="/lab/lipsync" target="_blank" rel="noreferrer"><ExternalLink size={16} aria-hidden /> Open the lip sync lab</a>}>
       <Group description="Try changes in the lab first: it plays sample lines through the bear. Values saved here apply to everyone.">
         <AutoFields value={ls} path="lipSync" onChange={setPath} errors={errors} meta={LIPSYNC_META} />

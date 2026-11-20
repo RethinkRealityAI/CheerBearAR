@@ -1,4 +1,4 @@
-// Heart toss: swipe up to throw soft hearts at Cheer Bear (3D and AR). She watches each one come, shuffles to get
+// Heart toss: swipe up to throw soft hearts at Happi (3D and AR). She watches each one come, shuffles to get
 // under it and catches it in her arms (a small cheer, a heart burst, a squash-and-stretch); misses bounce on the floor
 // (the cloud in 3D, your real floor in AR), roll, settle and shrink away. Catches in a row show a gentle counter.
 //

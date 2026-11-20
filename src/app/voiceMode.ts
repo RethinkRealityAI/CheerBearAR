@@ -8,7 +8,7 @@
 //                   release, we check navigator.userActivation; if the gesture has expired a "Tap to open the
 //                   camera" chip asks for one more tap.
 //   unknown words  -> "Try saying…" with three example chips you can tap
-//   then Cheer Bear answers with one short canned line (browser voice, never a trigger word), if spoken replies are on
+//   then Happi answers with one short canned line (browser voice, never a trigger word), if spoken replies are on
 //
 // Owner: voice-3 / voice-4 (docs/handoff/voice-3.md, voice-4.md: one specific line per listening problem, the
 // permission prompt is never aborted by a quick release). The AppController creates one and forwards the button events.

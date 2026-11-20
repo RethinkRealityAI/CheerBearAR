@@ -1,4 +1,4 @@
-// Where the picture frame Cheer Bear holds is in each frame of the behind-the-scenes clip (bts.mp4, 714x1280, 24 fps,
+// Where the picture frame Happi holds is in each frame of the behind-the-scenes clip (bts.mp4, 714x1280, 24 fps,
 // 121 frames), so the user's photo can sit in it as the old Mattercraft scene did ("Show" clip, RevealPhoto).
 // Measured offline (numpy, no generative tools): multi-scale, multi-angle normalised cross-correlation of the frame
 // region from frame 0, searched frame to frame (NCC min 0.86, mean 0.93), smoothed over 5 frames; checked by eye on

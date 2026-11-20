@@ -157,19 +157,19 @@ export function normaliseConfig(config: AppConfig | null | undefined): UiSetting
     .map(normaliseGameMode)
     .filter((g): g is GameMode => !!g);
   return {
-    name: str(cu.experienceName, 'Cheer Bear'),
-    title: str(cu.headerTitle, str(cu.experienceName, 'Cheer Bear')),
+    name: str(cu.experienceName, 'Happi'),
+    title: str(cu.headerTitle, str(cu.experienceName, 'Happi')),
     colors: {
       primary: nearestToken(cu.primaryColor, 'pink'),
       secondary: nearestToken(cu.secondaryColor, 'purple'),
       accent: nearestToken(cu.accentColor, 'yellow'),
     },
     text: {
-      chatPlaceholder: str(cu.chatPlaceholder, 'Write to Cheer Bear…'),
+      chatPlaceholder: str(cu.chatPlaceholder, 'Write to Happi…'),
       commandPlaceholder: str(cu.commandPlaceholder, 'Type an action word…'),
-      call: str(cu.callButtonText, 'Call Cheer Bear'),
+      call: str(cu.callButtonText, 'Call Happi'),
       hangUp: str(cu.hangupButtonText, 'End call'),
-      openChat: str(cu.collapsedChatText, 'Talk to Cheer Bear'),
+      openChat: str(cu.collapsedChatText, 'Talk to Happi'),
     },
     show: {
       quickActions: bool(cu.showQuickActionsButton, true),
@@ -230,7 +230,7 @@ export function normaliseConfig(config: AppConfig | null | undefined): UiSetting
 export const settingOn = (ui: UiSettings, id: string) => ui.settingsItems[id] !== false;
 
 /**
- * Whether call transcripts may be shown (chat list and Cheer Bear's speech bubble).
+ * Whether call transcripts may be shown (chat list and Happi's speech bubble).
  * Calm is audio only, so never. The old app's `chat_only` case returned false for every mode (a bug: the admin
  * label says "Chat mode only"); here it means what it says.
  */

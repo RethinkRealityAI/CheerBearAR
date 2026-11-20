@@ -129,7 +129,7 @@ export function GamesPanel() {
     <div className="cb-games">
       <PlayCards />
       <h3 className="cb-play-h">Word games</h3>
-      <p className="cb-panel-lead">Get Cheer Bear to say the magic words. Ask her questions; you can’t just tell her the word!</p>
+      <p className="cb-panel-lead">Get Happi to say the magic words. Ask her questions; you can’t just tell her the word!</p>
       <div className="cb-game-list" role="radiogroup" aria-label="Choose a game">
         {modes.map((m) => {
           const n = gameWords(m, keywords).length;

@@ -54,7 +54,7 @@ export function IntentSection() {
       confirmText: 'Remove keyword',
       message: (
         <>
-          <p>Cheer Bear will stop reacting to "{kw}" and its other forms.</p>
+          <p>Happi will stop reacting to "{kw}" and its other forms.</p>
           {usedIn.length > 0 && <p>It is also removed from {usedIn.length === 1 ? 'the game mode' : 'these game modes'}: {usedIn.map((g) => g.name).join(', ')}.</p>}
           <p>Nothing is saved until you press Save.</p>
         </>
@@ -75,7 +75,7 @@ export function IntentSection() {
   };
 
   return (
-    <Section title="Keywords & intent" description="The words that make things happen in the scene when Cheer Bear says them.">
+    <Section title="Keywords & intent" description="The words that make things happen in the scene when Happi says them.">
       <PhraseTester />
 
       <Group title="How words are matched">
@@ -186,7 +186,7 @@ function PhraseTester() {
   }, [text, lcJson, engine, call]);
 
   return (
-    <Group title="Test a phrase" description={usingDraft ? 'Uses your unsaved keyword changes.' : 'Type something Cheer Bear might say.'} className="adm-tester">
+    <Group title="Test a phrase" description={usingDraft ? 'Uses your unsaved keyword changes.' : 'Type something Happi might say.'} className="adm-tester">
       <label htmlFor="phrase" className="adm-sr">Phrase to test</label>
       <input id="phrase" className="adm-input adm-input-lg" placeholder="e.g. Let's go to my house and have a party!"
         value={text} onChange={(e) => setText(e.target.value)} aria-describedby="phrase-result" autoComplete="off" />

@@ -1,4 +1,4 @@
-// Heart Run (the Cola Run idea): 60 seconds to run Cheer Bear around with the joystick and collect what floats over
+// Heart Run (the Cola Run idea): 60 seconds to run Happi around with the joystick and collect what floats over
 // the pulsing floor beacons.
 //
 //   heart    common, +1 (a run of quick pickups climbs in pitch; every 5 in a row +2)
@@ -25,7 +25,7 @@ const STAR_EVERY = 15;
 const BOOST_S = 3;
 const MAGNET_S = 4;
 const CLOUD_AFTER = 18;
-const HEART_HEX = [PAL.pink, PAL.red, 0xff7ab8];
+const HEART_HEX = [0xffb7c9, 0xff94b0, 0xffd9e3];
 
 interface Slot extends PickDraw {
   alive: boolean;
@@ -39,14 +39,14 @@ interface Slot extends PickDraw {
 
 export class HeartRun extends PlayGame {
   readonly id = 'heart-run' as const;
-  readonly label = 'Heart Run';
+  readonly label = 'Parade Dash';
   readonly showStick = true;
   protected readonly roundS = ROUND_S;
   protected readonly starAt = [25, 50, 80] as const;
   protected readonly balls = 0;
-  protected readonly goLine = 'Grab the hearts!';
+  protected readonly goLine = 'Catch the blossoms!';
   /** The 3D camera pulls back and looks down a little while this runs. */
-  readonly view = { wide: 1.4, pitch: 0.42 as number | null };
+  readonly view = { wide: 2.7, pitch: 0.42 as number | null };
   private slots: Slot[] = [];
   private draws: PickDraw[] = [];
   private rng = mulberry32(1);
@@ -205,7 +205,7 @@ export class HeartRun extends PlayGame {
       }
     }
     if (this.boost > 0) this.ui.power('Rainbow boost!', this.boost / BOOST_S, true);
-    else if (this.magnet > 0) this.ui.power('Heart magnet!', this.magnet / MAGNET_S);
+    else if (this.magnet > 0) this.ui.power('Blossom magnet!', this.magnet / MAGNET_S);
     else this.ui.power(null);
 
     // pickups: magnet pull, collect
@@ -379,10 +379,10 @@ export class HeartRun extends PlayGame {
   }
 
   protected summary(stars: number): { title: string; line: string } {
-    const bits = [`${this.hearts} heart${this.hearts === 1 ? '' : 's'}`];
+    const bits = [`${this.hearts} blossom${this.hearts === 1 ? '' : 's'}`];
     if (this.rainbows) bits.push(`${this.rainbows} rainbow${this.rainbows === 1 ? '' : 's'}`);
     if (this.stars) bits.push(`${this.stars} star${this.stars === 1 ? '' : 's'}`);
-    const title = stars >= 3 ? 'Heart champion!' : stars === 2 ? 'Super running!' : stars === 1 ? 'Lovely running!' : 'Good try!';
+    const title = stars >= 3 ? 'Parade champion!' : stars === 2 ? 'Super running!' : stars === 1 ? 'Lovely running!' : 'Good try!';
     return { title, line: bits.join(' · ') };
   }
 

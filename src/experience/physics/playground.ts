@@ -1,4 +1,4 @@
-// The physical toys of one stage: soft hearts (thrown at Cheer Bear), bouncing stars (Rainbow, the Care Bear Stare)
+// The physical toys of one stage: soft hearts (thrown at Happi), bouncing stars (Rainbow, the Care Bear Stare)
 // and party balloons (they float, bump each other and pop when tapped). One World, three pooled instanced meshes
 // (one draw and one program each, built and compiled with the stage at load), plus the balloons' strings in one line
 // draw. Flat colours only. Everything despawns: resting toys shrink away, each kind has a hard cap and the oldest is
@@ -38,12 +38,17 @@ interface ToyState {
 }
 
 function heartShape(): THREE.Shape {
-  // same silhouette as the particle atlas heart (fx.ts), y up, about 2 units wide
+  // Happi's toys are cherry blossoms: five notched petals, y up, about 2 units wide
   const s = new THREE.Shape();
-  const k = 1 / 50;
-  s.moveTo(0, -46 * k);
-  s.bezierCurveTo(-60 * k, -4 * k, -50 * k, 48 * k, 0, 22 * k);
-  s.bezierCurveTo(50 * k, 48 * k, 60 * k, -4 * k, 0, -46 * k);
+  const N = 90;
+  for (let i = 0; i < N; i++) {
+    const th = Math.PI / 2 + (i / N) * Math.PI * 2;
+    const u = ((((th - Math.PI / 2) / (Math.PI * 2 / 5) + 0.5) % 1) + 1) % 1;
+    let r = 0.3 + 0.7 * Math.pow(Math.sin(Math.PI * u), 0.55);
+    r -= 0.16 * Math.max(0, 1 - Math.abs(u - 0.5) / 0.09);
+    if (i === 0) s.moveTo(Math.cos(th) * r, Math.sin(th) * r); else s.lineTo(Math.cos(th) * r, Math.sin(th) * r);
+  }
+  s.closePath();
   return s;
 }
 function starShape(): THREE.Shape {
@@ -88,7 +93,7 @@ export class Playground {
   readonly stars: THREE.InstancedMesh;
   readonly balloons: THREE.InstancedMesh;
   readonly strings: THREE.LineSegments;
-  /** Cheer Bear's body (two static spheres) and the house walls (AR). */
+  /** Happi's body (two static spheres) and the house walls (AR). */
   readonly bearLow;
   readonly bearHigh;
   readonly houseBox;

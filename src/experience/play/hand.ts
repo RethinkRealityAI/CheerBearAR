@@ -149,7 +149,7 @@ export class HoopsHand {
     this.tag = document.createElement('div');
     this.tag.className = 'cbp-x2tag';
     this.tag.setAttribute('role', 'status');
-    this.tag.innerHTML = 'Last heart <b>x2</b>';
+    this.tag.innerHTML = 'Last blossom <b>x2</b>';
     host.layer.append(this.dotsEl, this.coach, this.tag);
     host.root.addEventListener('pointerdown', this.onDown);
     host.root.addEventListener('pointermove', this.onMove);

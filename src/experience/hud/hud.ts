@@ -1,6 +1,8 @@
 // The experience's own DOM: splash, top bar (small title, mode switcher, menu), hint pill, toast, speech bubble,
 // bottom row (left: Move; centre: joystick or shutter; right: kept free for the app's talk button), sheets (menu,
 // how it works, licences, open-on-phone QR, errors) and the flat cover shown while the camera switches.
+import { recorder, CLIP_MAX_S } from '../capture/recorder';
+import { PetalField, cornerBranches } from '../../happi/splash-fx';
 import * as THREE from 'three';
 import qrcode from 'qrcode-generator';
 import type { ExperienceMode } from '../../shared/contracts';
@@ -9,11 +11,17 @@ import { ICON } from './icons';
 import './hud.css';
 
 const MODES: Array<{ id: ExperienceMode; label: string; icon: string; aria: string }> = [
-  { id: 'showcase', label: '3D', icon: ICON.cube, aria: '3D: Cheer Bear in Care-a-Lot' },
-  { id: 'ar', label: 'AR', icon: ICON.ar, aria: 'AR: Cheer Bear in your room' },
-  { id: 'face', label: 'Selfie', icon: ICON.selfie, aria: 'Selfie with Cheer Bear' },
-  { id: 'photo', label: 'Photo', icon: ICON.photo, aria: '3D photo with Cheer Bear' },
+  { id: 'showcase', label: '3D', icon: ICON.cube, aria: '3D: Happi in New York' },
+  { id: 'ar', label: 'AR', icon: ICON.ar, aria: 'AR: Happi in your room' },
+  { id: 'face', label: 'Selfie', icon: ICON.selfie, aria: 'Selfie with Happi' },
+  { id: 'photo', label: 'Photo', icon: ICON.photo, aria: '3D photo with Happi' },
 ];
+
+/** Press-and-hold video on a shutter: start() returns false when this view can't record right now. */
+export interface ShutterHold {
+  start(): boolean;
+  stop(): void;
+}
 
 export interface HudOptions {
   title: string;
@@ -31,14 +39,23 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
+/** Happi's head hopping on a sky disc, swapping expression on every landing (loading screen + mode-change cover). */
+const HEADS = ['happy', 'surprised', 'grumpy', 'sleepy'];
+function headHop(cls: string): string {
+  const imgs = HEADS.map((n, i) => `<img src="/img/happi/head-${n}.webp" alt="" width="240" height="222" style="--k:${i}" decoding="async">`).join('');
+  return `<div class="hh ${cls}" aria-hidden="true"><i class="hh-ring"></i><i class="hh-shadow"></i><span class="hh-head">${imgs}</span></div>`;
+}
+
 export class Hud implements HudApi {
   readonly root: HTMLElement;
   readonly hudEl: HTMLElement;
   readonly left: HTMLElement;
+  readonly right: HTMLElement;
   readonly centre: HTMLElement;
   readonly above: HTMLElement;
   readonly layer: HTMLElement;
   private splash: HTMLElement;
+  private petals: PetalField;
   private startBtn: HTMLButtonElement;
   private loadBar: HTMLElement;
   private hintEl: HTMLElement;
@@ -53,6 +70,7 @@ export class Hud implements HudApi {
   private coverDisc: HTMLElement;
   private coverIcon: HTMLElement;
   private coverText: HTMLElement;
+  private coverTitle: HTMLElement;
   private coverOutT = 0;
   private coverOnAt = 0;
   private flashEl: HTMLElement;
@@ -80,15 +98,16 @@ export class Hud implements HudApi {
     this.splash.setAttribute('aria-label', opts.title);
     this.splash.innerHTML = `
       <div class="sp-col">
-        <div class="sp-top"><img class="title" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="450" height="238"></div>
+        <div class="sp-top"><div class="sp-clouds" aria-hidden="true"><i></i><i></i><i></i></div><p class="sp-eyebrow"><img class="wm" src="/img/parade-wordmark.webp" alt="Japan Parade &amp; Street Fair" width="600" height="127"><b>Official Mascot</b></p><img class="title" src="/img/happi-logo.webp" alt="${esc(opts.title)}" width="769" height="309"></div>
         <div class="sp-bottom">
           <p class="lead">${esc(opts.lead)}</p>
           <button type="button" class="cbx-start" disabled>Loading…</button>
           <div class="cbx-load" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+          <p class="sp-credit">Designed by Japan Parade 2026 Grand Marshal <b>Acky Bright</b></p>
           <img class="act-by" src="/img/activated-by.webp" alt="Activated by MEDIALIFE" width="148" height="58">
         </div>
       </div>
-      <div class="sp-hero"><div class="sp-wait" aria-hidden="true">${ICON.heart}</div></div>`;
+      <div class="sp-hero"><div class="sp-wait" aria-hidden="true">${headHop('hh-sm')}</div></div>`;
     // portrait order: title, hero window, card (the column wrapper is display: contents there)
     const col = this.splash.querySelector('.sp-col')!;
     const hero = this.splash.querySelector('.sp-hero')!;
@@ -97,12 +116,27 @@ export class Hud implements HudApi {
     this.startBtn = this.splash.querySelector('.cbx-start')!;
     this.loadBar = this.splash.querySelector('.cbx-load')!;
     this.startBtn.addEventListener('click', () => opts.onStart());
+    // cherry branches in the sky's corners and petals drifting down over everything (src/happi/splash-fx.ts)
+    cornerBranches(this.splash.querySelector('.sp-top')!);
+    this.petals = new PetalField(this.splash);
+    this.petals.start();
 
     // ---- HUD
     this.hudEl = el('div', 'cbx-hud');
     this.hudEl.hidden = true;
+    // top (Dapo, 2026-11-20 round 5): one line with the lockup in the top right (the parade's wordmark, Happi, and
+    // "AR" set in the logo's style) and the menu in line at the far right; the mode tabs sit just below both.
     const top = el('div', 'cbx-top');
-    top.innerHTML = `<img class="mini" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="76" height="40">`;
+    const dock = el('nav', 'cbx-dock');
+    dock.setAttribute('aria-label', 'Views and menu');
+    const row1 = el('div', 'cbx-row1');
+    const lockup = el('div', 'lockup');
+    lockup.setAttribute('role', 'img');
+    lockup.setAttribute('aria-label', `Japan Parade and Street Fair, ${opts.title} AR`);
+    lockup.innerHTML = `<img class="wm" src="/img/parade-wordmark.webp" alt="" width="600" height="127"><img class="hp" src="/img/happi-logo-sm.webp" alt="" width="384" height="154"><b class="ar" aria-hidden="true">AR</b>`;
+    row1.appendChild(lockup);
+    dock.appendChild(row1);
+    top.append(dock);
     // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
     // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
@@ -125,34 +159,36 @@ export class Hud implements HudApi {
     });
     this.switchEl.style.setProperty('--i', '0');
     this.switchEl.addEventListener('keydown', (e) => this.onSwitchKey(e));
-    top.appendChild(this.switchEl);
-    const menuBtn = el('button', 'cbx-ib', ICON.menu);
+    const menuBtn = el('button', 'cbx-ib cbx-menu', ICON.menu);
     menuBtn.type = 'button';
     menuBtn.setAttribute('aria-label', 'Menu');
     menuBtn.setAttribute('aria-haspopup', 'dialog');
     menuBtn.addEventListener('click', () => this.openMenu());
-    top.appendChild(menuBtn);
+    row1.appendChild(menuBtn);
+    dock.appendChild(this.switchEl);
 
     this.hintEl = el('p', 'ml-hint');
     this.hintEl.setAttribute('role', 'status');
     this.hintEl.setAttribute('aria-live', 'polite');
     this.toastEl = el('div', 'cbx-toast');
     this.toastEl.setAttribute('aria-hidden', 'true');
-    // what Cheer Bear says: the words reveal one by one as the transcript grows; screen readers get the plain text
-    this.bubble = el('div', 'cbx-bubble', `<b class="cbx-bubble-name" aria-hidden="true">${esc(opts.title.replace(/\s+(AR|AI)$/i, '') || 'Cheer Bear')}</b><span class="cbx-bubble-text" aria-hidden="true"></span><span class="cbx-sr" role="status" aria-live="polite"></span>`);
+    // what Happi says: the words reveal one by one as the transcript grows; screen readers get the plain text
+    this.bubble = el('div', 'cbx-bubble', `<b class="cbx-bubble-name" aria-hidden="true">${esc(opts.title.replace(/\s+(AR|AI)$/i, '') || 'Happi')}</b><span class="cbx-bubble-text" aria-hidden="true"></span><span class="cbx-sr" role="status" aria-live="polite"></span>`);
     this.bubbleWords = this.bubble.querySelector('.cbx-bubble-text')!;
     this.bubbleSr = this.bubble.querySelector('.cbx-sr')!;
     this.above = el('div', 'cbx-above');
     const bottom = el('div', 'cbx-bottom');
     this.left = el('div', 'cbx-slot-left');
     this.centre = el('div', 'cbx-slot-centre');
-    const right = el('div', 'cbx-slot-right');
-    bottom.append(this.left, this.centre, right);
+    this.right = el('div', 'cbx-slot-right');
+    bottom.append(this.left, this.centre, this.right);
 
     // joystick (bottom centre, walking modes)
-    this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M51 17l7-7 7 7"/><path d="M51 99l7 7 7-7"/><path d="M17 51l-7 7 7 7"/><path d="M99 51l7 7-7 7"/></g></svg><span><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></g></svg></span>`);
+    // a plain joystick: navy base, a white ring with one orange arc gliding round it (a flat shimmer, no gradient),
+    // and an orange thumb
+    this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><circle cx="58" cy="58" r="54" fill="none" stroke="currentColor" stroke-width="3" opacity="0.5"/><circle class="arc" cx="58" cy="58" r="54" fill="none" stroke-width="4" stroke-linecap="round" pathLength="100" stroke-dasharray="16 84"/></svg><span></span>`);
     this.stick.setAttribute('role', 'application');
-    this.stick.setAttribute('aria-label', 'Joystick: walk Cheer Bear');
+    this.stick.setAttribute('aria-label', 'Joystick: walk Happi');
     this.stick.hidden = true;
     this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
@@ -162,11 +198,12 @@ export class Hud implements HudApi {
 
     // the mode-change cover: a flat pink iris grows from the tapped tab, the target mode's badge sits in the middle,
     // then the whole cover fades off the new view (reduced motion: a plain crossfade)
-    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-in"><span class="cbx-cover-badge"></span><p></p></div>`);
+    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-sky" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="cbx-cover-in">${headHop('')}<strong class="cbx-cover-title"></strong><p><span class="cbx-cover-badge"></span><b></b><em class="cbx-dots"><i></i><i></i><i></i></em></p></div>`);
     this.coverEl.setAttribute('role', 'status');
     this.coverDisc = this.coverEl.querySelector('.cbx-cover-disc')!;
     this.coverIcon = this.coverEl.querySelector('.cbx-cover-badge')!;
-    this.coverText = this.coverEl.querySelector('p')!;
+    this.coverText = this.coverEl.querySelector('.cbx-cover-in b')!;
+    this.coverTitle = this.coverEl.querySelector('.cbx-cover-title')!;
     this.flashEl = el('div', 'cbx-flash');
 
     container.append(this.layer, this.hudEl, this.splash, this.coverEl, this.flashEl);
@@ -199,15 +236,17 @@ export class Hud implements HudApi {
   }
   hideSplash(): void {
     this.splash.classList.add('gone');
+    this.petals.gust();
     this.irisFrom = null;
     this.hudEl.hidden = false;
     this.hudEl.classList.add('off');
     requestAnimationFrame(() => this.hudEl.classList.remove('off'));
-    window.setTimeout(() => { this.splash.hidden = true; }, 800);
+    window.setTimeout(() => { if (this.splash.classList.contains('gone')) { this.splash.hidden = true; this.petals.stop(); } }, 1200);
   }
   showSplashAgain(): void {
     this.splash.hidden = false;
     this.splash.classList.remove('gone');
+    this.petals.start();
     this.hudEl.hidden = true;
     this.startBtn.disabled = false;
     this.startBtn.textContent = 'Start';
@@ -216,7 +255,9 @@ export class Hud implements HudApi {
   // ------------------------------------------------------------------ mode switcher
   setMode(mode: ExperienceMode, busy: boolean): void {
     const prev = this.curMode;
+    if (prev !== mode) this.closeAllSheets(); // a sheet from the last mode (Games, Moves) never follows you
     this.curMode = mode;
+    this.root.dataset.mode = mode;
     this.busy = busy;
     const i = MODES.findIndex((m) => m.id === mode);
     const focused = this.switchEl.contains(document.activeElement);
@@ -317,7 +358,7 @@ export class Hud implements HudApi {
     this.toastT = window.setTimeout(() => this.toastEl.classList.remove('on'), ms);
   }
   /**
-   * Cheer Bear's words. Text that continues what is showing (a growing transcript) only reveals the new words; other
+   * Happi's words. Text that continues what is showing (a growing transcript) only reveals the new words; other
    * text replaces it, revealed word by word. Long speech keeps its latest words.
    */
   speech(text: string | null): void {
@@ -351,8 +392,8 @@ export class Hud implements HudApi {
     this.bubbleSr.textContent = t;
     this.bubble.classList.add('on');
   }
-  toolButton(o: { label: string; icon: string; aria?: string; onClick: () => void }): HTMLButtonElement {
-    const b = el('button', 'cbx-tool', `${o.icon}<span>${esc(o.label)}</span>`);
+  toolButton(o: { label: string; icon: string; aria?: string; onClick: () => void; tone?: 'orange' | 'navy' }): HTMLButtonElement {
+    const b = el('button', 'cbx-tool' + (o.tone ? ' ' + o.tone : ''), `${o.icon}<span>${esc(o.label)}</span>`);
     b.type = 'button';
     b.setAttribute('aria-label', o.aria ?? o.label);
     b.addEventListener('click', (e) => { e.stopPropagation(); o.onClick(); });
@@ -364,11 +405,65 @@ export class Hud implements HudApi {
     b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
     return b;
   }
-  shutter(onClick: () => void, aria = 'Take a photo'): HTMLButtonElement {
-    const b = el('button', 'cbx-shutter', '<i></i>');
+  /**
+   * The round shutter. With `hold`: tap = photo, press and hold = video (Dapo, round 5). Holding past 0.28 s calls
+   * hold.start() (false = can't record here: nothing happens); letting go calls hold.stop(). A red ring fills over
+   * the 30 s limit while it records. Keyboard Enter / Space is always a photo.
+   */
+  shutter(onClick: () => void, aria = 'Take a photo', hold?: ShutterHold): HTMLButtonElement {
+    const b = el('button', 'cbx-shutter', '<svg class="cbx-rec-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" pathLength="100"/></svg><i></i>');
     b.type = 'button';
-    b.setAttribute('aria-label', aria);
-    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    b.setAttribute('aria-label', hold ? `${aria}. Hold to record a video` : aria);
+    if (!hold) {
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+      return b;
+    }
+    b.classList.add('can-rec');
+    let timer = 0, pid: number | null = null, recording = false, raf = 0;
+    const ring = b.querySelector('circle') as SVGCircleElement;
+    const loop = () => {
+      if (!recording) return;
+      if (!recorder.recording) { endRec(false); return; } // stopped by itself (30 s limit)
+      ring.style.strokeDashoffset = String(100 - Math.min(100, (recorder.seconds / CLIP_MAX_S) * 100));
+      raf = requestAnimationFrame(loop);
+    };
+    const endRec = (callStop: boolean) => {
+      cancelAnimationFrame(raf);
+      if (!recording) return;
+      recording = false;
+      b.classList.remove('rec', 'rec-wait');
+      ring.style.strokeDashoffset = '100';
+      if (callStop) hold.stop();
+    };
+    b.addEventListener('pointerdown', (e) => {
+      if (pid !== null || b.disabled) return;
+      e.stopPropagation();
+      pid = e.pointerId;
+      try { b.setPointerCapture(e.pointerId); } catch { /* fine */ }
+      b.classList.add('down');
+      timer = window.setTimeout(() => {
+        timer = 0;
+        if (pid === null || !hold.start()) return;
+        recording = true;
+        b.classList.add('rec', 'rec-wait');
+        window.setTimeout(() => b.classList.remove('rec-wait'), 600); // the first frames may take a moment
+        loop();
+      }, 280);
+    });
+    const up = (e: PointerEvent, cancel: boolean) => {
+      if (e.pointerId !== pid) return;
+      e.stopPropagation();
+      pid = null;
+      b.classList.remove('down');
+      if (recording) { endRec(true); return; }
+      if (timer) { clearTimeout(timer); timer = 0; if (!cancel) onClick(); }
+    };
+    b.addEventListener('pointerup', (e) => up(e, false));
+    b.addEventListener('pointercancel', (e) => up(e, true));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    // keyboard / assistive tech: a click with no pointer press is a photo
+    b.addEventListener('click', (e) => { e.stopPropagation(); if (e.detail === 0) onClick(); });
+    (b as HTMLButtonElement & { endRec?: () => void }).endRec = () => endRec(false);
     return b;
   }
   flash(): void {
@@ -429,6 +524,9 @@ export class Hud implements HudApi {
       this.coverText.textContent = text;
       const m = MODES.find((x) => x.id === this.curMode);
       this.coverIcon.innerHTML = m ? m.icon : ICON.heart;
+      // each mode has its own brand colour (sky, navy, orange, blossom) and says where it is going
+      this.coverTitle.textContent = `Switching to ${m ? m.label : '3D'} mode`;
+      c.dataset.to = m ? m.id : 'showcase';
       if (c.classList.contains('on')) return Promise.resolve();
       const box = this.root.getBoundingClientRect();
       const o = this.irisFrom ?? { x: box.width / 2, y: Math.min(60, box.height / 2) };
@@ -504,7 +602,7 @@ export class Hud implements HudApi {
     const url = location.href.replace(/[?&](test|desktop|diag|verbose)\b[^&]*/g, '').replace(/[?&]$/, '');
     return this.sheet({
       title: 'Open this on your phone',
-      body: `${what} uses your phone's camera. Scan this to open it there. The 3D view and the call work right here.`,
+      body: `${what} uses your phone's camera. Scan this to open it there. The 3D view works right here.`,
       buttons: ['Close'],
       qr: url,
     });
@@ -539,10 +637,10 @@ export class Hud implements HudApi {
       title: 'How it works',
       body: '',
       html: `<ol>
-        <li><b>3D</b>: Cheer Bear in Care-a-Lot. Drag to look around, pinch to zoom, the joystick walks her.</li>
-        <li><b>AR</b>: point your phone at the floor, tap <b>Place</b>. Walk her into her house to go inside. <b>Move</b> puts it all somewhere else.</li>
-        <li><b>Selfie</b> and <b>Photo</b>: the white button takes a picture with her.</li>
-        <li>Talk to her! Say <b>house</b>, <b>rainbow</b>, <b>party</b>, <b>magic</b>, <b>dance</b> or <b>sleep</b> and watch what happens.</li>
+        <li><b>3D</b>: Happi's festival square in New York. Drag to look around, pinch to zoom, and walk Happi with the joystick. <b>Actions</b> picks something for Happi to do, <b>Games</b> starts Parade Dash or Blossom Toss.</li>
+        <li><b>AR</b>: point your phone at the floor and tap <b>Place</b>. Walk Happi to the door to go inside. <b>Move</b> puts everything somewhere else.</li>
+        <li><b>Selfie</b>: wear Happi's hood, pick a frame and a filter, then tap the white button.</li>
+        <li><b>Photo</b>: your selfie in the frame Happi holds, or a life-size Happi cutout a friend can step behind.</li>
       </ol>`,
       buttons: ['Got it'],
     });
@@ -558,7 +656,7 @@ export class Hud implements HudApi {
           <a href="https://8thwall.org/docs/engine/license" target="_blank" rel="noopener">Licence text</a></div>
         <div><b>Fredoka</b> (font)<br>SIL Open Font License 1.1.</div>
         <div><b>qrcode-generator</b><br>MIT License. Copyright © Kazuhiko Arase.</div>
-        <div><b>Cheer Bear and Care Bears</b><br>Characters and artwork belong to their owners.</div>
+        <div><b>Happi</b><br>Happi, the Japan Parade &amp; Street Fair official mascot, designed by Acky Bright. Character, logo and artwork belong to their owners.</div>
       </div>`,
       buttons: ['Close'],
     });
@@ -566,6 +664,7 @@ export class Hud implements HudApi {
 
   dispose(): void {
     this.closeAllSheets();
+    this.petals.dispose();
     for (const n of [this.splash, this.hudEl, this.layer, this.coverEl, this.flashEl]) n.remove();
   }
 }

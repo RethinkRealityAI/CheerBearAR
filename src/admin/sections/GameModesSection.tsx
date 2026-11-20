@@ -58,7 +58,7 @@ export function GameModesSection() {
   const update = (recipe: (g: GameMode) => void) => edit((d) => { const g = d.gameModes.find((x) => x.id === selectedId); if (g) recipe(g); });
 
   return (
-    <Section title="Game modes" description="Word games: visitors ask Cheer Bear questions and try to get her to say the trigger words."
+    <Section title="Game modes" description="Word games: visitors ask Happi questions and try to get her to say the trigger words."
       actions={<button type="button" className="adm-btn primary" onClick={() => create()}><Plus size={16} aria-hidden /> New game mode</button>}>
       <Group>
         <Select<string> path="activeGameMode" label="Game visitors start with" options={activeOptions} value={draft.activeGameMode ?? ''}
@@ -124,7 +124,7 @@ export function GameModesSection() {
             {gm.triggerWords.length > 0 && (
               <fieldset className="adm-subgroup">
                 <legend>Hints for each word</legend>
-                <p className="adm-hint">Targeted questions that lead Cheer Bear towards one word.</p>
+                <p className="adm-hint">Targeted questions that lead Happi towards one word.</p>
                 {gm.triggerWords.map((w) => {
                   const k = w.toLowerCase();
                   return (
@@ -157,7 +157,7 @@ function WordPicker({ mode, onChange }: { mode: GameMode; onChange: (w: string[]
     <fieldset className="adm-field adm-fieldset">
       <legend className="adm-label">Trigger words ({mode.triggerWords.length || 'all'})</legend>
       <p className="adm-hint adm-hint-top">
-        {mode.triggerWords.length ? 'The words visitors need to get Cheer Bear to say.' : 'None picked: every keyword counts in this game.'}
+        {mode.triggerWords.length ? 'The words visitors need to get Happi to say.' : 'None picked: every keyword counts in this game.'}
       </p>
       <div className="adm-pick">
         {keywords.map((k) => (

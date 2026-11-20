@@ -10,7 +10,7 @@ import { openVoiceDiag } from './VoiceDiagHost';
 
 const MODES: { id: UiMode; label: string; desc: string }[] = [
   { id: 'calm', label: 'Just talk', desc: 'Talk out loud. No words on the screen.' },
-  { id: 'chat', label: 'Chat', desc: 'Type messages to Cheer Bear too.' },
+  { id: 'chat', label: 'Chat', desc: 'Type messages to Happi too.' },
   { id: 'call_debug', label: 'Staff view', desc: 'For staff: live transcripts and action details.' },
 ];
 
@@ -62,7 +62,7 @@ export function SettingsPanel() {
       )}
 
       {s.voiceMode && (
-        <Group title="Talking to Cheer Bear">
+        <Group title="Talking to Happi">
           <Switch
             label="Tap to talk"
             desc="Tap the talk button once to start and once to stop, instead of holding it."
@@ -70,12 +70,12 @@ export function SettingsPanel() {
             onChange={(v) => c.voiceUi.setTapToTalk(v)}
           />
           <Switch
-            label="Cheer Bear answers out loud"
+            label="Happi answers out loud"
             desc="She says a few happy words back when you ask for something."
             checked={s.spokenReplies}
             onChange={(v) => c.voiceUi.setSpokenReplies(v)}
           />
-          <p className="cb-settings-note">Your browser turns your words into text (Chrome uses Google’s speech service, Safari uses Apple’s). Cheer Bear only listens while the talk button is white.</p>
+          <p className="cb-settings-note">Your browser turns your words into text (Chrome uses Google’s speech service, Safari uses Apple’s). Happi only listens while the talk button is white.</p>
           {/* voice-4: for grown-ups / testers when the mic doesn't hear: what this phone's browser actually does */}
           <button type="button" className="cb-settings-link" onClick={() => openVoiceDiag()}>
             <Mic aria-hidden="true" size={16} /> Mic check
@@ -106,7 +106,7 @@ export function SettingsPanel() {
 
       {on('trigger_keywords') && (
         <Group title="Magic words">
-          <p className="cb-panel-lead">When Cheer Bear says one of these, something happens.</p>
+          <p className="cb-panel-lead">When Happi says one of these, something happens.</p>
           <ul className="cb-wordchips">
             {s.ui.keywords.map((k) => {
               const look = actionLook(k);
@@ -136,7 +136,7 @@ export function SettingsPanel() {
             {on('admin_transcript_visibility') && <Row k="Call transcripts" v={VISIBILITY_TEXT[s.ui.transcriptVisibility] ?? s.ui.transcriptVisibility} />}
             {on('admin_intent_engine') && <Row k="Word matching" v={s.ui.staff.intentEngine} />}
             {on('admin_trigger_policy') && <Row k="Trigger policy" v={`${(s.ui.staff.cooldownMs / 1000).toFixed(1)} s cooldown, ${s.ui.staff.dispatchMode.replace('_', ' ')}${s.ui.staff.partialTriggers ? ', partials on' : ''}`} />}
-            {on('admin_sms_policy') && <Row k="Messages to Cheer Bear" v={`typed ${s.ui.staff.smsTyped ? 'on' : 'off'}, speech ${s.ui.staff.smsSpeech ? 'on' : 'off'}`} />}
+            {on('admin_sms_policy') && <Row k="Messages to Happi" v={`typed ${s.ui.staff.smsTyped ? 'on' : 'off'}, speech ${s.ui.staff.smsSpeech ? 'on' : 'off'}`} />}
             {on('admin_allow_user_audio_to_openai') && <Row k="Caller audio transcribed" v={s.ui.staff.userAudioToOpenAI ? 'yes' : 'no'} />}
             {on('admin_english_only') && <Row k="English-only transcripts" v={s.ui.staff.englishOnly ? 'yes' : 'no'} />}
           </dl>

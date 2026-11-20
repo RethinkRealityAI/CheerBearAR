@@ -1,4 +1,4 @@
-// Cheer Bear's house, built in code (see exterior.ts and room.ts), as a walk-through portal like the MEDIALIFE
+// Happi's house, built in code (see exterior.ts and room.ts), as a walk-through portal like the MEDIALIFE
 // Portal / Bobo's Portal: the cottage stands in the garden; its door opens onto a life-size room that is much bigger
 // than the cottage. From outside you only ever see the room through the doorway (DoorClip); you physically walk in
 // through the door and the room is all around you (the cottage's back and roof hide, the room's own walls take
@@ -10,12 +10,16 @@
 // tiling ones), and crossing is only counted inside the opening.
 //
 // One HouseSet per stage (showcase / AR). `root` is in door-local metres and scaled into stage units: AR keeps the
-// house life size whatever size Cheer Bear is; the showcase uses a fixed scale that suits her 1-unit height.
+// house life size whatever size Happi is; the showcase uses a fixed scale that suits her 1-unit height.
 import * as THREE from 'three';
 import type { PropKit } from '../props';
 import type { Media } from '../media';
 import type { Stage } from '../stage';
 import { PAL, RAINBOW } from '../fx';
+/** Paper-lantern lights: red, white, orange, warm gold. */
+const LAMPS = [0xd8312a, 0xffffff, 0xf37321, 0xffe08a];
+/** Petals puffing from the rooftop tank. */
+const PETALS = [0xffb7c9, 0xff94b0, 0xffffff, 0xffd9e3];
 import { damp, ease } from '../../core/timeline';
 import { COT, DOOR, DOOR_H0, DOOR_R, ROOM, ROOM_SLACK } from './dims';
 import { buildDoorLeaf, buildExterior } from './exterior';
@@ -58,7 +62,7 @@ export class HouseSet {
   /** House-moment bounce (1 = at rest) and mailbox wobble (radians). */
   squash = 1;
   mailTilt = 0;
-  /** Stage units per metre (AR: life size times `sizeMul`, whatever size Cheer Bear is). */
+  /** Stage units per metre (AR: life size times `sizeMul`, whatever size Happi is). */
   k = 1;
   /** AR: the pinch's share of the house size (1 = life size, the default; Move resets it). Set by the AR mode. */
   sizeMul = 1;
@@ -357,7 +361,7 @@ export class HouseSet {
   /** A burst of tiny hearts from the chimney (the House moment). */
   puffHearts(n: number): void {
     const k = this.k;
-    this.st.fx.emit({ count: n, glyph: 'heart', colors: [PAL.pink, PAL.red, 0xffffff, 0xff9cc9], at: this.toStage(this.chimneyTop, V), spread: [0.08 * k, 0.05 * k, 0.08 * k], vel: [0, 0.6 * k, 0], velSpread: [0.25 * k, 0.15 * k, 0.25 * k], sway: 0.06 * k, drag: 0.6, life: [1.8, 2.6], size: [0.1 * k, 0.16 * k] });
+    this.st.fx.emit({ count: n, glyph: 'heart', colors: PETALS, at: this.toStage(this.chimneyTop, V), spread: [0.08 * k, 0.05 * k, 0.08 * k], vel: [0, 0.6 * k, 0], velSpread: [0.25 * k, 0.15 * k, 0.25 * k], sway: 0.06 * k, drag: 0.6, life: [1.8, 2.6], size: [0.1 * k, 0.16 * k] });
   }
 
   private popChest(): void {
@@ -443,7 +447,7 @@ export class HouseSet {
       this.chimneyT -= dt;
       if (this.chimneyT <= 0) {
         this.chimneyT = st.actor.soft ? 1.2 : 0.6;
-        st.fx.emit({ count: 1, glyph: 'heart', colors: [PAL.pink, PAL.red, 0xffffff, 0xff9cc9], at: this.toStage(this.chimneyTop, V), spread: [0.05 * k, 0, 0.05 * k], vel: [0.03 * k, 0.32 * k * this.squash, 0], velSpread: [0.05 * k, 0.06 * k, 0.05 * k], sway: 0.06 * k, drag: 0.2, life: [2.2, 2.8], size: [0.09 * k, 0.14 * k] });
+        st.fx.emit({ count: 1, glyph: 'heart', colors: PETALS, at: this.toStage(this.chimneyTop, V), spread: [0.05 * k, 0, 0.05 * k], vel: [0.03 * k, 0.32 * k * this.squash, 0], velSpread: [0.05 * k, 0.06 * k, 0.05 * k], sway: 0.06 * k, drag: 0.2, life: [2.2, 2.8], size: [0.09 * k, 0.14 * k] });
       }
     }
     this.animateRoom(dt);
@@ -480,9 +484,9 @@ export class HouseSet {
       this.twinkleStep++;
       const n = r.bulbCount;
       for (let i = 0; i < n; i++) {
-        if (this.party > 0) COLR.setHex(RAINBOW[(i + this.twinkleStep) % 6]);
+        if (this.party > 0) COLR.setHex(LAMPS[(i + this.twinkleStep) % 4]);
         else {
-          COLR.setHex(RAINBOW[i % 6]);
+          COLR.setHex(LAMPS[i % 4]);
           const tw = ((i * 7 + this.twinkleStep) % 9) === 0;
           if (tw) COLR.setHex(0xffffff);
         }

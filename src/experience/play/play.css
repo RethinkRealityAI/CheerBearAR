@@ -2,10 +2,10 @@
    Flat colours and theme tokens only (no gradients). The scoreboard sits where the hint pill normally starts (under the
    top bar and below the app's chip / toast strip, --cb-top-reserve); while a game is on, the hint pill moves below it. */
 
-.cbx.cbp-on .ml-hint { top: calc(var(--cbx-top) + 64px + 58px); }
+.cbx.cbp-on .ml-hint { top: calc(var(--cbx-top) + var(--cbx-head) + 58px); }
 
 .cbp-board {
-  position: absolute; left: 50%; top: calc(var(--cbx-top) + 64px);
+  position: absolute; left: 50%; top: calc(var(--cbx-top) + var(--cbx-head));
   transform: translate3d(-50%, calc(var(--cb-top-reserve, 0px) - 6px), 0); opacity: 0;
   display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: var(--cb-r-pill);
   background: var(--cb-glass-hint); border: 1px solid var(--cb-glass-hint-line);
@@ -119,7 +119,7 @@
 
 /* a boost / magnet timer under the score (small flat pill) */
 .cbp-power {
-  position: absolute; left: 50%; top: calc(var(--cbx-top) + 64px + 54px);
+  position: absolute; left: 50%; top: calc(var(--cbx-top) + var(--cbx-head) + 54px);
   transform: translate3d(-50%, var(--cb-top-reserve, 0px), 0) scale(0.9); opacity: 0; pointer-events: none;
   padding: 5px 12px; border-radius: var(--cb-r-pill); font: var(--cb-w-strong) 13px/1.2 var(--cb-font); color: var(--cb-ink);
   background: var(--cb-yellow); transition: opacity var(--cb-dur-2) ease, transform var(--cb-dur-3) var(--cb-ease-spring);
@@ -130,7 +130,7 @@
 
 /* the streak counter: the heart toss's "in a row" look, one row lower */
 .cbp-streak {
-  position: absolute; left: 50%; top: calc(var(--cbx-top) + 64px + 104px);
+  position: absolute; left: 50%; top: calc(var(--cbx-top) + var(--cbx-head) + 104px);
   transform: translate(-50%, calc(var(--cb-top-reserve, 0px) - 6px)) scale(0.9); opacity: 0; pointer-events: none;
   display: flex; align-items: center; gap: 7px; padding: 7px 14px 7px 10px; border-radius: 999px;
   background: var(--cb-pink); color: var(--cb-white); font-family: var(--cb-font); font-size: 14px; font-weight: 600;

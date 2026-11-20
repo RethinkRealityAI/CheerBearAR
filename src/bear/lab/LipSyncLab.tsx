@@ -62,7 +62,7 @@ export default function LipSyncLab() {
   const sweepRef = useRef<{ names: string[]; i: number; t: number; per: number; kind: 'shape' | 'viseme' } | null>(null);
   const shapeLabelRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
-  const [status, setStatus] = useState('Loading Cheer Bear...');
+  const [status, setStatus] = useState('Loading Happi...');
   const [source, setSource] = useState<Source>('none');
   const [phone, setPhone] = useState(false);
   const [camMode, setCamMode] = useState<'face' | 'body'>('face');
@@ -109,7 +109,7 @@ export default function LipSyncLab() {
     ro.observe(host);
 
     let disposed = false;
-    loadBear({ onProgress: (p) => setStatus(`Loading Cheer Bear... ${Math.round(p * 100)}%`) })
+    loadBear({ onProgress: (p) => setStatus(`Loading Happi... ${Math.round(p * 100)}%`) })
       .then((b) => {
         if (disposed) return b.dispose();
         const bear = b as Bear;
@@ -355,7 +355,7 @@ export default function LipSyncLab() {
       </div>
       <div className="lsl-panel">
         <h1>Lip Sync Lab</h1>
-        <p className="lsl-note">Cheer Bear's mouth is driven only by the audio. Switch on phone quality to hear and see what a call gives us.</p>
+        <p className="lsl-note">Happi's mouth is driven only by the audio. Switch on phone quality to hear and see what a call gives us.</p>
 
         <h2>Input</h2>
         <label className="lsl-toggle">

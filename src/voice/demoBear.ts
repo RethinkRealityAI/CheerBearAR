@@ -1,4 +1,4 @@
-// Cheer Bear's side of the demo: her brain (brain.ts) answers, her browser voice (browserVoice.ts) says it, and
+// Happi's side of the demo: her brain (brain.ts) answers, her browser voice (browserVoice.ts) says it, and
 // while she talks her words stream as `cheer_bear` partial transcripts (final when she finishes) and her mouth
 // shapes go out as VisemeFrames. The transcripts go through the real trigger pipeline in the session, so moments fire
 // from what she SAYS, exactly as on a real call. Lines are spoken one at a time, in order.

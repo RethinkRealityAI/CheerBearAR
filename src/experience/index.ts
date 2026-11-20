@@ -1,4 +1,4 @@
-// Cheer Bear's experience: splash, 3D showcase, AR, and the engine side of the Selfie and Photo modes, in one page
+// Happi's experience: splash, 3D showcase, AR, and the engine side of the Selfie and Photo modes, in one page
 // with one engine session, one HUD and one bear. Framework-free (vanilla DOM + three.js r180 + the 8th Wall engine
 // binary, loaded by index.html's <script> tag). The app talks to it only through ExperienceApi
 // (src/shared/contracts.ts); docs/handoff/xr-core.md explains the inside.
@@ -7,8 +7,10 @@
 //   await exp.mount(el);          // splash + loading; Start (a tap) -> showcase
 //   exp.setMode('ar');            // from a tap; switches in place
 //   exp.trigger('rainbow');       // case-insensitive
+import { movesHtml } from '../happi/moves';
 import * as THREE from 'three';
 import '../shared/theme.css';
+import { happiSky } from '../happi/sky';
 import type {
   VisemeFrame,
   ActionName, BearCharacter, ExperienceApi, ExperienceCommand, ExperienceEvents, ExperienceMode, ExperienceOptions,
@@ -26,6 +28,7 @@ import { Stage } from './scene/stage';
 import { addHousePhoto } from './scene/house';
 import { MOMENT_NAMES, MomentRunner, canonicalMoment } from './scene/moments';
 import { ShowcaseMode } from './modes/showcase';
+import { CaptureDock } from './capture/dock';
 import { ArMode } from './modes/ar';
 import { bindGestures, type Shared } from './modes/shared';
 import { createFacePlaceholder } from './placeholders/face-placeholder';
@@ -44,7 +47,7 @@ const LABEL: Record<ExperienceMode, string> = { showcase: '3D', ar: 'AR', face: 
 const FRIENDLY: Record<string, { title: string; body: string }> = {
   permission: {
     title: 'The camera is switched off',
-    body: 'To see Cheer Bear in your room, allow the camera for this page in your browser settings, then try again. The 3D view works without it.',
+    body: 'To see Happi in your room, allow the camera for this page in your browser settings, then try again. The 3D view works without it.',
   },
   unsupported: {
     title: 'This phone cannot do that one',
@@ -62,6 +65,8 @@ class Experience implements ExperienceApi {
   private host: HTMLElement | null = null;
   private box: HTMLElement | null = null;
   private hud: Hud | null = null;
+  /** The 3D and AR views' shutter (bottom right): tap a photo, hold a video. */
+  private dock: CaptureDock | null = null;
   private engine: Engine | null = null;
   private assets = new Assets();
   private media: Media | null = null;
@@ -74,7 +79,7 @@ class Experience implements ExperienceApi {
   private cur: Mode | null = null;
   private entered = false;
   private chain: Promise<void> = Promise.resolve();
-  private reserved = 88;
+  private reserved = 0;
   private speech: MediaStream | null = null;
   private loaded = false;
   private disposed = false;
@@ -89,8 +94,8 @@ class Experience implements ExperienceApi {
   constructor(opts: ExperienceOptions = {}) {
     this.opts = {
       ...opts,
-      title: opts.title || 'Cheer Bear',
-      lead: opts.lead || 'Meet Cheer Bear in 3D and in your room.',
+      title: opts.title || 'Happi',
+      lead: opts.lead || 'Meet Happi in 3D and in your room.',
     };
   }
 
@@ -124,6 +129,7 @@ class Experience implements ExperienceApi {
       onRestart: () => this.restart(),
     });
     this.hud = hud;
+    this.dock = new CaptureDock(hud, box, (blob) => { addHousePhoto(blob); this.ev.emit('photo', { blob, mode: this.mode }); }, reducedMotion);
     this.media = new Media();
     this.engine = new Engine(box, {
       onScene: (xr, kind) => this.onScene(xr, kind),
@@ -152,7 +158,7 @@ class Experience implements ExperienceApi {
       return null;
     });
     const propsP = this.kit.load(this.assets, pProps).catch((e) => console.error('[experience] props did not load', e));
-    const skyP = this.assets.texture('/img/care-a-lot-360.webp').then((t) => { pSky(1); return t; }).catch(() => { pSky(1); return new THREE.Texture(); });
+    const skyP = Promise.resolve(happiSky()).then((t) => { pSky(1); return t; });
     void this.media.ready().then(() => pVid(1));
     const [bear, , sky] = await Promise.all([bearP, propsP, skyP]);
     if (this.disposed) return;
@@ -282,13 +288,26 @@ class Experience implements ExperienceApi {
     return on ? this.play.pause('sheet') : this.play.resume('sheet');
   }
 
+  /** The Actions button (bottom right in 3D and AR): a grid of everything Happi can do; a tap closes it and he does it. */
+  private pickMove(): void {
+    const hud = this.hud;
+    if (!hud || hud.sheetOpen) return;
+    void hud.sheet({ title: 'What should Happi do?', body: '', html: movesHtml(), buttons: ['Close'] });
+    const wraps = this.box?.querySelectorAll<HTMLElement>('.cbx-sheet-wrap');
+    const wrap = wraps?.[wraps.length - 1];
+    wrap?.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((b) => b.addEventListener('click', () => {
+      (wrap.querySelector('.row .btn') as HTMLButtonElement | null)?.click();
+      window.setTimeout(() => this.trigger(b.dataset.move!), 120);
+    }));
+  }
+
   /** The Games button (bottom left in 3D, above Move in AR): a small chooser sheet. */
   private pickGame(): void {
     const hud = this.hud;
     if (!hud || hud.sheetOpen) return;
     const icon = { 'heart-run': PLAY_SVG.run, 'heart-hoops': PLAY_SVG.hoops } as const;
     const html = `<div class="cbp-pick">${PLAY_GAMES.map((g) => `<button type="button" data-game="${g.id}"><span class="ic${g.id === 'heart-hoops' ? ' hoops' : ''}">${icon[g.id]}</span><span><b>${g.label}</b><span>${g.lead}</span></span></button>`).join('')}</div>`;
-    void hud.sheet({ title: 'Play with Cheer Bear', body: '', html, buttons: ['Not now'] });
+    void hud.sheet({ title: 'Play with Happi', body: '', html, buttons: ['Not now'] });
     const wraps = this.box?.querySelectorAll<HTMLElement>('.cbx-sheet-wrap');
     const wrap = wraps?.[wraps.length - 1];
     wrap?.querySelectorAll<HTMLButtonElement>('[data-game]').forEach((b) => b.addEventListener('click', () => {
@@ -353,6 +372,7 @@ class Experience implements ExperienceApi {
     this.modes.set('showcase', this.showcase);
     this.modes.set('ar', arMode.m);
     this.showcase.onPickGame = arMode.m.onPickGame = () => this.pickGame();
+    this.showcase.onPickMove = arMode.m.onPickMove = () => this.pickMove();
     // a hidden tab holds the round (the pause card waits for you)
     const onVis = () => { if (document.hidden) this.play.pause('hidden'); };
     document.addEventListener('visibilitychange', onVis);
@@ -422,8 +442,9 @@ class Experience implements ExperienceApi {
     hud.setMode(id, true);
     const camera = to.camera !== 'none';
     // (awaited: the hud's iris finishes covering the old view before it is torn down; ~0.35 s)
-    if (from) await hud.cover(camera ? (to.camera === 'face' ? 'Turning the camera round…' : 'Opening the camera…') : 'Back to Care-a-Lot…');
+    if (from) await hud.cover(camera ? (to.camera === 'face' ? 'Turning the camera round…' : 'Opening the camera…') : 'Back to New York…');
     this.entered = false;
+    this.dock?.show(false); // (stops a clip that is still recording)
     try {
       if (from) await from.exit(id);
     } catch (e) {
@@ -442,6 +463,7 @@ class Experience implements ExperienceApi {
         await to.enter(from?.id ?? null);
       }
       this.entered = true;
+      this.dock?.show(id === 'showcase' || id === 'ar');
     } catch (e) {
       const err = e instanceof EngineError ? e : new EngineError('error', String((e as Error)?.message ?? e));
       console.warn('[experience] could not start', id, err.reason, err.message);

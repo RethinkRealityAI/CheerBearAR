@@ -1,10 +1,10 @@
 // createVoiceSession: the call, browser transcription and trigger dispatch behind the VoiceSession contract.
 //
-//   startCall()  -> GET /api/token -> Twilio Device.connect (our TwiML app dials Cheer Bear's number)
-//                -> on answer: emit remoteStream (for lip sync), start OpenAI transcription of Cheer Bear's audio
+//   startCall()  -> GET /api/token -> Twilio Device.connect (our TwiML app dials Happi's number)
+//                -> on answer: emit remoteStream (for lip sync), start OpenAI transcription of Happi's audio
 //                   (and of the user's mic only when allowUserAudioToOpenAI) -> transcript events
 //                -> TriggerPipeline -> trigger events (cooldown, dedupe, dispatch interval, AI fallback)
-//   demo mode    -> MockCall: rings, Cheer Bear greets once, then answers what the child says (browser speech
+//   demo mode    -> MockCall: rings, Happi greets once, then answers what the child says (browser speech
 //                   recognition) or types; her side is DemoBear (local/AI brain + browser voice + text-driven mouth
 //                   shapes on `visemes`). Her words go through the same pipeline, so moments fire from what she says.
 //   typed chat with no call live -> DemoBear answers too (config.demoVoice.speakTypedChatOutsideCall).
@@ -50,7 +50,7 @@ export interface CreateVoiceSessionOptions {
 export interface VoiceSessionExt extends VoiceSession {
   startCall(opts?: { to?: string; mock?: boolean }): Promise<void>;
   readonly isMock: boolean;
-  /** `replied`: the demo Cheer Bear will answer this message out loud (demo call, or no call live). */
+  /** `replied`: the demo Happi will answer this message out loud (demo call, or no call live). */
   sendText(text: string): Promise<{ triggers: string[]; smsSent: boolean; replied: boolean }>;
   readonly transcriptionState: Record<Speaker, VoiceEvents['transcription']['state']>;
   /** Voice mode (hold to talk, no call): created on first use. See voiceMode.ts and docs/handoff/voice-3.md. */
@@ -136,7 +136,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
     if (opts.mock || this.mockFlags.enabled) return this.startMock(seq);
     this.bear?.cancel(); // a demo chat answer still playing gives way to the real call
 
-    this.setStatus('connecting', { message: 'Calling Cheer Bear…' });
+    this.setStatus('connecting', { message: 'Calling Happi…' });
     // Ask for the microphone once, up front (one prompt on iOS instead of two), then release it: the SDK opens its own.
     try {
       const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -145,7 +145,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
       if (seq !== this.callSeq) return;
       const name = (err as { name?: string })?.name;
       if (name === 'NotAllowedError' || name === 'SecurityError') {
-        this.setStatus('error', { code: 'mic_denied', message: 'Cheer Bear needs your microphone to hear you. Allow it and try again.' });
+        this.setStatus('error', { code: 'mic_denied', message: 'Happi needs your microphone to hear you. Allow it and try again.' });
         return;
       }
       console.warn('[voice] microphone pre-check failed, continuing:', err);
@@ -219,7 +219,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
     t.start();
   }
 
-  /** Cheer Bear's demo side (brain + browser voice + mouth), shared by the demo call and typed chat. */
+  /** Happi's demo side (brain + browser voice + mouth), shared by the demo call and typed chat. */
   private demoBear(): DemoBear {
     this.bear ||= new DemoBear({
       getConfig: () => this.opts.getConfig(),
@@ -240,7 +240,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
   }
 
   private startMock(seq: number, message?: string) {
-    this.setStatus('connecting', { message: message ?? 'Calling Cheer Bear (demo)…', code: 'demo', mock: true });
+    this.setStatus('connecting', { message: message ?? 'Calling Happi (demo)…', code: 'demo', mock: true });
     this.listenNotice = null;
     const bear = this.demoBear();
     bear.cancel(); // a chat answer still playing gives way to the call
@@ -329,7 +329,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
   // ---------------------------------------------------------------- text + manual triggers
 
   /**
-   * Typed chat. Real call: to Cheer Bear by SMS (smsPolicy) as before. Demo call: the demo Cheer Bear answers out
+   * Typed chat. Real call: to Happi by SMS (smsPolicy) as before. Demo call: the demo Happi answers out
    * loud. No call live: she answers too when config.demoVoice.speakTypedChatOutsideCall. `replied` says she will.
    */
   async sendText(text: string): Promise<{ triggers: string[]; smsSent: boolean; replied: boolean }> {

@@ -54,10 +54,18 @@ function atlas(): THREE.CanvasTexture {
     g.fillRect(2, -50, 11, 80);
     g.beginPath(); g.moveTo(13, -50); g.quadraticCurveTo(46, -36, 36, -6); g.quadraticCurveTo(34, -24, 13, -28); g.closePath(); g.fill();
   });
-  // heart
+  // 'heart' slot: a cherry blossom (Happi's build; five notched petals, centre punched out)
   cell(4, () => {
-    g.beginPath(); g.moveTo(0, 46);
-    g.bezierCurveTo(-60, 4, -50, -48, 0, -22); g.bezierCurveTo(50, -48, 60, 4, 0, 46); g.fill();
+    for (let k = 0; k < 5; k++) {
+      g.save(); g.rotate((k * Math.PI * 2) / 5);
+      g.beginPath(); g.moveTo(0, 0);
+      g.bezierCurveTo(-30, -18, -26, -56, -7, -56); g.lineTo(0, -46); g.lineTo(7, -56);
+      g.bezierCurveTo(26, -56, 30, -18, 0, 0); g.fill();
+      g.restore();
+    }
+    g.globalCompositeOperation = 'destination-out';
+    g.beginPath(); g.arc(0, 0, 8, 0, Math.PI * 2); g.fill();
+    g.globalCompositeOperation = 'source-over';
   });
   // dot
   cell(5, () => { g.beginPath(); g.arc(0, 0, 40, 0, Math.PI * 2); g.fill(); });

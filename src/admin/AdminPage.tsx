@@ -17,7 +17,7 @@ import { ConfirmProvider, ToastProvider, useToast } from './ui';
 export default function AdminPage() {
   useEffect(() => {
     const prev = document.title;
-    document.title = 'Admin · Cheer Bear';
+    document.title = 'Admin · Happi';
     return () => { document.title = prev; };
   }, []);
   return (

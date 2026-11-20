@@ -1,4 +1,4 @@
-// Who answers for Cheer Bear in the demo: the AI chat function (POST /api/chat) when the server has an OpenAI key and
+// Who answers for Happi in the demo: the AI chat function (POST /api/chat) when the server has an OpenAI key and
 // the admin allows it (demoVoice.useAiBrain), else the local brain (cheerBrain.ts). Any AI failure falls back to the
 // local brain silently; after two failures in a row the AI is left alone for a minute. The local brain always keeps
 // the session memory (the child's first name), also while the AI answers.

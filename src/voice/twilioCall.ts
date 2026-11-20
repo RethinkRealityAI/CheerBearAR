@@ -98,7 +98,7 @@ export class TwilioCaller {
     });
   }
 
-  /** Cheer Bear's side of the call, cached for the life of the call. */
+  /** Happi's side of the call, cached for the life of the call. */
   getRemoteStream(): MediaStream | null {
     const call = this.call;
     if (!call) return null;

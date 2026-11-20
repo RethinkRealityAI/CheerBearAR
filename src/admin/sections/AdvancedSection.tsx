@@ -7,7 +7,7 @@ const META: Record<string, FieldMeta> = {
   voiceMode: { label: 'Voice mode (hold to talk, no call)' },
   'voiceMode.enabled': { label: 'Talk button is a hold-to-talk mic', hint: 'Visitors hold the talk button and say a magic word, a mode ("AR", "selfie") or "take a picture". Uses the browser’s own speech recognition: no call, no AI. Calling moves to a smaller phone button.' },
   'voiceMode.holdToTalk': { label: 'Hold while talking (off: tap to start and stop)', hint: 'Default for new visitors; they can change it in Settings.' },
-  'voiceMode.spokenReplies': { label: 'Cheer Bear answers out loud', hint: 'A short happy line in the browser’s voice (never a magic word). Visitors can turn it off.' },
+  'voiceMode.spokenReplies': { label: 'Happi answers out loud', hint: 'A short happy line in the browser’s voice (never a magic word). Visitors can turn it off.' },
 };
 
 /** Settings the server has that this panel has no page for yet. Shown generically so nothing is out of reach. */

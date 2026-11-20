@@ -51,15 +51,15 @@ function CallCard() {
   if (!canCall) return null;
   const inCall = call === 'in-call';
   const busy = call === 'connecting' || call === 'ringing' || call === 'ending';
-  const line = inCall ? (speaking ? 'Cheer Bear is talking' : muted ? 'You are muted' : 'Listening…')
+  const line = inCall ? (speaking ? 'Happi is talking' : muted ? 'You are muted' : 'Listening…')
     : busy ? (call === 'ringing' ? 'Ringing…' : call === 'ending' ? 'Hanging up…' : 'Calling…')
-      : call === 'error' ? 'That call did not connect.' : 'Call Cheer Bear and say hello!';
+      : call === 'error' ? 'That call did not connect.' : 'Call Happi and say hello!';
   return (
     <div className={`cb-callcard${inCall ? ' is-live' : ''}${speaking && inCall ? ' is-speaking' : ''}`}>
       <div className="cb-callcard-who">
         <span className="cb-avatar" aria-hidden="true"><Heart size={22} strokeWidth={2.4} /></span>
         <div>
-          <p className="cb-callcard-name">Cheer Bear {inCall && startedAt && <CallTimer since={startedAt} />}</p>
+          <p className="cb-callcard-name">Happi {inCall && startedAt && <CallTimer since={startedAt} />}</p>
           <p className="cb-callcard-line">{line}</p>
           {call === 'error' && message && <p className="cb-callcard-detail">{friendlyDetail(message)}</p>}
         </div>
@@ -134,8 +134,8 @@ function CalmTips() {
   const tap = useApp((s) => s.prefs.tapToTalk ?? !s.ui.voiceMode.holdToTalk);
   return (
     <div className="cb-calm">
-      <p className="cb-calm-big">{inCall ? 'Talk out loud. Cheer Bear can hear you!' : voice ? (tap ? 'Tap the mic and say a magic word.' : 'Hold the mic, say a magic word, let go.') : 'Just talk, like a phone call.'}</p>
-      <p>{voice ? 'Something magic happens in the scene!' : 'When Cheer Bear says a magic word, something happens in the scene.'}</p>
+      <p className="cb-calm-big">{inCall ? 'Talk out loud. Happi can hear you!' : voice ? (tap ? 'Tap the mic and say a magic word.' : 'Hold the mic, say a magic word, let go.') : 'Just talk, like a phone call.'}</p>
+      <p>{voice ? 'Something magic happens in the scene!' : 'When Happi says a magic word, something happens in the scene.'}</p>
       {hasGame && (
         <button type="button" className="cb-btn is-soft" onClick={() => c.openOverlay('hint')}>
           <Lightbulb aria-hidden="true" size={20} /> Need ideas? Get a hint
@@ -156,7 +156,7 @@ function isVisible(m: ChatMessage, mode: UiMode, callVisible: boolean): boolean 
 const REPLY_WAIT_MS = 12000;
 
 /**
- * Cheer Bear is "typing": her words are streaming in (a partial transcript), or you just said or wrote something
+ * Happi is "typing": her words are streaming in (a partial transcript), or you just said or wrote something
  * during a call and she has not answered yet (up to 12 s).
  */
 function useThinking(visible: ChatMessage[], all: ChatMessage[], staff: boolean, callVisible: boolean): boolean {
@@ -197,7 +197,7 @@ function MessageList() {
     <>
       {staff && (
         <p className="cb-staffbar">
-          <span className={`cb-dot is-${transcription.cheer_bear.state}`} /> Cheer Bear: {transcription.cheer_bear.state}
+          <span className={`cb-dot is-${transcription.cheer_bear.state}`} /> Happi: {transcription.cheer_bear.state}
           <span className={`cb-dot is-${transcription.user.state}`} /> You: {transcription.user.state}
           {!callVisible && <em> · transcripts hidden by policy</em>}
         </p>
@@ -215,7 +215,7 @@ function MessageList() {
         {visible.length === 0 && (
           <li className="cb-msgs-empty">
             {staff ? 'Live transcripts and actions will show here during a call.'
-              : 'Write a message and Cheer Bear will read it during your call.'}
+              : 'Write a message and Happi will read it during your call.'}
           </li>
         )}
         {visible.map((m, i) => {
@@ -253,7 +253,7 @@ function Message({ m, staff, first, last, fresh }: { m: ChatMessage; staff: bool
   if (m.kind === 'system') {
     return <li className={`cb-msg is-system${anim}`}>{m.text}{staff && m.note ? <small> ({m.note})</small> : null}</li>;
   }
-  const who = m.kind === 'bear' ? 'Cheer Bear' : 'You';
+  const who = m.kind === 'bear' ? 'Happi' : 'You';
   return (
     <li className={`cb-msg is-${m.kind}${m.final ? '' : ' is-partial'}${first ? ' is-first' : ''}${last ? ' is-last' : ''}${anim}`}>
       {m.kind === 'bear' && last && <span className="cb-msg-avatar" aria-hidden="true"><Heart size={14} strokeWidth={2.6} /></span>}
@@ -280,7 +280,7 @@ function Composer() {
   };
   return (
     <form className="cb-composer" onSubmit={submit}>
-      <label htmlFor="cb-input" className="cb-sr-only">{commandMode ? 'Action word' : 'Message to Cheer Bear'}</label>
+      <label htmlFor="cb-input" className="cb-sr-only">{commandMode ? 'Action word' : 'Message to Happi'}</label>
       {commandMode && <Sparkles className="cb-composer-cmd" aria-hidden="true" size={18} />}
       <input
         id="cb-input"

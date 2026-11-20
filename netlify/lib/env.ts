@@ -25,7 +25,7 @@ export function twilioEnv(): TwilioEnv {
   };
 }
 
-/** Cheer Bear's real phone number: the default (and normally only) number the TwiML app may dial and text. */
+/** Happi's real phone number: the default (and normally only) number the TwiML app may dial and text. */
 export function cheerBearNumber(): string {
   return env('CHEER_BEAR_NUMBER') || env('DEFAULT_CALL_TARGET');
 }
@@ -67,7 +67,7 @@ export const openaiEnv = () => ({
   /** Realtime transcription model. gpt-4o-mini-transcribe works with server VAD (the old default). */
   transcribeModel: env('OPENAI_TRANSCRIBE_MODEL') || 'gpt-4o-mini-transcribe',
   intentModel: env('OPENAI_INTENT_MODEL') || 'gpt-4o-mini',
-  /** Cheer Bear's AI chat brain (/api/chat): a small, fast chat model. */
+  /** Happi's AI chat brain (/api/chat): a small, fast chat model. */
   chatModel: env('OPENAI_CHAT_MODEL') || 'gpt-4o-mini',
   moderationModel: env('OPENAI_MODERATION_MODEL') || 'omni-moderation-latest',
   baseUrl: env('OPENAI_BASE_URL') || 'https://api.openai.com/v1',

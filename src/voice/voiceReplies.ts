@@ -1,4 +1,4 @@
-// Cheer Bear's short canned answers to voice mode commands (no AI). Spoken with the browser's voice and shown in her
+// Happi's short canned answers to voice mode commands (no AI). Spoken with the browser's voice and shown in her
 // speech bubble. A line must NEVER contain a trigger word, or saying it would fire a moment again: every line is
 // checked against the LIVE keyword config before use (an admin adding a keyword like "Look" just skips the lines that
 // contain it), and the voice session also claims all keywords for her line's transcript.

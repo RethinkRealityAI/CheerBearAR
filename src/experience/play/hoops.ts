@@ -1,4 +1,4 @@
-// Heart Hoops (from Bobo Hoops): Cheer Bear floats a rainbow ring and you get 10 hearts to throw through it with a
+// Heart Hoops (from Bobo Hoops): Happi floats a rainbow ring and you get 10 hearts to throw through it with a
 // swipe up (the heart toss's flick gesture and its toy physics: the same pooled hearts, the same solver).
 //
 //   through the ring = 2, clean through without touching it (a swish) = 3, a long shot +1, from the 3rd in a row +1,
@@ -42,14 +42,14 @@ interface Shot {
 
 export class HeartHoops extends PlayGame {
   readonly id = 'heart-hoops' as const;
-  readonly label = 'Heart Hoops';
+  readonly label = 'Blossom Toss';
   readonly showStick = false;
   protected readonly roundS = null;
   protected readonly starAt = [8, 18, 28] as const;
   protected readonly balls = BALLS;
   protected readonly goLine: string;
   /** The 3D camera holds still on the court while this runs. */
-  readonly view = { wide: 0.9, pitch: 0.16 as number | null, focus: true };
+  readonly view = { wide: 2.2, pitch: 0.16 as number | null, focus: true };
   readonly flicks = true;
   thrown = 0;
   resolved = 0;

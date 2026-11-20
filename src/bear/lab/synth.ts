@@ -42,7 +42,7 @@ export const SYNTH_SCRIPTS: Record<string, { label: string; segs: Seg[] }> = {
     ],
   },
   phrase: {
-    label: 'Phrase "hi, I\'m Cheer Bear"',
+    label: 'Phrase "hi, I\'m Happi"',
     segs: [
       gap(0.15),
       { kind: 'fric', dur: 0.07, hiHz: 1400, gain: 0.15 }, vowel(0.3, V.a, V.i), gap(0.12),

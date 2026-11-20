@@ -1,4 +1,4 @@
-// Everything Cheer Bear's world is made of, for one mode: lights, the bear's spot, her house (with the portal and the
+// Everything Happi's world is made of, for one mode: lights, the bear's spot, her house (with the portal and the
 // inside), the car and mailbox, the rainbow, the party set, the magic orb, particles and a camera-facing tint for the
 // moods (sleep dims the light, cold frosts it, party flashes colours). All of it is built at load and stays in the
 // scene graph (hidden when unused), so the moments never compile a shader when they appear (pitfall 13).
@@ -17,7 +17,7 @@ import { HouseSet } from './house';
 
 /** Gravity for the toys, in metres per second squared (soft: hearts float a little). */
 const TOY_G = 6.4;
-/** The showcase treats Cheer Bear as this many metres tall (AR: the stage scale). */
+/** The showcase treats Happi as this many metres tall (AR: the stage scale). */
 const SHOWCASE_M = 0.9;
 
 export type Variant = 'showcase' | 'ar';
@@ -95,7 +95,7 @@ export class Stage {
     this.sun.target.position.set(0, 0.6, 0);
     this.content.add(this.hemi, this.sun, this.sun.target);
 
-    // Cheer Bear's spot + her contact shadow
+    // Happi's spot + her contact shadow
     this.shadow = contactShadow(0.42, 0.42);
     this.actor.holder.add(this.shadow);
     this.content.add(this.actor.holder);

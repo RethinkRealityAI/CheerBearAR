@@ -1,4 +1,4 @@
-// Cheer Bear's voice in the demo: the browser's own speech synthesis (no accounts, no network). Speaks one line at a
+// Happi's voice in the demo: the browser's own speech synthesis (no accounts, no network). Speaks one line at a
 // time and, in step with it, streams the words said so far and mouth shapes (VisemeFrame at ~45 fps from
 // textVisemes.ts). Word `boundary` events re-anchor the mouth clock when the browser sends them; otherwise the
 // timed estimate runs on its own and the line ends on the utterance's `end`.

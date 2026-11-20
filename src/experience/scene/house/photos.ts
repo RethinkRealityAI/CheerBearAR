@@ -1,4 +1,4 @@
-// The photo wall in Cheer Bear's bedroom: eight pinned polaroids on a pink board. Until you take pictures it shows
+// The photo wall in Happi's bedroom: eight pinned polaroids on a pink board. Until you take pictures it shows
 // little flat drawings (a rainbow, a heart, a star...); every photo or selfie you take this session replaces one,
 // newest first. Kept in memory only (never stored or sent anywhere). One shared canvas texture for both stages.
 import * as THREE from 'three';

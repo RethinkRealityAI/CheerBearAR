@@ -1,4 +1,4 @@
-// AR: walking into Cheer Bear's house (scene/house/). The cottage stands on the stage, life size, a metre or so
+// AR: walking into Happi's house (scene/house/). The cottage stands on the stage, life size, a metre or so
 // behind her; a beat after Place its door swings open and through it you see her room. You walk in through the door
 // with your phone (the house's portal notices the crossing), she pops in to greet you, the TV starts the theme; walk
 // back out (or tap Leave) and your own room is back.
@@ -32,6 +32,7 @@ export interface WalkHost {
 const V = new THREE.Vector3(), V2 = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 const FC = new THREE.Vector3(), FF = new THREE.Vector3();
 const TIP_INSIDE = 'Tap the jukebox!';
+const BACK_IN = 'Tap Step inside, or walk Happi to the door, to go back in';
 
 export class HouseWalk {
   readonly stepBtn: HTMLButtonElement;
@@ -108,7 +109,7 @@ export class HouseWalk {
     if (Math.abs(lp.x) > 0.3 || lp.z < -1.4) this.glides.push({ to: this.poseFor(c, yaw, -0.95), dur: this.sh.reduced ? 0.4 : 0.8, t: 0 });
     this.glides.push(
       { to: this.poseFor(c, yaw, 1.6), dur: this.sh.reduced ? 0.5 : 1.1, t: 0, then: () => { if (this.inside) hs.setInside(false); } },
-      { to: () => ({ pos: hs.restPos(new THREE.Vector3()), yaw: 0 }), dur: this.sh.reduced ? 0.5 : 1.2, t: 0 },
+      { to: () => ({ pos: hs.restPos(new THREE.Vector3()), yaw: 0 }), dur: this.sh.reduced ? 0.5 : 1.2, t: 0, then: () => { this.backToDoor(); this.host.hint(BACK_IN, 5); } },
     );
     this.host.syncHud();
   }
@@ -149,6 +150,17 @@ export class HouseWalk {
     if (Math.abs(l.x) < hw && l.z < 0.35 && l.z > -COT.d - 0.3) this.hopTo(this.toDoor(new THREE.Vector3()), a.heading, 0.2);
   }
 
+  /** The house is home again after Leave: Happi pops out in front of its door, facing you (never left behind where
+   *  the room was while it glided). */
+  private backToDoor(): void {
+    const st = this.st, hs = st.houseSet;
+    const to = this.toDoor(new THREE.Vector3());
+    const c = this.camFlat().c;
+    const yaw = Math.atan2(c.x - to.x, c.z - to.z);
+    if (st.actor.position.distanceTo(to) > 0.2) this.hopTo(to, yaw, 0.05);
+    void hs;
+  }
+
   private toDoor(out: THREE.Vector3): THREE.Vector3 {
     return this.st.houseSet.toStage(V2.set(0.55, 0, 1.0), out).setY(0);
   }
@@ -168,7 +180,7 @@ export class HouseWalk {
       const yaw = Math.atan2(lp.x - spot.x, lp.z - spot.z) + st.house.rotation.y;
       this.hopTo(hs.toStage(spot, new THREE.Vector3()), yaw, 0.35, () => { if (this.runner.trigger('Wave')) this.host.tapAction('Wave'); });
       this.bearIn = false;
-      this.host.hint("You're in her house!", 4);
+      this.host.hint("You're in Happi's house!", 4);
       this.tipT = 4.5;
     } else {
       const out = this.toDoor(new THREE.Vector3());
@@ -177,7 +189,8 @@ export class HouseWalk {
       if (a.position.distanceTo(out) > 0.2) this.hopTo(out, yaw, 0.25);
       this.bearIn = false;
       this.tipT = 0;
-      this.host.hint('', 0);
+      // the way back in is always there: the Step inside pill comes back, and the hint says so
+      this.host.hint(BACK_IN, 5);
     }
     this.host.syncHud();
   }
@@ -209,12 +222,18 @@ export class HouseWalk {
       return;
     }
     const hw = COT.w / 2 + 0.2, z0 = -COT.d - 0.2, z1 = 0.16;
+    // Happi walks up to a shut door: it swings open by itself (Dapo, 2026-11-20)
+    if (door && hs.openTarget < 1 && Math.abs(l.x) < DOOR.w / 2 + 0.35 && l.z > -0.1 && l.z < 0.9) {
+      this.openIn = 0;
+      this.host.note('door opens (Happi)');
+      hs.setOpen(true);
+    }
     if (Math.abs(l.x) < hw && l.z > z0 && l.z < z1) {
       if (door && Math.abs(l.x) < gap && hs.open > 0.6) {
         // through the open door: in she goes
         if (l.z < -0.35) {
           this.bearIn = true;
-          this.host.hint('Follow her inside!', 4);
+          this.host.hint('Follow Happi inside!', 4);
           this.host.syncHud();
         }
         return;

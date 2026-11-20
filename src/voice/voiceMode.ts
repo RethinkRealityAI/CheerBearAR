@@ -5,7 +5,7 @@
 //   release() -> recognition stops, the last words are accepted, a short wait for the final adds anything new
 //   'commands' events carry what to do; the app runs them (trigger words go through fireTrigger, i.e. the same
 //   TriggerPipeline as the call: cooldown, dispatch spacing, the app's word-game rules and toasts all apply)
-//   say(line) -> Cheer Bear answers with a short canned line in the browser's voice (claims every keyword, so her
+//   say(line) -> Happi answers with a short canned line in the browser's voice (claims every keyword, so her
 //                line can never fire a moment)
 //
 // The app gets this from the voice session (`(voice as VoiceSessionExt).voiceMode`); see docs/handoff/voice-3.md.
@@ -74,7 +74,7 @@ export interface VoiceModeApi {
 export interface VoiceModeDeps {
   getConfig(): AppConfig;
   fireTrigger(keyword: string): void;
-  /** Speak a fixed line as Cheer Bear (browser voice + mouth + speech bubble). */
+  /** Speak a fixed line as Happi (browser voice + mouth + speech bubble). */
   say(line: string): void;
   hush(): void;
   /** Call inside the press: unlock speech synthesis for her answer (iOS). */

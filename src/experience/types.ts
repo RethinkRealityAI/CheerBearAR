@@ -1,6 +1,6 @@
 // The experience's internal contracts: how a mode plugs into the engine and the HUD.
 //
-// A mode is one way of seeing Cheer Bear (3D showcase, AR in the room, selfie filter, 3D photo). The experience
+// A mode is one way of seeing Happi (3D showcase, AR in the room, selfie filter, 3D photo). The experience
 // (src/experience/index.ts) owns ONE engine session, ONE HUD and ONE bear; modes borrow them through `ModeContext`.
 //
 //   showcase  camera 'none'  : its own three.js renderer, works on computers (src/experience/modes/showcase)
@@ -111,6 +111,8 @@ export interface HudApi {
   toast(text: string, ms?: number): void;
   /** Bottom-left slot (Move lives here once placed). Append your buttons; the HUD removes nothing of yours. */
   readonly left: HTMLElement;
+  /** Bottom-right slot (the Moves button in 3D and AR). */
+  readonly right: HTMLElement;
   /** Bottom-centre slot: the joystick (walking modes) or the shutter (capture modes). Never put two things here. */
   readonly centre: HTMLElement;
   /** Above the bottom row, centred (contextual pills like Place, lens rows). */
@@ -118,13 +120,14 @@ export interface HudApi {
   /** A full-width layer over the scene under the HUD chrome, for mode overlays (photo review, etc.). */
   readonly layer: HTMLElement;
   /** A standard round tool button (icon + short label). */
-  toolButton(opts: { label: string; icon: string; aria?: string; onClick: () => void }): HTMLButtonElement;
+  toolButton(opts: { label: string; icon: string; aria?: string; onClick: () => void; tone?: 'orange' | 'navy' }): HTMLButtonElement;
   /** The standard white shutter button (76 px). Put it in `centre`. */
-  shutter(onClick: () => void, aria?: string): HTMLButtonElement;
+  /** With `hold`: tap = photo, press and hold = video. */
+  shutter(onClick: () => void, aria?: string, hold?: { start(): boolean; stop(): void }): HTMLButtonElement;
   /** A white flash (photo taken). */
   flash(): void;
   /** Show a sheet with a title, text and buttons. Resolves with the index of the button pressed. */
-  sheet(opts: { title: string; body: string; buttons: string[] }): Promise<number>;
+  sheet(opts: { title: string; body: string; buttons: string[]; html?: string }): Promise<number>;
   /** Joystick (bottom centre). Read `vector` every frame: x right, y down, length <= 1. */
   joystick(show: boolean): { readonly vector: THREE.Vector2; readonly active: boolean };
 }
@@ -139,7 +142,7 @@ export interface ModeContext {
   readonly assets: AssetLoader;
   readonly hud: HudApi;
   readonly engine: EngineView;
-  /** The one Cheer Bear (null until loaded). Add `bear.object` to your root while active, give it back on exit. */
+  /** The one Happi (null until loaded). Add `bear.object` to your root while active, give it back on exit. */
   readonly bear: BearCharacter | null;
   /** Emit an experience event (photo, action...). */
   emit<K extends keyof ExperienceEvents>(event: K, payload: ExperienceEvents[K]): void;

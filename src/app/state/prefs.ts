@@ -18,7 +18,7 @@ export interface Prefs {
   orbNudgeDone: boolean;
   /** Voice mode: tap once to start and once to stop instead of holding (null = the admin default). */
   tapToTalk: boolean | null;
-  /** Voice mode: Cheer Bear answers out loud (null = the admin default). */
+  /** Voice mode: Happi answers out loud (null = the admin default). */
   spokenReplies: boolean | null;
   /** The "Hold to talk" nudge has been retired (after the first hold that heard something). */
   voiceNudgeDone: boolean;

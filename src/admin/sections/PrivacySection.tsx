@@ -4,7 +4,7 @@ import { Group, Section, Toggle } from '../ui';
 export function PrivacySection() {
   const { draft, edit } = useAdmin();
   return (
-    <Section title="Privacy" description="Cheer Bear's voice is always transcribed so her words can trigger the scene. These settings cover the visitor's side.">
+    <Section title="Privacy" description="Happi's voice is always transcribed so her words can trigger the scene. These settings cover the visitor's side.">
       <Group>
         <Toggle
           label="Transcribe the visitor's voice"
@@ -12,7 +12,7 @@ export function PrivacySection() {
           onChange={(v) => edit((d) => { d.allowUserAudioToOpenAI = v; })}
           hint={draft.allowUserAudioToOpenAI
             ? 'On: the visitor\'s microphone audio is sent to OpenAI for transcription, so their words can show on screen and trigger reactions.'
-            : 'Off (safest, recommended for children): the visitor\'s voice is never sent to OpenAI. Only Cheer Bear\'s side is transcribed.'}
+            : 'Off (safest, recommended for children): the visitor\'s voice is never sent to OpenAI. Only Happi\'s side is transcribed.'}
         />
         <Toggle
           label="English-only transcripts"

@@ -1,12 +1,12 @@
-// 3D Photo: your selfie in Cheer Bear's picture frame, in your room. The Mattercraft "3D-Photo" scene was unfinished;
-// the idea (Dapo): take a selfie, then project it into the frame Cheer Bear holds up. Built on the pattern of
+// 3D Photo: your selfie in Happi's picture frame, in your room. The Mattercraft "3D-Photo" scene was unfinished;
+// the idea (Dapo): take a selfie, then project it into the frame Happi holds up. Built on the pattern of
 // MEDIALIFE Labs "Wear It, Meet It" (one engine session, front camera -> back camera, no reload).
 //
-//   selfie   FRONT camera (the mode opens here the first time). Cheer Bear ears + heart nose on your face, a guide
+//   selfie   FRONT camera (the mode opens here the first time). Happi ears + heart nose on your face, a guide
 //            oval, the shutter bottom centre. The selfie is cropped round your head (from the face tracking; the oval
 //            when no face is found) to the frame opening's shape and goes straight into her frame.
-//   flip     "Meet Cheer Bear" flips to the BACK camera in the same engine session (xr-core's Engine.start swap).
-//   placing  a reticle on the floor with Cheer Bear previewing on it, holding your selfie, facing you; pinch to size;
+//   flip     "Meet Happi" flips to the BACK camera in the same engine session (xr-core's Engine.start swap).
+//   placing  a reticle on the floor with Happi previewing on it, holding your selfie, facing you; pinch to size;
 //            Place (or a tap) once world tracking has settled.
 //   placed   she keeps turning to face you; tap her for a hop and hearts; shutter bottom centre takes the room photo
 //            (camera + 3D) -> the review sheet (Save / Share / Retake / Watch photo animation). Move (bottom left,
@@ -20,14 +20,24 @@ import * as THREE from 'three';
 import type { ExperienceMode } from '../../../shared/contracts';
 import type { CameraKind, EngineView, FaceEvent, HudApi, Mode, ModeContext, XrScene } from '../../types';
 import { ReviewSheet, RevealPlayer, compose, engineShot, flash, el } from '../../capture';
-import { drawFrameArt, loadFrameArt } from '../../capture/frame-art';
+import { FRAME_STYLES, PHOTO_FILTERS, drawFrameArt, loadFrameArt, type FrameSpec, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
 import { askMotionPermission } from '../../core/device';
 import { bindGestures } from '../shared';
 import { ICON } from '../../hud/icons';
 import { FaceFx, heartShape } from '../face/face-fx';
+import { happiPhotoFrame } from '../../../happi/frame';
+import { happiCutout } from '../../../happi/cutout';
+import { clipHold } from '../../capture/recorder';
+import { FILTER_CSS } from '../../capture/style-strip';
 
-const FRAME_URL = '/models/capture/cb-frame.glb'; // 3.9 MB source -> 221 KB (meshopt + 1024 webp)
-const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // her height in metres
+const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // the frame's height in metres
+// the cutout standee. Dapo (round 5, after the phone test): at least twice the old 2.3 default; pinch from 1.6 up.
+// Dapo 2026-11-20: half the earlier 4.6 (iPhone showed it far too big). World units follow the phone's height when
+// the camera starts (responsive scale, CAM_H 1.3), so 2.3 units is about 2.3 m held at chest height.
+const CUT = { def: 2.3, min: 1.2, max: 4.6 };
+/** Happi beside the frame (model units: the frame is 1 tall), turned a little toward it, his right hand on its edge. */
+const BESIDE = { x: 0.74, z: 0.02, yaw: -0.38, h: 0.92, grip: new THREE.Vector3(0.47, 0.6, 0.15) };
+type Variant = 'frame' | 'cutout';
 const REACH = { min: 0.9, max: 4.0 };
 /** The frame opening in model units (feet on y = 0, 1 unit tall, facing +z); the plane is a touch bigger, inside. */
 const OPENING = { x0: -0.04, x1: 0.405, y0: 0.385, y1: 0.93, z: 0.112 };
@@ -35,7 +45,7 @@ const OPEN_ASPECT = (OPENING.x1 - OPENING.x0) / (OPENING.y1 - OPENING.y0); // ~0
 const SELFIE_PX = { w: 612, h: Math.round(612 / OPEN_ASPECT) };
 
 type Cam = 'face' | 'world';
-type State = 'off' | 'selfie' | 'flipping' | 'placing' | 'restoring' | 'placed' | 'busy' | 'review';
+type State = 'off' | 'selfie' | 'flipping' | 'placing' | 'restoring' | 'placed' | 'busy' | 'review' | 'recording';
 
 type SwapEngine = EngineView & { start?(kind: 'world' | 'face'): Promise<void> };
 type CoverHud = HudApi & { cover?(text: string | null): void };
@@ -84,6 +94,24 @@ export class PhotoMode implements Mode {
   private guide: HTMLElement;
   private shutterBtn: HTMLButtonElement | null = null;
   private review: ReviewSheet;
+  /** Which board: your selfie in the frame Happi holds, or the life-size cutout a friend puts their face through. */
+  private variant: Variant = 'frame';
+  /** Choosing the cutout always lands in placing (size it, then Place), even across a camera flip. */
+  private placeNext = false;
+  private cutSize = CUT.def;
+  private cutout = happiCutout();
+  private variantBtn: HTMLButtonElement;
+  private beside = new THREE.Group(); // Happi's spot next to the frame
+  private arm: { up: THREE.Object3D; fore: THREE.Object3D; hand: THREE.Object3D } | null = null;
+  private q1 = new THREE.Quaternion();
+  private q2 = new THREE.Quaternion();
+  private v1 = new THREE.Vector3();
+  private v2 = new THREE.Vector3();
+  private v3 = new THREE.Vector3();
+  private frame: FrameStyle = 'blossom';
+  private filter: PhotoFilter = 'natural';
+  /** The last raw shot, kept while the review is open so a new frame / filter can recompose it. */
+  private shot: HTMLImageElement | null = null;
   private reveal: RevealPlayer;
   private unbind: (() => void) | null = null;
   private hintT = 0;
@@ -107,7 +135,13 @@ export class PhotoMode implements Mode {
     this.root.add(hemi, sun, this.anchor, this.reticle, this.faceAnchor);
     this.anchor.add(this.model);
     this.model.add(this.hop);
-    this.hop.add(this.framed);
+    this.hop.add(this.framed, this.cutout);
+    this.cutout.visible = false;
+    this.beside.name = 'photo-happi-beside';
+    this.beside.position.set(BESIDE.x, 0, BESIDE.z);
+    this.beside.rotation.y = BESIDE.yaw;
+    this.framed.add(this.beside);
+    this.framed.position.x = -0.2; // frame + Happi, centred on the spot
     this.anchor.visible = false;
     this.faceAnchor.add(this.fx.group);
     this.faceAnchor.visible = false;
@@ -122,7 +156,7 @@ export class PhotoMode implements Mode {
     this.framed.add(plane);
     // hearts for the tap reaction: flat, opaque, the same program as the face effects
     const hg = heartShape(0.09);
-    const cols = [0xff389b, 0xffffff, 0xff8fc8];
+    const cols = [0xff94b0, 0xffffff, 0xffb7c9];
     for (let i = 0; i < 7; i++) {
       const m = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: cols[i % 3], side: THREE.DoubleSide, toneMapped: false }));
       m.visible = false;
@@ -136,10 +170,11 @@ export class PhotoMode implements Mode {
     this.placeBtn.type = 'button';
     this.placeBtn.disabled = true;
     this.placeBtn.addEventListener('click', (e) => { e.stopPropagation(); this.place(); });
-    this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Cheer Bear somewhere else', onClick: () => this.move() });
+    this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Happi somewhere else', onClick: () => this.move() });
     this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
+    this.variantBtn = hud.toolButton({ label: 'Cutout', icon: CUTOUT_ICON, aria: 'Use the Happi cutout instead', tone: 'navy', onClick: () => void this.switchVariant(true) });
     this.flipBtn = hud.toolButton({ label: 'Selfie', icon: ICON.selfie, aria: 'Flip the camera for a new selfie', onClick: () => this.flipTo('face') });
-    this.meetBtn = el('button', 'cbx-pill', 'Meet Cheer Bear');
+    this.meetBtn = el('button', 'cbx-pill', 'Meet Happi');
     this.meetBtn.type = 'button';
     this.meetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -151,14 +186,30 @@ export class PhotoMode implements Mode {
     this.guide = el('div', 'cbc-guide');
     this.guide.setAttribute('aria-hidden', 'true');
 
-    const name = 'cheer-bear-3d-photo';
+    const name = 'happi-3d-photo';
+    const self = this;
     this.review = new ReviewSheet({
       container: ctx.container,
       name,
       title: 'Your 3D photo',
-      share: { title: 'Cheer Bear and me', text: 'A photo with Cheer Bear!' },
-      onRetake: () => this.toPlaced(),
+      share: { title: 'Happi and me', text: 'A photo with Happi!' },
+      onRetake: () => { this.dropShot(); this.toPlaced(); },
       onReveal: (b) => this.reveal.play(b),
+      styles: {
+        frames: FRAME_STYLES, filters: PHOTO_FILTERS,
+        get frame() { return self.frame; },
+        get filter() { return self.filter; },
+        restyle: async (frame, filter) => {
+          if (!this.shot) throw new Error('no shot');
+          const spec = this.spec(frame as FrameStyle, filter as PhotoFilter);
+          return (await compose(this.shot, (g, w, h) => drawFrameArt(g, w, h, spec))).blob;
+        },
+        onChange: (blob, frame, filter) => {
+          this.frame = frame as FrameStyle;
+          this.filter = filter as PhotoFilter;
+          this.diag.lastPhoto = blob;
+        },
+      },
     });
     this.reveal = new RevealPlayer(ctx.container, name);
   }
@@ -180,14 +231,12 @@ export class PhotoMode implements Mode {
 
   // ------------------------------------------------------------------ Mode
   async load(): Promise<void> {
-    const [g] = await Promise.all([this.ctx.assets.gltf(FRAME_URL), loadFrameArt()]);
-    const scene = g.scene.clone(true);
+    const [scene] = await Promise.all([happiPhotoFrame(), loadFrameArt()]);
     scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; }
     });
     // the model is 1 unit tall (her ears), feet on y = 0, facing +z
-    scene.name = 'cb-frame';
     this.framed.add(scene);
   }
 
@@ -197,14 +246,23 @@ export class PhotoMode implements Mode {
 
   enter(_from: ExperienceMode | null): void {
     this.root.visible = true;
-    this.model.scale.setScalar(this.size);
+    this.applySize();
     this.unbind = bindGestures(this.ctx.engine.canvas, {
       onPinch: (k) => {
         if (this.cam !== 'world' || (this.state !== 'placing' && this.state !== 'placed')) return;
-        this.size = THREE.MathUtils.clamp(this.size * k, SIZE.min, SIZE.max);
-        this.model.scale.setScalar(this.size);
+        if (this.variant === 'cutout') this.cutSize = THREE.MathUtils.clamp(this.cutSize * k, CUT.min, CUT.max);
+        else this.size = THREE.MathUtils.clamp(this.size * k, SIZE.min, SIZE.max);
+        this.applySize();
       },
     });
+    if (!photoWelcomed) {
+      // first time here this visit: "Welcome to photo mode", pick the frame or the cutout (Dapo, 2026-11-20)
+      photoWelcomed = true;
+      this.onCamera();
+      void this.ctx.hud.sheet({ title: 'Welcome to photo mode', body: 'Two ways to take a photo with Happi:', html: CHOICE_HTML(this.variant), buttons: ['Happi’s frame', 'Life-size cutout'] })
+        .then((i) => { if (i === 1 && this.variant !== 'cutout') void this.switchVariant(false); });
+      return;
+    }
     this.onCamera();
   }
 
@@ -212,7 +270,9 @@ export class PhotoMode implements Mode {
     if (this.cam === 'world') this.remember();
     this.state = 'off';
     this.review.close();
+    this.dropShot();
     this.reveal.close();
+    this.returnBear();
     this.unbind?.();
     this.unbind = null;
     this.clearHud();
@@ -252,7 +312,7 @@ export class PhotoMode implements Mode {
         this.anchor.visible = true;
       }
       this.placeBtn.disabled = !ok;
-      this.placeBtn.textContent = ok ? 'Place Cheer Bear' : 'Getting ready…';
+      this.placeBtn.textContent = ok ? 'Place Happi' : 'Getting ready…';
       this.ctx.hud.hint(settled ? 'Pinch to size, then Place' : 'Point at the floor');
     } else if (this.state === 'restoring') {
       if (settled) this.restore(cam);
@@ -269,6 +329,7 @@ export class PhotoMode implements Mode {
       this.anchor.rotation.y += dy * (1 - Math.exp(-(this.state === 'placing' ? 8 : 3) * dt));
     }
     this.animateReaction(dt);
+    this.updateBear(dt);
   }
 
   onFace(ev: FaceEvent): void {
@@ -322,7 +383,10 @@ export class PhotoMode implements Mode {
 
   reset(): void {
     this.size = SIZE.def;
-    this.model.scale.setScalar(this.size);
+    this.cutSize = CUT.def;
+    this.placeNext = false;
+    this.setVariant('frame');
+    this.applySize();
     this.rel = null;
     this.placedOnce = false;
     this.setSelfie(null);
@@ -344,6 +408,7 @@ export class PhotoMode implements Mode {
   /** The camera has video: set up the step that goes with it. */
   private onCamera(): void {
     if (this.cam === 'face') this.toSelfie();
+    else if (this.placeNext) { this.placeNext = false; this.toPlacing(); }
     else if (this.rel && this.placedOnce) this.toRestoring();
     else this.toPlacing();
   }
@@ -374,7 +439,7 @@ export class PhotoMode implements Mode {
       this.diag.flipMs.push(Math.round(performance.now() - t0));
       hud.cover?.(null);
       this.onCamera();
-      if (to === 'world' && this.placedOnce) this.ctx.hud.toast(this.freshSelfie ? 'Your new selfie is in her frame' : 'She is where you left her', 1600);
+      if (to === 'world' && this.placedOnce) this.ctx.hud.toast(this.freshSelfie ? 'Your new selfie is in the frame' : 'Happi is right where you left off', 1600);
       if (to === 'world') this.freshSelfie = false;
     } catch (e) {
       hud.cover?.(null);
@@ -399,11 +464,13 @@ export class PhotoMode implements Mode {
     this.state = 'selfie';
     const hud = this.ctx.hud;
     this.clearHud();
+    this.returnBear();
+    this.showVariantBtn();
     this.anchor.visible = false;
     this.reticle.visible = false;
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take your selfie for Cheer Bear’s frame');
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
     this.shutterBtn.disabled = false;
-    this.shutterBtn.setAttribute('aria-label', 'Take your selfie for Cheer Bear’s frame');
+    this.shutterBtn.setAttribute('aria-label', 'Take your selfie for Happi’s frame');
     hud.centre.appendChild(this.shutterBtn);
     hud.layer.appendChild(this.guide);
     this.drawGuide();
@@ -418,7 +485,7 @@ export class PhotoMode implements Mode {
   private showSelfieUi(): void {
     const hud = this.ctx.hud;
     if (this.hasSelfie) {
-      this.meetBtn.textContent = this.placedOnce ? 'Back to Cheer Bear' : 'Meet Cheer Bear';
+      this.meetBtn.textContent = this.placedOnce ? 'Back to Happi' : 'Meet Happi';
       hud.above.appendChild(this.meetBtn);
       hud.left.appendChild(this.thumb);
     } else {
@@ -447,7 +514,7 @@ export class PhotoMode implements Mode {
       if (this.shutterBtn) this.shutterBtn.disabled = false;
       this.showSelfieUi();
       this.selfieHint();
-      this.ctx.hud.toast(this.placedOnce ? 'New selfie in her frame' : 'Selfie saved', 1400);
+      this.ctx.hud.toast(this.placedOnce ? 'New selfie in the frame' : 'Selfie saved', 1400);
     } catch (e) {
       console.warn('[3d photo] selfie failed', e);
       this.ctx.hud.toast('That selfie did not work. Try again?', 2200);
@@ -553,7 +620,8 @@ export class PhotoMode implements Mode {
     this.placeBtn.disabled = true; // the frame loop enables it once the reticle is on the floor
     this.placeBtn.textContent = 'Getting ready…';
     hud.centre.appendChild(this.placeBtn);
-    hud.left.appendChild(this.flipBtn);
+    if (this.variant === 'frame') hud.left.appendChild(this.flipBtn);
+    this.showVariantBtn();
     hud.hint('Point at the floor');
   }
 
@@ -604,8 +672,8 @@ export class PhotoMode implements Mode {
     this.reticle.visible = false;
     this.anchor.position.copy(this.hit);
     this.toPlaced();
-    this.ctx.hud.hint('Tap her, then take a photo');
-    this.hintT = 4;
+    this.ctx.hud.hint(this.variant === 'cutout' ? 'Stand behind it, face in the oval, then snap' : 'Tap Happi, then take a photo');
+    this.hintT = this.variant === 'cutout' ? 7 : 4;
     this.react();
   }
 
@@ -614,12 +682,14 @@ export class PhotoMode implements Mode {
     this.state = 'placed';
     const hud = this.ctx.hud;
     this.clearHud();
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a 3D photo');
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
     this.shutterBtn.disabled = false;
-    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Cheer Bear');
+    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Happi. Hold to record a video');
     hud.centre.appendChild(this.shutterBtn);
     // bottom left, always there once placed (the slot stacks bottom-up: Move at the bottom, Selfie above it)
-    hud.left.append(this.moveBtn, this.flipBtn);
+    hud.left.append(this.moveBtn);
+    if (this.variant === 'frame') hud.left.append(this.flipBtn);
+    this.showVariantBtn();
     this.anchor.visible = true;
   }
 
@@ -628,6 +698,24 @@ export class PhotoMode implements Mode {
     this.diag.moved++;
     this.toPlacing();
     this.anchor.visible = true; // keep showing her while you look for a new spot
+  }
+
+  /** One shutter for both cameras; in the room, press and hold records a video with the frame's lockup on it. */
+  private makeShutter(): HTMLButtonElement {
+    return this.ctx.hud.shutter(() => this.onShutter(), 'Take a photo', clipHold({
+      can: () => this.cam === 'world' && this.state === 'placed',
+      options: () => ({
+        overlay: (g, w, h) => drawFrameArt(g, w, h, { ...this.spec(this.frame, this.filter), filter: undefined }),
+        filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint,
+      }),
+      onStart: () => { this.state = 'recording'; this.ctx.hud.hint(''); },
+      onDone: (blob) => {
+        if ((this.state as string) !== 'recording') return;
+        if (!blob) { this.ctx.hud.toast('Hold a little longer for a video', 2000); this.toPlaced(); return; }
+        this.state = 'review';
+        this.review.show(blob);
+      },
+    }));
   }
 
   private onShutter(): void {
@@ -643,8 +731,10 @@ export class PhotoMode implements Mode {
       flash(this.ctx.container, this.ctx.reducedMotion);
       const img = await engineShot(this.ctx.engine);
       if (this.state !== 'busy') return;
-      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleWidth: 0.34, titleAt: 'bottom-left' }));
-      img.src = '';
+      const spec = this.spec(this.frame, this.filter);
+      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, spec));
+      this.dropShot();
+      this.shot = img;
       if (this.state !== 'busy') return;
       this.diag.shots++;
       this.diag.lastPhoto = blob;
@@ -658,11 +748,129 @@ export class PhotoMode implements Mode {
     }
   }
 
+  private spec(frame: FrameStyle, filter: PhotoFilter): FrameSpec {
+    return { title: true, titleWidth: 0.3, titleAt: 'bottom-left', frame, filter };
+  }
+
+  private dropShot(): void {
+    if (this.shot) this.shot.src = '';
+    this.shot = null;
+  }
+
+  private applySize(): void {
+    this.model.scale.setScalar(this.variant === 'cutout' ? this.cutSize : this.size);
+  }
+
+  private showVariantBtn(): void {
+    const cut = this.variant === 'cutout';
+    const lbl = this.variantBtn.querySelector('span:last-child, .lbl');
+    if (lbl) lbl.textContent = cut ? 'Frame' : 'Cutout';
+    this.variantBtn.setAttribute('aria-label', cut ? 'Use Happi’s photo frame instead' : 'Use the Happi cutout instead');
+    this.ctx.hud.right.appendChild(this.variantBtn);
+  }
+
+  private setVariant(v: Variant): void {
+    this.variant = v;
+    this.cutout.visible = v === 'cutout';
+    this.framed.visible = v === 'frame';
+    if (v === 'cutout') this.returnBear();
+    this.applySize();
+  }
+
+  /** Frame <-> Cutout. The cutout needs no selfie: straight to the back camera. The frame needs one first. */
+  private async switchVariant(ask: boolean): Promise<void> {
+    if (this.state === 'busy' || this.state === 'flipping' || this.state === 'off') return;
+    const to: Variant = this.variant === 'cutout' ? 'frame' : 'cutout';
+    if (ask) {
+      // say what each one is at the moment you choose (the chooser marks the one you're on)
+      const i = await this.ctx.hud.sheet({ title: 'Frame or cutout?', body: '', html: CHOICE_HTML(this.variant), buttons: to === 'cutout' ? ['Use the cutout', 'Keep the frame'] : ['Use the frame', 'Keep the cutout'] });
+      if (i !== 0 || (this.state as string) === 'busy' || (this.state as string) === 'flipping' || (this.state as string) === 'off') return;
+    }
+    this.setVariant(to);
+    if (to === 'cutout') this.placeNext = true;
+    if (to === 'cutout' && this.cam === 'face') { askMotionPermission(); await this.flipTo('world'); return; }
+    if (to === 'cutout' && this.cam === 'world' && (this.state === 'placed' || this.state === 'placing' || this.state === 'restoring')) {
+      // straight into placing with the standee shown where it stands: pinch to size, then Place
+      this.placeNext = false;
+      const shown = this.state === 'placed';
+      this.toPlacing();
+      this.anchor.visible = shown;
+      this.ctx.hud.hint('Pinch to size the cutout, then Place');
+      return;
+    }
+    if (to === 'frame' && this.cam === 'world' && !this.hasSelfie) { await this.flipTo('face'); return; }
+    if (this.state === 'placed') {
+      this.toPlaced();
+      this.ctx.hud.hint(to === 'cutout' ? 'Stand behind it, face in the oval, then snap' : 'Tap Happi, then take a photo');
+      this.hintT = 6;
+    }
+    else if (this.state === 'placing') this.toPlacing();
+    else if (this.state === 'selfie') this.showVariantBtn();
+  }
+
+  // ------------------------------------------------------------------ Happi beside the frame
+  private borrowBear(): void {
+    const bear = this.ctx.bear;
+    if (!bear || bear.object.parent === this.beside) return;
+    bear.object.parent?.remove(bear.object);
+    const o = bear.object;
+    o.position.set(0, 0, 0);
+    o.rotation.set(0, 0, 0);
+    o.scale.setScalar(BESIDE.h / (bear.height || 1));
+    o.userData.cbxOwnGpu = !!bear.releaseRenderer;
+    this.beside.add(o);
+    const up = o.getObjectByName('RightArm'), fore = o.getObjectByName('RightForeArm'), hand = o.getObjectByName('RightHand');
+    this.arm = up && fore && hand ? { up, fore, hand } : null;
+    (bear as { setIdleStyle?: (s: 'front' | 'roam') => void }).setIdleStyle?.('front'); // no looking around beside the frame
+    bear.play('idle', { fade: 0.2 });
+  }
+
+  private returnBear(): void {
+    const bear = this.ctx.bear;
+    if (bear && bear.object.parent === this.beside) this.beside.remove(bear.object);
+    this.arm = null;
+  }
+
+  private updateBear(dt: number): void {
+    if (this.cam !== 'world' || this.variant !== 'frame' || !this.anchor.visible) return;
+    const bear = this.ctx.bear;
+    if (!bear) return;
+    if (bear.object.parent !== this.beside) this.borrowBear();
+    bear.lookAt(this.camPos);
+    bear.update(dt);
+    this.holdEdge();
+  }
+
+  /** After the clip: his right arm reaches for the frame's edge (aim the upper arm, then the forearm, at the grip). */
+  private holdEdge(): void {
+    const a = this.arm;
+    if (!a) return;
+    this.beside.updateWorldMatrix(true, true);
+    const grip = this.framed.localToWorld(this.v3.copy(BESIDE.grip));
+    this.aim(a.up, a.fore, grip);
+    this.aim(a.fore, a.hand, grip);
+  }
+
+  private aim(bone: THREE.Object3D, child: THREE.Object3D, target: THREE.Vector3): void {
+    if (!bone.parent) return;
+    bone.updateWorldMatrix(true, true);
+    const p = bone.getWorldPosition(this.v1);
+    const d0 = child.getWorldPosition(this.v2).sub(p).normalize();
+    const d1 = target.clone().sub(p).normalize();
+    const delta = this.q1.setFromUnitVectors(d0, d1);
+    const world = bone.getWorldQuaternion(this.q2).premultiply(delta);
+    const parentQ = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
+    bone.quaternion.copy(parentQ.multiply(world));
+    bone.updateWorldMatrix(false, true);
+  }
+
   /** A happy hop with a little squash, and hearts out of the frame. */
   private react(): void {
     this.lastReact = performance.now();
     this.diag.reactions++;
     this.hopT = 0;
+    const bear = this.ctx.bear;
+    if (bear && bear.object.parent === this.beside) bear.play('cheer', { once: true, fade: 0.2 });
     const reduced = this.ctx.reducedMotion;
     this.hearts.forEach((h, i) => {
       const a = (i / this.hearts.length) * Math.PI * 2;
@@ -710,11 +918,13 @@ export class PhotoMode implements Mode {
     this.thumb.remove();
     this.guide.remove();
     this.shutterBtn?.remove();
+    this.variantBtn.remove();
   }
 
   private hitsBear(ndc: THREE.Vector2): boolean {
-    this.framed.updateMatrixWorld(true);
-    this.box.setFromObject(this.framed);
+    const board = this.variant === 'cutout' ? this.cutout : this.framed;
+    board.updateMatrixWorld(true);
+    this.box.setFromObject(board);
     return this.ctx.engine.ray(ndc).ray.intersectsBox(this.box);
   }
 
@@ -735,16 +945,16 @@ export class PhotoMode implements Mode {
   }
 }
 
-/** The frame before the first selfie: flat Cheer Bear pink with a simple "you" figure (no gradients). */
+/** The frame before the first selfie: flat Happi pink with a simple "you" figure (no gradients). */
 function placeholderTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = SELFIE_PX.w;
   c.height = SELFIE_PX.h;
   const g = c.getContext('2d')!;
   const W = c.width, H = c.height;
-  g.fillStyle = '#ffd6ea';
+  g.fillStyle = '#a9e0f5';
   g.fillRect(0, 0, W, H);
-  g.fillStyle = '#ff8fc8';
+  g.fillStyle = '#283a8f';
   g.beginPath();
   g.arc(W / 2, H * 0.4, W * 0.2, 0, Math.PI * 2);
   g.fill();
@@ -760,3 +970,15 @@ export function createMode(ctx: ModeContext): Mode {
   return new PhotoMode(ctx);
 }
 export default createMode;
+
+let photoWelcomed = false;
+
+const FRAME_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="3" width="16" height="15" rx="1.5"/><circle cx="12" cy="9.5" r="2.6"/><path d="M7.5 15.5c1-2.2 2.7-3 4.5-3s3.5.8 4.5 3M9 18l-2 4M15 18l2 4"/></g></svg>';
+
+/** The two photo styles side by side, each with a one-line "how": the welcome and the Frame/Cutout chooser. */
+const CHOICE_HTML = (cur: 'frame' | 'cutout') => `<div class="ph-choice">
+  <div class="ph-card${cur === 'frame' ? ' on' : ''}"><span class="ph-ic">${FRAME_ICON}</span><b>Happi’s frame</b><span>Take a selfie, then Happi holds it in a big frame in your room. Great on your own.</span></div>
+  <div class="ph-card${cur === 'cutout' ? ' on' : ''}"><span class="ph-ic">${CUTOUT_ICON}</span><b>Life-size cutout</b><span>Place a life-size Happi board. A friend puts their face in the hole and you snap them as Happi.</span></div>
+</div>`;
+
+const CUTOUT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 22V9.5L7 3l3 4h4l3-4 2 6.5V22z"/><ellipse cx="12" cy="12" rx="3" ry="3.8" fill="currentColor"/></g></svg>';

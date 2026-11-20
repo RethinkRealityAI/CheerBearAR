@@ -97,7 +97,7 @@ export function AdminShell({ mockReason, onSignedOut }: { mockReason?: string; o
       <header className="adm-top">
         <div className="adm-brand">
           <span className="adm-brand-dot" aria-hidden />
-          <span className="adm-brand-name">Cheer Bear</span>
+          <span className="adm-brand-name">Happi</span>
           <span className="adm-brand-sub">Admin</span>
         </div>
         <div className="adm-top-actions">
@@ -157,7 +157,7 @@ export function AdminShell({ mockReason, onSignedOut }: { mockReason?: string; o
           ))}
         </nav>
         <main id="adm-main" className="adm-main" tabIndex={-1}>
-          <h1 className="adm-sr">Cheer Bear admin</h1>
+          <h1 className="adm-sr">Happi admin</h1>
           {VIEWS[current]()}
         </main>
       </div>

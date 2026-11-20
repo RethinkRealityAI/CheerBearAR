@@ -1,4 +1,4 @@
-// The eleven moments (plus a generic Cheer) as short choreographies on a Timeline: Cheer Bear's clip, the props that
+// The eleven moments (plus a generic Cheer) as short choreographies on a Timeline: Happi's clip, the props that
 // appear, particles, lighting mood and sound. Every moment starts from and returns to a tidy idle, so they can follow
 // each other in any order. Timings port the Mattercraft timelines (cb-ref 3d.txt) where those existed: House Up
 // (house pops in 0.49 s, car "drive in" 2.6 s), Rainbow (flies in from the camera at 1.65 s, lands 2.65 s, grows
@@ -24,7 +24,7 @@ export type MomentName = (typeof MOMENT_NAMES)[number];
 
 const ALIASES: Record<string, MomentName> = {
   wake: 'WakeUp', 'wake up': 'WakeUp', run: 'Running', magicorb: 'Magic', 'magic orb': 'Magic',
-  'care bear stare': 'Stare', carebearstare: 'Stare', 'bear stare': 'Stare', bearstare: 'Stare',
+  'happi burst': 'Stare', happiburst: 'Stare', burst: 'Stare',
 };
 /** Case-insensitive name lookup ('wakeup', 'Wake Up', 'RAINBOW' ...). Null when unknown. */
 export function canonicalMoment(name: string): MomentName | null {

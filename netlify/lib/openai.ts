@@ -31,8 +31,8 @@ export async function mintTranscriptionSecret(opts: { speaker: 'cheer_bear' | 'u
   if (PLURAL_LANGUAGE_MODELS.has(model)) transcription.languages = ['en'];
   else transcription.language = 'en';
   const extras: Record<string, unknown> = {};
-  if (PLURAL_LANGUAGE_MODELS.has(model)) extras.keywords = ['Cheer Bear', 'Care-a-Lot', ...vocab];
-  else if (model !== 'gpt-realtime-whisper') extras.prompt = `Cheer Bear from the Care Bears talking on a phone call. Words: ${vocab.join(', ')}.`;
+  if (PLURAL_LANGUAGE_MODELS.has(model)) extras.keywords = ['Happi', 'New York', ...vocab];
+  else if (model !== 'gpt-realtime-whisper') extras.prompt = `Happi, the Japan Parade mascot, talking on a phone call. Words: ${vocab.join(', ')}.`;
 
   const build = (withExtras: boolean) => ({
     expires_after: { anchor: 'created_at', seconds: 120 },

@@ -124,7 +124,7 @@ export class LipSyncEngine {
   }
 
   /**
-   * Analyse a live MediaStream (Cheer Bear's side of the call). Nothing is played: the stream is only analysed.
+   * Analyse a live MediaStream (Happi's side of the call). Nothing is played: the stream is only analysed.
    * Chrome (and some Android browsers) deliver silence to Web Audio from a REMOTE WebRTC stream unless the stream is
    * also attached to a media element, so it is attached to a muted, never-shown <audio> as well.
    */

@@ -2,13 +2,14 @@
 // Built per game and removed on teardown (no listeners left behind). Plain DOM, theme tokens (play.css).
 import './play.css';
 
+import { BLOSSOM_SVG, blossomD } from '../../happi/blossom';
 export const SVG = {
-  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21.2 3.9 13.4A5.1 5.1 0 0 1 12 6.6a5.1 5.1 0 0 1 8.1 6.8Z"/></svg>',
+  heart: BLOSSOM_SVG,
   star: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m12 2.6 2.9 6 6.5.8-4.8 4.5 1.2 6.5L12 17.3l-5.8 3.1 1.2-6.5-4.8-4.5 6.5-.8Z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4.5h3.4v15H7zM13.6 4.5H17v15h-3.4z"/></svg>',
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/></g></svg>',
-  run: '<svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16 27.5 6.6 18.4a6 6 0 0 1 9.4-7.5 6 6 0 0 1 9.4 7.5Z"/><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2.5 9h4M1.5 13.5h3.5M2.5 18h3"/></g></svg>',
-  hoops: '<svg viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3"><circle cx="19" cy="14" r="9"/></g><path fill="currentColor" d="M8.5 27.2 3.4 22.3A3.3 3.3 0 0 1 8.5 18.2a3.3 3.3 0 0 1 5.1 4.1Z"/></svg>',
+  run: `<svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="${blossomD(19, 16.5, 11)}"/><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2.5 10h4M1.5 15h3.5M2.5 20h3"/></g></svg>`,
+  hoops: `<svg viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3"><circle cx="19" cy="14" r="9"/></g><path fill="currentColor" d="${blossomD(8.5, 23.5, 6.5)}"/></svg>`,
 };
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] => {
@@ -129,7 +130,7 @@ export class PlayUi {
       }
       this.rackUsed = used;
       const left = Math.max(0, this.rackN - used);
-      this.rack.setAttribute('aria-label', `${left} heart${left === 1 ? '' : 's'} left to throw`);
+      this.rack.setAttribute('aria-label', `${left} blossom${left === 1 ? '' : 's'} left to throw`);
     }
   }
 

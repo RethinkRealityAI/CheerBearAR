@@ -14,3 +14,4 @@ export { RevealPlayer, BtsPlayer, REVEAL_URL, BTS_URL } from './reveal';
 export { photoFile, saveBlob, shareFile, canShareFile } from './share';
 export { chromaMaterial } from './chroma';
 export { el, esc, CICON, actionButton, iconButton, segmented, loadImage } from './ui';
+export { recorder, clipHold, clipExt, CLIP_MAX_S } from './recorder';

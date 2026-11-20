@@ -1,6 +1,6 @@
-// Cheer Bear's local "brain" for the demo call and for typed chat: deterministic, offline, kid-safe. No AI.
+// Happi's local "brain" for the demo call and for typed chat: deterministic, offline, kid-safe. No AI.
 //
-//   - Small talk (hello, her name, Care-a-Lot, feelings, jokes, Care Bears in general, encouragement) never contains a
+//   - Small talk (hello, her name, New York, feelings, jokes, Care Bears in general, encouragement) never contains a
 //     trigger word, so nothing fires.
 //   - When the child asks for something ("can you dance", "make a rainbow", "show me your house", "are you cold"...)
 //     her REPLY contains the trigger word ("Let's dance!"), so the moment fires from what she says, through the same
@@ -35,11 +35,11 @@ const ACTION_LINES: Record<string, string[]> = {
   WakeUp: ['Yawn! Good morning! Time to wake up and play!', "I'm awake! Wake up, sunshine, it's a brand new day!", 'Stretch and wake up! I feel so fresh and cheery!'],
   Sleep: ["Okay, it's time to sleep. Goodnight, friend!", "I'll curl up and sleep for a little bit. Shhh!", 'Time for sleep! Sweet dreams!'],
   Dance: ["Let's dance! Watch my happy feet!", "Ooh, I love to dance! Here I go!", 'Dance with me! One, two, three!'],
-  House: ['Come and see my house in Care-a-Lot!', "Here's my house! It's cozy and full of hugs.", 'Welcome to my house! Come on in!'],
+  House: ['Come and see my house in New York!', "Here's my house! It's cozy and full of festival fun.", 'Welcome to my house! Come on in!'],
   Rainbow: ['Here comes a rainbow, just for you!', "Let's make a rainbow together! Ta-da!", "A rainbow! It's my favourite thing in the sky!"],
   Sparkle: ['Watch me sparkle!', 'Sparkle time! Everything is shiny now!', "Let's sparkle and shine together!"],
   Magic: ['A little bit of magic, coming right up!', 'Abracadabra! Magic time!', 'Want to see some magic? Here we go!'],
-  Cold: ["Brrr! I'm a little cold up here in the clouds!", "Ooh, it's so cold today! I need a big hug.", "Brrr, it's cold! Let me warm up."],
+  Cold: ["Brrr! New York is so cold in winter!", "Ooh, it's so cold today! I need a big hug.", "Brrr, it's cold! Let me warm up."],
   Party: ["Let's have a party!", "Party time! Let's celebrate!", "Hooray! It's a party for my friend!"],
   Wave: ["I'll wave hello to you!", 'Here is a big wave, just for you!', 'Wave with me! Hello, hello!'],
   Running: ["Watch me go running! Zoom!", "Ready, set, go! I'm running!", "Running is so much fun! Here I go!"],
@@ -52,13 +52,13 @@ type SmallTalk =
 
 const SMALL_TALK_RULES: Array<[SmallTalk, RegExp]> = [
   ['howAreYou', /\bhow (are|r) (you|u)\b|\bhow'?s it going\b|\bhow do you feel\b|\bwhat'?s up\b|\bhow are things\b/],
-  ['whoAreYou', /\b(what'?s|what is) your name\b|\bwho are (you|u)\b|\bare you cheer bear\b|\btell me about yourself\b/],
-  ['whereLive', /\bwhere (do )?(you|u) live\b|\bwhere are you( from)?\b|\bcare ?a ?lot\b|\bwhere you'?re from\b/],
+  ['whoAreYou', /\b(what'?s|what is) your name\b|\bwho are (you|u)\b|\bare you happi\b|\btell me about yourself\b/],
+  ['whereLive', /\bwhere (do )?(you|u) live\b|\bwhere are you( from)?\b|\bnew york\b|\bwhere you'?re from\b/],
   ['age', /\bhow old\b/],
   ['favColor', /\bfavou?rite colou?r\b/],
   ['favFood', /\bfavou?rite (food|snack|treat)\b|\bwhat do you (like to )?eat\b|\bhungry\b/],
   ['favThing', /\bfavou?rite thing\b|\bwhat do you like( to do)?\b|\bfor fun\b|\bwhat makes you happy\b|\bfavou?rite season\b|\bfun memory\b/],
-  ['careBears', /\bcare bears?\b|\byour friends\b|\bbelly badge\b|\btummy\b|\bhelp others\b|\bfeel better\b/],
+  ['careBears', /\bparade\b|\bstreet fair\b|\bfestival\b|\bjapan\b|\byour friends\b|\bhappi coat\b|\bhelp others\b|\bfeel better\b/],
   ['canDo', /\bwhat can you do\b|\bwhat (should|can) i (say|ask|do)\b|\bhelp\b|\bideas?\b|\bspecial talents?\b/],
   ['joke', /\bjokes?\b|\bfunny\b|\bmake me laugh\b|\bsilly\b/],
   ['love', /\bi (love|like) (you|u)\b|\byou'?re (so )?(cute|nice|the best|awesome|cool|great|funny|lovely|kind)\b|\byou are (so )?(cute|nice|the best|awesome|cool|great|lovely|kind)\b/],
@@ -68,7 +68,7 @@ const SMALL_TALK_RULES: Array<[SmallTalk, RegExp]> = [
   ['happy', /\bi('?m| am| feel)( so| very| really| super)? (happy|good|great|fine|ok|okay|excited|awesome|glad|well)\b/],
   ['tired', /\bi('?m| am| feel)( so| very| really| a bit)? (tired|sleepy|exhausted)\b/],
   ['encourage', /\bi can'?t\b|\bi'?m not good at\b|\btoo hard\b|\bi give up\b|\bi failed\b|\bi messed up\b/],
-  ['greeting', /^(hi|hey|hello|howdy|hiya|yo|heya|hey there|hello there|hi there|good (afternoon|evening))\b|\bhello\b|\bhi cheer bear\b/],
+  ['greeting', /^(hi|hey|hello|howdy|hiya|yo|heya|hey there|hello there|hi there|good (afternoon|evening))\b|\bhello\b|\bhi happi\b/],
   ['yes', /^(yes|yeah|yep|yup|sure|ok|okay|yay|uh huh|of course)\b/],
   ['no', /^(no|nope|nah|not really)\b/],
 ];
@@ -77,24 +77,24 @@ const LINES: Record<SmallTalk, string[]> = {
   greeting: ["Hi there, friend! It's so nice to see you!", 'Hello! I was hoping you would come and chat!', 'Hey, friend! What a happy day!'],
   greetingNamed: ['Hi again, {name}! I missed you!', 'Hello, {name}! What a happy surprise!', 'Hey, {name}! I was just thinking about you!'],
   howAreYou: ["I'm feeling super cheery today! How are you?", "I'm happy as can be, thanks for asking! How about you?", "I feel great! Talking with you makes my day."],
-  whoAreYou: ["I'm Cheer Bear! I love to cheer up my friends.", "It's me, Cheer Bear! My job is spreading happy feelings.", "I'm Cheer Bear, and I'm so glad we're friends!"],
-  whereLive: ['I live in Care-a-Lot, a cozy place up in the clouds!', 'Up in Care-a-Lot, where the clouds are soft and fluffy!', 'My place is Care-a-Lot, way up in the sky with my friends.'],
+  whoAreYou: ["I'm Happi, the official mascot of the Japan Parade and Street Fair!", "It's me, Happi! I lead the fun at the Japan Parade in New York.", "I'm Happi, and I'm so glad we're friends!"],
+  whereLive: ['I live in New York City! The parade goes right through it.', 'New York is where I live, and I love the big parade!', 'I live in New York, where I wear my happi coat every day.'],
   age: ["Hee hee, I'm not telling! But I'm young at heart.", "I'm just the right age for having fun!", "Old enough to be a good friend, and young enough to be silly!"],
-  favColor: ['I love bright, cheery yellow and pink!', 'Pink! And sunny yellow too. Which one do you like?', 'All the happy, bright ones! What about you?'],
-  favFood: ['I love honey, of course! And maybe a cookie or two.', 'Honey on toast is my favourite snack!', 'Mmm, fruit and a little honey. Yum!'],
-  favThing: ['I love cheering up my friends! That makes me the happiest.', 'Playing with my friends and sharing big hugs!', 'Making someone smile is the best thing ever!'],
+  favColor: ['Orange, like my fur! And navy blue, like my happi coat.', 'Orange! And sky blue too. Which one do you like?', 'All the happy, bright ones! What about you?'],
+  favFood: ['Acorns, of course! And maybe a rice ball or two.', 'Festival snacks are my favourite!', 'Mmm, fruit and a crunchy acorn. Yum!'],
+  favThing: ['Marching in the parade and saying hello to everyone!', 'Eating festival snacks at the street fair with my friends!', 'Making someone smile is the best thing ever!'],
   canDo: ['I can show you my moves, do a trick, or tell you a joke! What would you like?', 'Ask me to show you where I live, or ask me how the weather is up here!', 'You could ask me to show you my moves, or to do a trick!'],
-  careBears: ['Care Bears are all about caring and sharing our feelings.', 'Care Bears help everyone feel loved. That is the best job ever!', 'My Care Bear friends and I look after each other, and we look after you too!'],
+  careBears: ['The Japan Parade brings Japanese culture to the streets of New York!', 'At the street fair there is music, games and yummy food. Come and say hi!', 'I love the parade because everyone joins in together!'],
   joke: [
-    'Why did the teddy bear say no to dessert? She was already stuffed!',
+    'Why did the squirrel bring a ladder to the parade? To get a better view!',
     'What do you call a bear with no teeth? A gummy bear!',
     'Why did the cookie go to the doctor? It was feeling crummy!',
     'What does a cloud wear under its shorts? Thunderwear!',
   ],
-  love: ['Aww, thank you! You make my heart so happy!', "You're the best too! Big bear hugs!", 'That makes me feel so warm and cheery inside!'],
+  love: ['Aww, thank you! You make my heart so happy!', "You're the best too! Big squirrel hugs!", 'That makes me feel so warm and cheery inside!'],
   thanks: ["You're welcome, friend!", 'Any time! That is what friends are for.', 'My pleasure! You are so kind.'],
   bye: ['Bye for now! Come back and chat soon!', 'See you later, friend! Big hugs!', 'Goodbye! Keep smiling for me!'],
-  sad: ["Oh no, I'm sorry you feel that way. I'm sending you a big bear hug.", "It's okay to feel like that sometimes. Talking to a grown-up you love can help too.", 'Aww, I am right here with you. Do you want to hear a joke to cheer up?'],
+  sad: ["Oh no, I'm sorry you feel that way. I'm sending you a big hug.", "It's okay to feel like that sometimes. Talking to a grown-up you love can help too.", 'Aww, I am right here with you. Do you want to hear a joke to cheer up?'],
   happy: ["Yay! That makes me so happy too!", "Hooray! Happy friends are the best!", "I'm so glad! Your smile makes my day."],
   tired: ["Maybe it's time for a cozy rest soon. You did great today!", 'Resting is important! Snuggle up with your favourite teddy.', "Sounds like a big day! Be sure to get some good rest."],
   encourage: ["You can do it! I believe in you!", 'Everybody makes mistakes. Try again, you are getting better every time!', "Don't give up! Little steps are still steps forward."],
@@ -108,7 +108,7 @@ const LINES: Record<SmallTalk, string[]> = {
     'Hee hee! Ask me for a joke, or ask me how the weather is up here!',
   ],
   nameLearned: ['Nice to meet you, {name}! What would you like to do?', "{name}! What a lovely name. I'm so happy we're friends!", 'Hi, {name}! Want to hear a joke or see a trick?'],
-  askName: ["I'm Cheer Bear! What's your name?", 'I would love to know your first name!'],
+  askName: ["I'm Happi! What's your name?", 'I would love to know your first name!'],
   stop: ["Okay! I'll take a little break.", "Alright, I'll stop. What should we do instead?", 'Okay, all done! What next?'],
   kind: ["Let's use kind words, friend. Kind words make everyone feel cheery!", 'Hmm, that is not very kind. Can we try that again with nice words?'],
   safety: ["That sounds really important. Please tell a grown-up you trust, they can help you. I'm sending you a big caring hug.", 'Please talk to a grown-up you trust about that, okay? You are not alone, and I care about you.'],
@@ -116,8 +116,8 @@ const LINES: Record<SmallTalk, string[]> = {
   asleep: ['Zzz... snore... mmm, five more minutes...', 'Zzz... Zzz...'],
 };
 
-const GREETINGS = ["Hi friend! It's me, Cheer Bear! What's your name?", "Hello there! It's Cheer Bear! What's your name?", "Hi! Cheer Bear here! What's your name, friend?"];
-const GREETINGS_NAMED = ["Hi {name}! It's me, Cheer Bear! I'm so happy you called!", "Hello again, {name}! It's Cheer Bear! What shall we do today?"];
+const GREETINGS = ["Hi friend! It's me, Happi! What's your name?", "Hello there! It's Happi! What's your name?", "Hi! Happi here! What's your name, friend?"];
+const GREETINGS_NAMED = ["Hi {name}! It's me, Happi! I'm so happy you called!", "Hello again, {name}! It's Happi! What shall we do today?"];
 
 /** Words that are not names (answers to "what's your name?" that are really something else). */
 const NOT_NAMES = new Set(

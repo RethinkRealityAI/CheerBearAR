@@ -1,4 +1,4 @@
-// Geometry helpers for Cheer Bear's house: everything is built in code at load from three.js primitives and
+// Geometry helpers for Happi's house: everything is built in code at load from three.js primitives and
 // extruded 2D shapes, merged per material into a few big meshes with one flat colour per piece (vertex colours,
 // no textures, no gradients). Units are metres, door-local: the door opening stands on the floor at z = 0, centred
 // on x = 0; the room is on -z, the garden on +z.
@@ -83,17 +83,22 @@ export function extrude(shape: THREE.Shape, depth: number, bevel = 0, curveSegme
 let heartPts: THREE.Vector2[] | null = null;
 /** The heart outline (same silhouette as the particle and toy hearts), unit width, centred, point down. */
 function heartUnit(): THREE.Vector2[] {
+  // Happi's house uses a cherry blossom (five notched petals) everywhere the hub this was built on used a heart:
+  // the same unit size (1 wide, centred) and winding, so every caller keeps working.
   if (heartPts) return heartPts;
-  const s = new THREE.Shape();
-  s.moveTo(0, -46);
-  s.bezierCurveTo(-60, -4, -50, 48, 0, 22);
-  s.bezierCurveTo(50, 48, 60, -4, 0, -46);
-  const pts = s.getPoints(28);
-  const b = new THREE.Box2().setFromPoints(pts);
-  const c = b.getCenter(new THREE.Vector2());
-  const w = b.max.x - b.min.x;
+  const pts: THREE.Vector2[] = [];
+  const N = 90;
+  for (let i = 0; i < N; i++) {
+    const th = -Math.PI / 2 - (i / N) * Math.PI * 2; // clockwise from the bottom, like the old outline
+    const u = ((((th - Math.PI / 2) / (Math.PI * 2 / 5) + 0.5) % 1) + 1) % 1; // 0..1 across one petal, a petal points up
+    let r = 0.3 + 0.7 * Math.pow(Math.sin(Math.PI * u), 0.55);
+    r -= 0.16 * Math.max(0, 1 - Math.abs(u - 0.5) / 0.09);
+    pts.push(new THREE.Vector2(Math.cos(th) * r, Math.sin(th) * r));
+  }
+  const bx = new THREE.Box2().setFromPoints(pts);
+  const c = bx.getCenter(new THREE.Vector2());
+  const w = bx.max.x - bx.min.x;
   heartPts = pts.map((p) => new THREE.Vector2((p.x - c.x) / w, (p.y - c.y) / w));
-  heartPts.pop(); // closing duplicate
   return heartPts;
 }
 /** Heart as a closed path/shape, `w` wide, centred on (cx, cy). Height is about 0.86 w. */

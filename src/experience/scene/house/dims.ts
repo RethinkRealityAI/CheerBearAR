@@ -1,4 +1,4 @@
-// Cheer Bear's house, in metres, door-local: the door opening stands on the floor at z = 0, centred on x = 0, the
+// Happi's house, in metres, door-local: the door opening stands on the floor at z = 0, centred on x = 0, the
 // garden is on +z and the room behind the door on -z. The outside is a cosy cottage; the room through the door is
 // much bigger than the cottage (it is a portal: you only ever see the room through the door, or from inside).
 

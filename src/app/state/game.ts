@@ -3,7 +3,7 @@
 //  - A game has trigger words. Chat Time ('chat-time') uses every keyword (auto-synced), others their own list.
 //  - A word counts when CHEER BEAR says it. Typed messages, quick actions and the user's own speech still play
 //    the scene reaction but never count.
-//  - While a game is on, a word Cheer Bear says that is not in the game is ignored (old app behaviour).
+//  - While a game is on, a word Happi says that is not in the game is ignored (old app behaviour).
 //  - One-and-done: once a word is found it does not fire again until the game is reset.
 //  - Reset paths: Play again, changing game mode, closing the completion modal.
 import type { GameMode } from '@/shared/config';

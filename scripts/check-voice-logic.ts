@@ -41,7 +41,7 @@ function setup(patch: unknown = {}, ai: (t: string, k: string[]) => Promise<stri
 const tr = (id: string, text: string, final = true, speaker: 'cheer_bear' | 'user' = 'cheer_bear') => ({ id, speaker, text, final, at: Date.now() });
 
 console.log('voice trigger pipeline');
-await check("Cheer Bear's final transcript fires its keywords, spaced by dispatchIntervalMs", async () => {
+await check("Happi's final transcript fires its keywords, spaced by dispatchIntervalMs", async () => {
   const { p, fired } = setup();
   await p.handleTranscript(tr('a', "Let's dance at the party under a rainbow"));
   assert.equal(fired.length, 1, 'first fires immediately');
@@ -355,7 +355,7 @@ await check('speech input: continuous + interim, partials then a final, restart 
   s.stop();
   assert.equal(states.at(-1), 'off');
 });
-await check("speech input: ignores Cheer Bear's own voice; denied and unsupported are reported once, no loop", async () => {
+await check("speech input: ignores Happi's own voice; denied and unsupported are reported once, no loop", async () => {
   FakeRec.all = [];
   const got: string[] = [];
   const states: Array<[string, string | undefined]> = [];

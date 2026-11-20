@@ -1,4 +1,4 @@
-// Cheer Bear on a stage: where she stands, which way she faces, walking/running from the joystick and scripted moves
+// Happi on a stage: where she stands, which way she faces, walking/running from the joystick and scripted moves
 // for the moments. Uses only the BearCharacter contract (play, whenClipDone, setExpression, lookAt, update).
 import * as THREE from 'three';
 import type { BearCharacter, BearClip, BearExpression } from '../../shared/contracts';

@@ -1,16 +1,14 @@
 // The experience page (route /). The experience fills the screen; the app's UI is a layer above it with
-// pointer-events: none except its own controls. See docs/handoff/app-ui.md for the component map.
+// pointer-events: none except its own controls. Happi has no talk / chat / voice UI (Dapo, 2026-11-19): everything
+// you tap is in the experience's own HUD (bottom dock, Moves, Games). See docs/handoff/app-ui.md for the component map.
 import { useEffect, useRef, useState } from 'react';
 import './app.css';
 import { AppContext, useApp } from './context';
 import { AppController } from './controller';
 import { createAppStore } from './state/appState';
 import { ErrorBoundary } from './ErrorBoundary';
-import { TalkOrb } from './components/TalkOrb';
-import { GameChip } from './components/GameChip';
 import { PlayBridge } from './components/GamesPanel'; // mini games pause while the sheet is open (games-3)
 import { Toast } from './components/Toast';
-import { ConversationSheet } from './components/ConversationSheet';
 import { Overlays } from './components/Overlays';
 import { useShortcuts } from './hooks/useShortcuts';
 import { useViewportVars } from './hooks/useViewportVars';
@@ -76,7 +74,7 @@ function TopSlot() {
     apply();
     return () => { ro.disconnect(); root.style.removeProperty('--cb-top-reserve'); };
   }, []);
-  return <div ref={ref} className="cb-top-slot"><GameChip /><Toast /></div>;
+  return <div ref={ref} className="cb-top-slot"><Toast /></div>;
 }
 
 function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>; stageRef: React.RefObject<HTMLDivElement> }) {
@@ -84,7 +82,6 @@ function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>
   const isDesktop = useApp((s) => s.isDesktop);
   const sheetOpen = useApp((s) => s.sheetOpen);
   const colors = useApp((s) => s.ui.colors);
-  const sources = useApp((s) => s.sources);
   const style = {
     '--app-primary': FILL[colors.primary].fill,
     '--app-on-primary': FILL[colors.primary].on,
@@ -108,15 +105,10 @@ function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>
             {started && (
               <>
                 <TopSlot />
-                <TalkOrb />
                 <PlayBridge />
               </>
             )}
-            {import.meta.env.DEV && sources.voice === 'mock' && started && (
-              <span className="cb-devtag" aria-hidden="true">mock voice{sources.experience === 'mock' ? ' + stage' : ''}</span>
-            )}
           </div>
-          {started && <ConversationSheet />}
         </div>
         <Overlays />
       </ErrorBoundary>
