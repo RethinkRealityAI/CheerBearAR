@@ -13,6 +13,7 @@
 // the moment SLAM first settled and then trickled 22 texture uploads through the next seconds; in the simulator
 // tracking dropped to LIMITED during exactly that window). Content stays hidden and Place waits for `settled()`.
 // Going back to the 3D showcase stops the engine (camera off); the next camera mode runs it again.
+import { recorder } from '../capture/recorder';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { CameraKind, EngineView, FaceEvent, XrScene } from '../types';
@@ -460,6 +461,7 @@ export class Engine implements EngineView {
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       }
+      recorder.frame(this.canvas); // the frame is drawn (three renders before us): video clips copy it now
     },
     onUpdate: ({ processCpuResult }: { processCpuResult?: { reality?: { trackingStatus?: string } } }) => {
       const t = now();

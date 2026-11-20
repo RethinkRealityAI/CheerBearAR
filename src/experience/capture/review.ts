@@ -3,6 +3,7 @@
 // (padding = --cbx-reserved), so no control sits under it.
 import { actionButton, CICON, el, iconButton } from './ui';
 import { photoFile, saveBlob, shareFile } from './share';
+import { clipExt } from './recorder';
 
 export interface ReviewOptions {
   container: HTMLElement;
@@ -51,24 +52,37 @@ export class ReviewSheet {
 
   show(blob: Blob): void {
     this.close();
+    const video = blob.type.startsWith('video');
     this.blob = blob;
-    this.file = photoFile(blob, `${this.o.name}-${stamp()}.jpg`);
+    this.file = photoFile(blob, `${this.o.name}-${stamp()}.${video ? clipExt(blob) : 'jpg'}`);
     this.url = URL.createObjectURL(blob);
     this.prevFocus = document.activeElement;
+    const title = video ? 'Your video' : (this.o.title ?? 'Your photo');
 
     const n = el('div', 'cbc-review');
     n.setAttribute('role', 'dialog');
     n.setAttribute('aria-modal', 'true');
-    n.setAttribute('aria-label', this.o.title ?? 'Your photo');
+    n.setAttribute('aria-label', title);
     const top = el('div', 'cbc-rv-top');
     top.appendChild(iconButton(CICON.close, 'Back to the camera', () => this.retake()));
-    top.appendChild(el('h2', '', this.o.title ?? 'Your photo'));
+    top.appendChild(el('h2', '', title));
     const ph = el('div', 'cbc-rv-photo');
-    const img = el('img');
-    img.src = this.url;
-    img.alt = 'Your photo with Happi';
-    ph.appendChild(img);
-    this.img = img;
+    if (video) {
+      // the clip plays on a loop, muted, inline (no fullscreen takeover on iPhone)
+      const v = el('video') as HTMLVideoElement;
+      v.src = this.url;
+      v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      v.setAttribute('aria-label', 'Your video with Happi');
+      ph.appendChild(v);
+      void v.play().catch(() => { /* autoplay refused: the poster frame stays */ });
+    } else {
+      const img = el('img');
+      img.src = this.url;
+      img.alt = 'Your photo with Happi';
+      ph.appendChild(img);
+      this.img = img;
+    }
 
     const acts = el('div', 'cbc-rv-actions');
     // one compact row (Dapo, 2026-11-20: the photo big, the buttons smaller): Retake (navy), Save, Share
@@ -78,16 +92,16 @@ export class ReviewSheet {
       actionButton('Save', CICON.save, () => this.save()),
       actionButton('Share', CICON.share, () => void this.share()),
     );
-    const st = this.o.styles;
+    const st = video ? undefined : this.o.styles;
     if (st) acts.append(this.styleRows(st));
     acts.append(r1);
-    if (this.o.onReveal) {
+    if (this.o.onReveal && !video) {
       const r2 = el('div', 'row');
       r2.append(actionButton('Watch photo animation', CICON.play, () => this.blob && this.o.onReveal!(this.blob), 'alt'));
       acts.append(r2);
     }
     const foot = el('div', 'row foot');
-    if (this.o.onBts) foot.append(actionButton('Behind the scenes', CICON.clapper, () => this.o.onBts!(), 'ghost'));
+    if (this.o.onBts && !video) foot.append(actionButton('Behind the scenes', CICON.clapper, () => this.o.onBts!(), 'ghost'));
     this.status = el('p', 'cbc-status');
     this.status.setAttribute('role', 'status');
     this.status.setAttribute('aria-live', 'polite');
@@ -163,7 +177,8 @@ export class ReviewSheet {
 
   private save(): void {
     if (!this.file) return;
-    this.say(saveBlob(this.file, this.file.name) ? 'Saved to your downloads' : 'Press and hold the photo to save it');
+    const what = this.file.type.startsWith('video') ? 'video' : 'photo';
+    this.say(saveBlob(this.file, this.file.name) ? 'Saved to your downloads' : `Press and hold the ${what} to save it`);
   }
 
   private async share(): Promise<void> {

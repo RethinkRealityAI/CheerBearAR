@@ -122,7 +122,8 @@ export interface HudApi {
   /** A standard round tool button (icon + short label). */
   toolButton(opts: { label: string; icon: string; aria?: string; onClick: () => void; tone?: 'orange' | 'navy' }): HTMLButtonElement;
   /** The standard white shutter button (76 px). Put it in `centre`. */
-  shutter(onClick: () => void, aria?: string): HTMLButtonElement;
+  /** With `hold`: tap = photo, press and hold = video. */
+  shutter(onClick: () => void, aria?: string, hold?: { start(): boolean; stop(): void }): HTMLButtonElement;
   /** A white flash (photo taken). */
   flash(): void;
   /** Show a sheet with a title, text and buttons. Resolves with the index of the button pressed. */

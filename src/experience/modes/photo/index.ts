@@ -27,9 +27,12 @@ import { ICON } from '../../hud/icons';
 import { FaceFx, heartShape } from '../face/face-fx';
 import { happiPhotoFrame } from '../../../happi/frame';
 import { happiCutout } from '../../../happi/cutout';
+import { clipHold } from '../../capture/recorder';
+import { FILTER_CSS } from '../../capture/style-strip';
 
 const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // the frame's height in metres
-const CUT = { def: 2.3, min: 1.6, max: 2.8 }; // the cutout standee, life size (hole centre ~1.39 m at the default)
+// the cutout standee. Dapo (round 5, after the phone test): at least twice the old 2.3 default; pinch from 1.6 up.
+const CUT = { def: 4.6, min: 1.6, max: 6.4 };
 /** Happi beside the frame (model units: the frame is 1 tall), turned a little toward it, his right hand on its edge. */
 const BESIDE = { x: 0.74, z: 0.02, yaw: -0.38, h: 0.92, grip: new THREE.Vector3(0.47, 0.6, 0.15) };
 type Variant = 'frame' | 'cutout';
@@ -40,7 +43,7 @@ const OPEN_ASPECT = (OPENING.x1 - OPENING.x0) / (OPENING.y1 - OPENING.y0); // ~0
 const SELFIE_PX = { w: 612, h: Math.round(612 / OPEN_ASPECT) };
 
 type Cam = 'face' | 'world';
-type State = 'off' | 'selfie' | 'flipping' | 'placing' | 'restoring' | 'placed' | 'busy' | 'review';
+type State = 'off' | 'selfie' | 'flipping' | 'placing' | 'restoring' | 'placed' | 'busy' | 'review' | 'recording';
 
 type SwapEngine = EngineView & { start?(kind: 'world' | 'face'): Promise<void> };
 type CoverHud = HudApi & { cover?(text: string | null): void };
@@ -91,6 +94,8 @@ export class PhotoMode implements Mode {
   private review: ReviewSheet;
   /** Which board: your selfie in the frame Happi holds, or the life-size cutout a friend puts their face through. */
   private variant: Variant = 'frame';
+  /** Choosing the cutout always lands in placing (size it, then Place), even across a camera flip. */
+  private placeNext = false;
   private cutSize = CUT.def;
   private cutout = happiCutout();
   private variantBtn: HTMLButtonElement;
@@ -377,6 +382,7 @@ export class PhotoMode implements Mode {
   reset(): void {
     this.size = SIZE.def;
     this.cutSize = CUT.def;
+    this.placeNext = false;
     this.setVariant('frame');
     this.applySize();
     this.rel = null;
@@ -400,6 +406,7 @@ export class PhotoMode implements Mode {
   /** The camera has video: set up the step that goes with it. */
   private onCamera(): void {
     if (this.cam === 'face') this.toSelfie();
+    else if (this.placeNext) { this.placeNext = false; this.toPlacing(); }
     else if (this.rel && this.placedOnce) this.toRestoring();
     else this.toPlacing();
   }
@@ -459,7 +466,7 @@ export class PhotoMode implements Mode {
     this.showVariantBtn();
     this.anchor.visible = false;
     this.reticle.visible = false;
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take your selfie for Happi’s frame');
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
     this.shutterBtn.disabled = false;
     this.shutterBtn.setAttribute('aria-label', 'Take your selfie for Happi’s frame');
     hud.centre.appendChild(this.shutterBtn);
@@ -673,9 +680,9 @@ export class PhotoMode implements Mode {
     this.state = 'placed';
     const hud = this.ctx.hud;
     this.clearHud();
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a 3D photo');
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
     this.shutterBtn.disabled = false;
-    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Happi');
+    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Happi. Hold to record a video');
     hud.centre.appendChild(this.shutterBtn);
     // bottom left, always there once placed (the slot stacks bottom-up: Move at the bottom, Selfie above it)
     hud.left.append(this.moveBtn);
@@ -689,6 +696,24 @@ export class PhotoMode implements Mode {
     this.diag.moved++;
     this.toPlacing();
     this.anchor.visible = true; // keep showing her while you look for a new spot
+  }
+
+  /** One shutter for both cameras; in the room, press and hold records a video with the frame's lockup on it. */
+  private makeShutter(): HTMLButtonElement {
+    return this.ctx.hud.shutter(() => this.onShutter(), 'Take a photo', clipHold({
+      can: () => this.cam === 'world' && this.state === 'placed',
+      options: () => ({
+        overlay: (g, w, h) => drawFrameArt(g, w, h, { ...this.spec(this.frame, this.filter), filter: undefined }),
+        filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint,
+      }),
+      onStart: () => { this.state = 'recording'; this.ctx.hud.hint(''); },
+      onDone: (blob) => {
+        if ((this.state as string) !== 'recording') return;
+        if (!blob) { this.ctx.hud.toast('Hold a little longer for a video', 2000); this.toPlaced(); return; }
+        this.state = 'review';
+        this.review.show(blob);
+      },
+    }));
   }
 
   private onShutter(): void {
@@ -760,7 +785,17 @@ export class PhotoMode implements Mode {
       if (i !== 0 || (this.state as string) === 'busy' || (this.state as string) === 'flipping' || (this.state as string) === 'off') return;
     }
     this.setVariant(to);
+    if (to === 'cutout') this.placeNext = true;
     if (to === 'cutout' && this.cam === 'face') { askMotionPermission(); await this.flipTo('world'); return; }
+    if (to === 'cutout' && this.cam === 'world' && (this.state === 'placed' || this.state === 'placing' || this.state === 'restoring')) {
+      // straight into placing with the standee shown where it stands: pinch to size, then Place
+      this.placeNext = false;
+      const shown = this.state === 'placed';
+      this.toPlacing();
+      this.anchor.visible = shown;
+      this.ctx.hud.hint('Pinch to size the cutout, then Place');
+      return;
+    }
     if (to === 'frame' && this.cam === 'world' && !this.hasSelfie) { await this.flipTo('face'); return; }
     if (this.state === 'placed') {
       this.toPlaced();
@@ -784,6 +819,7 @@ export class PhotoMode implements Mode {
     this.beside.add(o);
     const up = o.getObjectByName('RightArm'), fore = o.getObjectByName('RightForeArm'), hand = o.getObjectByName('RightHand');
     this.arm = up && fore && hand ? { up, fore, hand } : null;
+    (bear as { setIdleStyle?: (s: 'front' | 'roam') => void }).setIdleStyle?.('front'); // no looking around beside the frame
     bear.play('idle', { fade: 0.2 });
   }
 

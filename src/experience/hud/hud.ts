@@ -1,6 +1,7 @@
 // The experience's own DOM: splash, top bar (small title, mode switcher, menu), hint pill, toast, speech bubble,
 // bottom row (left: Move; centre: joystick or shutter; right: kept free for the app's talk button), sheets (menu,
 // how it works, licences, open-on-phone QR, errors) and the flat cover shown while the camera switches.
+import { recorder, CLIP_MAX_S } from '../capture/recorder';
 import { PetalField, cornerBranches } from '../../happi/splash-fx';
 import * as THREE from 'three';
 import qrcode from 'qrcode-generator';
@@ -15,6 +16,12 @@ const MODES: Array<{ id: ExperienceMode; label: string; icon: string; aria: stri
   { id: 'face', label: 'Selfie', icon: ICON.selfie, aria: 'Selfie with Happi' },
   { id: 'photo', label: 'Photo', icon: ICON.photo, aria: '3D photo with Happi' },
 ];
+
+/** Press-and-hold video on a shutter: start() returns false when this view can't record right now. */
+export interface ShutterHold {
+  start(): boolean;
+  stop(): void;
+}
 
 export interface HudOptions {
   title: string;
@@ -63,6 +70,7 @@ export class Hud implements HudApi {
   private coverDisc: HTMLElement;
   private coverIcon: HTMLElement;
   private coverText: HTMLElement;
+  private coverTitle: HTMLElement;
   private coverOutT = 0;
   private coverOnAt = 0;
   private flashEl: HTMLElement;
@@ -116,16 +124,19 @@ export class Hud implements HudApi {
     // ---- HUD
     this.hudEl = el('div', 'cbx-hud');
     this.hudEl.hidden = true;
-    // top (Dapo, 2026-11-20): the mode tabs with the menu in line at the right, and under them, small at the left,
-    // the lockup (the parade's wordmark over Happi, the same as the splash). Mode tools sit at the bottom.
+    // top (Dapo, 2026-11-20 round 5): one line with the lockup in the top right (the parade's wordmark, Happi, and
+    // "AR" set in the logo's style) and the menu in line at the far right; the mode tabs sit just below both.
     const top = el('div', 'cbx-top');
     const dock = el('nav', 'cbx-dock');
     dock.setAttribute('aria-label', 'Views and menu');
+    const row1 = el('div', 'cbx-row1');
     const lockup = el('div', 'lockup');
     lockup.setAttribute('role', 'img');
-    lockup.setAttribute('aria-label', `Japan Parade and Street Fair official mascot ${opts.title}`);
-    lockup.innerHTML = `<img src="/img/parade-wordmark.webp" alt="" width="600" height="127"><img src="/img/happi-logo-sm.webp" alt="" width="76" height="31">`;
-    top.append(dock, lockup);
+    lockup.setAttribute('aria-label', `Japan Parade and Street Fair, ${opts.title} AR`);
+    lockup.innerHTML = `<img class="wm" src="/img/parade-wordmark.webp" alt="" width="600" height="127"><img class="hp" src="/img/happi-logo-sm.webp" alt="" width="384" height="154"><b class="ar" aria-hidden="true">AR</b>`;
+    row1.appendChild(lockup);
+    dock.appendChild(row1);
+    top.append(dock);
     // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
     // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
@@ -148,13 +159,13 @@ export class Hud implements HudApi {
     });
     this.switchEl.style.setProperty('--i', '0');
     this.switchEl.addEventListener('keydown', (e) => this.onSwitchKey(e));
-    dock.appendChild(this.switchEl);
     const menuBtn = el('button', 'cbx-ib cbx-menu', ICON.menu);
     menuBtn.type = 'button';
     menuBtn.setAttribute('aria-label', 'Menu');
     menuBtn.setAttribute('aria-haspopup', 'dialog');
     menuBtn.addEventListener('click', () => this.openMenu());
-    dock.appendChild(menuBtn);
+    row1.appendChild(menuBtn);
+    dock.appendChild(this.switchEl);
 
     this.hintEl = el('p', 'ml-hint');
     this.hintEl.setAttribute('role', 'status');
@@ -187,11 +198,12 @@ export class Hud implements HudApi {
 
     // the mode-change cover: a flat pink iris grows from the tapped tab, the target mode's badge sits in the middle,
     // then the whole cover fades off the new view (reduced motion: a plain crossfade)
-    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-sky" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="cbx-cover-in">${headHop('')}<p><span class="cbx-cover-badge"></span><b></b><em class="cbx-dots"><i></i><i></i><i></i></em></p></div>`);
+    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-sky" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="cbx-cover-in">${headHop('')}<strong class="cbx-cover-title"></strong><p><span class="cbx-cover-badge"></span><b></b><em class="cbx-dots"><i></i><i></i><i></i></em></p></div>`);
     this.coverEl.setAttribute('role', 'status');
     this.coverDisc = this.coverEl.querySelector('.cbx-cover-disc')!;
     this.coverIcon = this.coverEl.querySelector('.cbx-cover-badge')!;
     this.coverText = this.coverEl.querySelector('.cbx-cover-in b')!;
+    this.coverTitle = this.coverEl.querySelector('.cbx-cover-title')!;
     this.flashEl = el('div', 'cbx-flash');
 
     container.append(this.layer, this.hudEl, this.splash, this.coverEl, this.flashEl);
@@ -393,11 +405,65 @@ export class Hud implements HudApi {
     b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
     return b;
   }
-  shutter(onClick: () => void, aria = 'Take a photo'): HTMLButtonElement {
-    const b = el('button', 'cbx-shutter', '<i></i>');
+  /**
+   * The round shutter. With `hold`: tap = photo, press and hold = video (Dapo, round 5). Holding past 0.28 s calls
+   * hold.start() (false = can't record here: nothing happens); letting go calls hold.stop(). A red ring fills over
+   * the 30 s limit while it records. Keyboard Enter / Space is always a photo.
+   */
+  shutter(onClick: () => void, aria = 'Take a photo', hold?: ShutterHold): HTMLButtonElement {
+    const b = el('button', 'cbx-shutter', '<svg class="cbx-rec-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" pathLength="100"/></svg><i></i>');
     b.type = 'button';
-    b.setAttribute('aria-label', aria);
-    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    b.setAttribute('aria-label', hold ? `${aria}. Hold to record a video` : aria);
+    if (!hold) {
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+      return b;
+    }
+    b.classList.add('can-rec');
+    let timer = 0, pid: number | null = null, recording = false, raf = 0;
+    const ring = b.querySelector('circle') as SVGCircleElement;
+    const loop = () => {
+      if (!recording) return;
+      if (!recorder.recording) { endRec(false); return; } // stopped by itself (30 s limit)
+      ring.style.strokeDashoffset = String(100 - Math.min(100, (recorder.seconds / CLIP_MAX_S) * 100));
+      raf = requestAnimationFrame(loop);
+    };
+    const endRec = (callStop: boolean) => {
+      cancelAnimationFrame(raf);
+      if (!recording) return;
+      recording = false;
+      b.classList.remove('rec', 'rec-wait');
+      ring.style.strokeDashoffset = '100';
+      if (callStop) hold.stop();
+    };
+    b.addEventListener('pointerdown', (e) => {
+      if (pid !== null || b.disabled) return;
+      e.stopPropagation();
+      pid = e.pointerId;
+      try { b.setPointerCapture(e.pointerId); } catch { /* fine */ }
+      b.classList.add('down');
+      timer = window.setTimeout(() => {
+        timer = 0;
+        if (pid === null || !hold.start()) return;
+        recording = true;
+        b.classList.add('rec', 'rec-wait');
+        window.setTimeout(() => b.classList.remove('rec-wait'), 600); // the first frames may take a moment
+        loop();
+      }, 280);
+    });
+    const up = (e: PointerEvent, cancel: boolean) => {
+      if (e.pointerId !== pid) return;
+      e.stopPropagation();
+      pid = null;
+      b.classList.remove('down');
+      if (recording) { endRec(true); return; }
+      if (timer) { clearTimeout(timer); timer = 0; if (!cancel) onClick(); }
+    };
+    b.addEventListener('pointerup', (e) => up(e, false));
+    b.addEventListener('pointercancel', (e) => up(e, true));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    // keyboard / assistive tech: a click with no pointer press is a photo
+    b.addEventListener('click', (e) => { e.stopPropagation(); if (e.detail === 0) onClick(); });
+    (b as HTMLButtonElement & { endRec?: () => void }).endRec = () => endRec(false);
     return b;
   }
   flash(): void {
@@ -458,6 +524,9 @@ export class Hud implements HudApi {
       this.coverText.textContent = text;
       const m = MODES.find((x) => x.id === this.curMode);
       this.coverIcon.innerHTML = m ? m.icon : ICON.heart;
+      // each mode has its own brand colour (sky, navy, orange, blossom) and says where it is going
+      this.coverTitle.textContent = `Switching to ${m ? m.label : '3D'} mode`;
+      c.dataset.to = m ? m.id : 'showcase';
       if (c.classList.contains('on')) return Promise.resolve();
       const box = this.root.getBoundingClientRect();
       const o = this.irisFrom ?? { x: box.width / 2, y: Math.min(60, box.height / 2) };

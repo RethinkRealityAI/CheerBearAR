@@ -29,11 +29,16 @@ export function styleStrip(frame: FrameStyle, filter: PhotoFilter, onPick: (fram
   const frameBtns = new Map<FrameStyle, HTMLButtonElement>();
   const filterBtns = new Map<PhotoFilter, HTMLButtonElement>();
 
-  const group = (label: string) => {
+  // each group: its chips, and a small caption under them ("Select frame" / "Select filter", Dapo round 5)
+  const group = (label: string, caption: string) => {
+    const sec = el('div', 'cbc-strip-sec');
     const g = el('div', 'cbc-strip-group');
     g.setAttribute('role', 'radiogroup');
     g.setAttribute('aria-label', label);
-    row.appendChild(g);
+    const cap = el('span', 'cbc-strip-cap', esc(caption));
+    cap.setAttribute('aria-hidden', 'true');
+    sec.append(g, cap);
+    row.appendChild(sec);
     return g;
   };
   const chip = (g: HTMLElement, label: string, onClick: () => void) => {
@@ -45,10 +50,10 @@ export function styleStrip(frame: FrameStyle, filter: PhotoFilter, onPick: (fram
     return b;
   };
 
-  const fg = group('Frame');
+  const fg = group('Frame', 'Select frame');
   for (const f of FRAME_STYLES) frameBtns.set(f.id, chip(fg, f.label, () => { cur = { ...cur, frame: f.id }; sync(); onPick(cur.frame, cur.filter); }));
   row.appendChild(el('span', 'cbc-strip-div'));
-  const lg = group('Filter');
+  const lg = group('Filter', 'Select filter');
   for (const f of PHOTO_FILTERS) filterBtns.set(f.id, chip(lg, f.label, () => { cur = { ...cur, filter: f.id }; sync(); onPick(cur.frame, cur.filter); }));
 
   const sync = () => {

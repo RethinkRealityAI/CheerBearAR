@@ -56,6 +56,11 @@ let sharedLoader: GLTFLoader | null = null;
 
 export class Happi implements BearCharacter {
   private variantTurn: Partial<Record<BearClip, number>> = {};
+  /** 'front' (Dapo, 2026-11-20): standing up straight, a gentle side-to-side sway facing you, now and then a little
+   *  wave or a chatty bob, all facing the camera. 'roam': the Meshy idle that looks around (the house). */
+  private idleStyle: 'front' | 'roam' = 'front';
+  private idleT = 0;
+  private idleNext = 9;
   readonly object: THREE.Group;
   readonly height: number;
   readonly lipSync: LipSyncEngine;
@@ -214,7 +219,20 @@ export class Happi implements BearCharacter {
   }
 
   // ------------------------------------------------------------------ body
+  /** Pick the idle: 'front' faces you (photos, 3D, AR), 'roam' looks around (in the house). */
+  setIdleStyle(s: 'front' | 'roam'): void {
+    if (s === this.idleStyle) return;
+    this.idleStyle = s;
+    if (this.loopClip === 'idle' && this.currentClip === 'idle' && !this.currentOnce) this.play('idle', { fade: 0.6 });
+  }
+
   play(clip: BearClip, opts: { once?: boolean; fade?: number; speed?: number } = {}): void {
+    if (clip === 'idle') {
+      this.idleT = 0;
+      this.playRaw(this.idleStyle === 'front' && this.actions.has('sway') ? 'sway' : 'idle', 'idle', opts.once ?? false, opts.fade ?? 0.35, opts.speed ?? 1);
+      this.autoTalk = false;
+      return;
+    }
     const spec = CLIP_MAP[clip];
     // clips with variants take turns, so the same moment looks fresh each time
     const have = spec?.names.filter((n) => this.actions.has(n)) ?? [];
@@ -364,6 +382,7 @@ export class Happi implements BearCharacter {
     this.amp = frame.amplitude;
     this.ampSlow += (this.amp - this.ampSlow) * (1 - Math.exp(-dt / 0.35));
     this.autoTalkBody(dt);
+    this.idleCycle(dt);
 
     for (const [b, q] of this.additiveBase) b.quaternion.copy(q);
     this.mixer.update(dt);
@@ -447,6 +466,19 @@ export class Happi implements BearCharacter {
     out.amplitude += (f.amplitude - out.amplitude) * k;
     out.speaking = f.speaking;
     return out;
+  }
+
+  /** Front idle: every 9-15 s a short front-facing extra (a small wave, a chatty bob), then back to the sway. */
+  private idleCycle(dt: number): void {
+    if (this.idleStyle !== 'front' || this.currentClip !== 'idle' || this.currentOnce || this.loopClip !== 'idle') { this.idleT = 0; return; }
+    this.idleT += dt;
+    if (this.idleT < this.idleNext) return;
+    this.idleT = 0;
+    this.idleNext = 9 + Math.random() * 6;
+    const extra = ['waveSmall', 'talkIdle'].filter((n) => this.actions.has(n));
+    if (!extra.length) return;
+    const name = extra[(Math.random() * extra.length) | 0];
+    this.playRaw(name, 'idle', true, 0.5, 1);
   }
 
   private autoTalkBody(dt: number): void {

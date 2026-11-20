@@ -23,6 +23,7 @@ import {
   BtsPlayer, CICON, Countdown, RevealPlayer, ReviewSheet, chromaMaterial, compose, engineShot, flash, el, segmented,
 } from '../../capture';
 import { styleStrip, FILTER_CSS, type StyleStrip } from '../../capture/style-strip';
+import { clipHold } from '../../capture/recorder';
 import { drawFrameArt, loadFrameArt, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
 import { shutterSound } from '../../capture/sounds';
 import { FaceFx } from './face-fx';
@@ -38,8 +39,8 @@ const CLASSIC_COUNT_S = 3;
 /** Draw order of the 3D bear: after everything else, behind a depth clear. */
 const OVERLAY_ORDER = 1000;
 
-type State = 'off' | 'live' | 'countdown' | 'clip' | 'busy' | 'review';
-type Look = 'hood' | 'plush' | 'faces';
+type State = 'off' | 'live' | 'countdown' | 'clip' | 'busy' | 'review' | 'recording';
+type Look = 'hood' | 'faces';
 
 // trigger words -> what the selfie bear does
 const REACT: Record<string, BearClip> = {
@@ -60,7 +61,7 @@ export class FaceMode implements Mode {
   smileSnap = false;
   /** Test hooks. */
   readonly diag = {
-    shots: 0, lastPhoto: null as Blob | null, faceEvents: 0, soundPrimed: false,
+    shots: 0, clips: 0, lastPhoto: null as Blob | null, faceEvents: 0, soundPrimed: false,
     clipPlays: 0, clipEnds: 0, clipAutoShots: 0, clipBlocked: 0, clipMuted: false, clipT: 0, clipCounts: 0,
     reactions: {} as Record<string, number>, expression: 'neutral' as BearExpression, smileShots: 0,
     overlayClears: 0, attachmentKeys: [] as string[],
@@ -170,7 +171,7 @@ export class FaceMode implements Mode {
     this.overlay = el('canvas', 'cbc-overlay');
     this.overlay.setAttribute('aria-hidden', 'true');
     // choosing Classic is a tap: the clip starts (with sound) inside it
-    this.picker = segmented('Selfie look', [{ id: 'hood', label: 'Cartoon hood' }, { id: 'plush', label: 'Plush hood' }, { id: 'faces', label: 'Happi faces' }], this.look, (id) => this.setLook(id as Look, true));
+    this.picker = segmented('Selfie look', [{ id: 'hood', label: 'Happi hood' }, { id: 'faces', label: 'Happi faces' }], this.look, (id) => this.setLook(id as Look, true));
     this.strip = styleStrip(this.frame, this.filter, (frame, filter) => {
       this.frame = frame;
       this.filter = filter;
@@ -514,7 +515,19 @@ export class FaceMode implements Mode {
     if (this.state === 'off') return;
     this.state = 'live';
     const hud = this.ctx.hud;
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a selfie with Happi');
+    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a selfie with Happi', clipHold({
+      // hold the shutter for a video: the chosen frame and filter are baked into the clip
+      can: () => this.state === 'live',
+      options: () => ({ overlay: (g, w, h) => drawFrameArt(g, w, h, { title: true, frame: this.frame }), filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint }),
+      onStart: () => { this.state = 'recording'; this.tuckPicker(true); this.ctx.hud.hint(''); },
+      onDone: (blob) => {
+        if (this.state !== 'recording') return;
+        if (!blob) { this.ctx.hud.toast('Hold a little longer for a video', 2000); this.toLive(false); return; }
+        this.diag.clips++;
+        this.state = 'review';
+        this.review.show(blob);
+      },
+    }));
     this.shutterBtn.disabled = false;
     this.armShutter(false);
     if (this.shutterBtn.parentElement !== hud.centre) hud.centre.appendChild(this.shutterBtn);
@@ -543,7 +556,6 @@ export class FaceMode implements Mode {
 
   private fxLook(l: Look): void {
     this.fx.setLook(l === 'faces' ? 'faces' : 'hood');
-    if (l !== 'faces') this.fx.setHoodStyle(l === 'plush' ? 'plush' : 'cartoon');
   }
 
   private setLook(l: Look, _fromTap: boolean): void {

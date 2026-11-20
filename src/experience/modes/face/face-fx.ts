@@ -1,12 +1,12 @@
 // What the Selfie puts on your head and face, in face units (1 FU ~ 118-139 mm; x = wearer's left, y up, the face
 // looks down -z). Two looks:
-//   hood    Happi's own head from the model (src/happi/hood.ts, cartoon or plush), a vertical face oval centred on
+//   hood    Happi's own head from the model (src/happi/hood.ts, a plush costume hood), a vertical face oval centred on
 //           your face, the hood wraps the head (the code-built hood is the fallback); a depth-only head occluder hides what is behind your head.
 //   faces   flat "Happi faces" decals: red cheek dots, the little squirrel face on your forehead, and the four
 //           official expression heads that pop up beside you to match your face (smile, gasp, frown, sleepy).
 // Both looks can pop an expression head when you react. Flat colours, DoubleSide because the display is mirrored.
 import * as THREE from 'three';
-import { buildHood, buildModelHoods, type HoodStyle } from '../../../happi/hood';
+import { buildHood, buildModelHood } from '../../../happi/hood';
 
 const RED = 0xe8222a;
 
@@ -75,8 +75,6 @@ export class FaceFx {
   /** The expression head showing now (null: none). */
   mood: HeadMood | null = null;
   hoodLoaded = false;
-  hoodStyle: HoodStyle = 'cartoon';
-  private styled: Record<HoodStyle, THREE.Group> | null = null;
   private pieces: Piece[] = [];
   private hood = new THREE.Group();
   private decals = new THREE.Group();
@@ -156,15 +154,13 @@ export class FaceFx {
     this.place(null);
   }
 
-  /** Load the hood once: Happi's own head (both styles); the code-built hood if the model can't load. */
+  /** Load the hood once: Happi's own head as a plush costume hood; the code-built hood if the model can't load. */
   async loadHood(_loader?: unknown): Promise<void> {
     if (this.hoodLoaded) return;
     const fit = new THREE.Group();
     fit.name = 'hood-fit';
     try {
-      this.styled = await buildModelHoods();
-      fit.add(this.styled.cartoon, this.styled.plush);
-      this.setHoodStyle(this.hoodStyle);
+      fit.add(await buildModelHood()); // the plush hood (Dapo, round 5: the cartoon one is gone)
     } catch (e) {
       console.warn('[selfie] model hood failed, using the drawn one', e);
       fit.add(buildHood());
@@ -181,14 +177,6 @@ export class FaceFx {
     fit.position.set(HOOD_FIT.x, HOOD_FIT.y, HOOD_FIT.z);
     fit.rotation.x = HOOD_FIT.tilt;
     fit.scale.setScalar(HOOD_FIT.scale);
-  }
-
-  /** Cartoon (smooth, flat colours) or plush (fuzzy, like the costume). */
-  setHoodStyle(s: HoodStyle): void {
-    this.hoodStyle = s;
-    if (!this.styled) return;
-    this.styled.cartoon.visible = s === 'cartoon';
-    this.styled.plush.visible = s === 'plush';
   }
 
   setLook(l: FxLook): void {

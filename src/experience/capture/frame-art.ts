@@ -1,7 +1,8 @@
 // The 2D frame art laid over photos, drawn the same way on screen (an overlay canvas) and into the saved photo, so
 // what you frame is what you get. Never mirrored: the selfie underneath is the mirror image, the art reads the right
 // way. Happi's frames (round 3):
-//   blossom  cherry branches in flower across the top corners, a few falling petals, the lockup bottom right
+//   blossom  big cherry boughs from the top corners with sprigs dangling down, blossom drifts rising from the
+//            bottom corners and petals along the bottom edge, the lockup bottom right
 //   parade   a navy border with the happi coat's white checker trim, the lockup on a white tab bottom right
 //   clean    just the lockup, small, bottom right
 // The lockup is the splash's: the Japan Parade & Street Fair wordmark over the Happi logo. Filters (natural, warm,
@@ -126,6 +127,112 @@ export function cherryBranch(g: CanvasRenderingContext2D, w: number, h: number, 
   branch(g, w, h, dir, k, false, ref);
 }
 
+/** Small seeded random, so a frame draws the same every time (live view and the saved photo match). */
+function rng(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => { t = (t + 0x6d2b79f5) >>> 0; let r = Math.imul(t ^ (t >>> 15), 1 | t); r ^= r + Math.imul(r ^ (r >>> 7), 61 | r); return ((r ^ (r >>> 14)) >>> 0) / 4294967296; };
+}
+
+const PINKS = ['#ffb7c9', '#ffffff', '#ff94b0', '#ffc9d6', '#ffe3ea'];
+
+/** A fuller blossom: five petals, a blush centre and a few stamens. */
+function bloom(g: CanvasRenderingContext2D, x: number, y: number, r: number, rot: number, col: string): void {
+  blossom(g, x, y, r, rot, col);
+  g.save();
+  g.translate(x, y);
+  g.fillStyle = col === '#ffffff' ? '#ffd3de' : '#ffe8ee';
+  g.beginPath(); g.arc(0, 0, r * 0.42, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#d94f7a'; g.lineWidth = Math.max(1, r * 0.06); g.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const a = rot + (i * Math.PI) / 3;
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a) * r * 0.36, Math.sin(a) * r * 0.36); g.stroke();
+  }
+  g.fillStyle = '#c23a64';
+  g.beginPath(); g.arc(0, 0, r * 0.14, 0, Math.PI * 2); g.fill();
+  g.restore();
+}
+
+/**
+ * The Blossom frame's top: a big cherry bough from each top corner with sprigs DANGLING down on thin stems
+ * (weeping-cherry style), each sprig ending in a cluster of blooms and buds.
+ */
+function drapeBranch(g: CanvasRenderingContext2D, w: number, h: number, dir: 1 | -1, k: number, live: boolean, seed: number): void {
+  const R = rng(seed);
+  const s = Math.min(w, h) * k;
+  const x0 = dir > 0 ? -s * 0.04 : w + s * 0.04, y0 = s * 0.06;
+  const X = (u: number) => x0 + dir * u * s;
+  // the bough: thick at the corner, tapering as it reaches in, with a slight droop
+  g.strokeStyle = '#4a2f27'; g.lineCap = 'round';
+  const bough = (t: number) => ({ x: X(t), y: y0 + s * (0.05 * t + 0.16 * t * t) });
+  for (let i = 0; i < 18; i++) {
+    const a = bough(i / 18), b = bough((i + 1) / 18);
+    g.lineWidth = s * (0.05 - 0.035 * (i / 18));
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+  }
+  // blooms hugging the bough
+  for (let i = 0; i < (live ? 9 : 14); i++) {
+    const t = 0.06 + R() * 0.92, p = bough(t);
+    bloom(g, p.x + (R() - 0.5) * s * 0.05, p.y + (R() - 0.6) * s * 0.06, s * (0.05 + R() * 0.035), R() * 6, PINKS[i % PINKS.length]);
+  }
+  // dangling sprigs: thin stems hanging down, swaying a little, a cluster at the end
+  const sprigs = live ? 4 : 6;
+  for (let j = 0; j < sprigs; j++) {
+    const t = 0.18 + (j / (sprigs - 1)) * 0.74 + (R() - 0.5) * 0.04, p = bough(t);
+    const len = s * (0.26 + R() * 0.32) * (j % 2 ? 0.8 : 1.1);
+    const sway = dir * s * (R() - 0.3) * 0.08;
+    const ex = p.x + sway, ey = p.y + len;
+    g.strokeStyle = '#5b3a30'; g.lineWidth = Math.max(1.2, s * 0.008);
+    g.beginPath(); g.moveTo(p.x, p.y); g.quadraticCurveTo(p.x + sway * 0.2, p.y + len * 0.55, ex, ey); g.stroke();
+    // blooms along the stem, bigger and denser towards the tip
+    const n = live ? 3 : 5;
+    for (let i = 0; i < n; i++) {
+      const q = 0.35 + (i / n) * 0.65;
+      const bx = p.x + sway * q * q + (R() - 0.5) * s * 0.03, by = p.y + len * q;
+      bloom(g, bx, by, s * (0.03 + q * 0.03), R() * 6, PINKS[(i + j) % PINKS.length]);
+    }
+    // a bud at the very tip
+    g.fillStyle = '#ff7fa3';
+    g.beginPath(); g.ellipse(ex, ey + s * 0.03, s * 0.014, s * 0.022, 0, 0, Math.PI * 2); g.fill();
+  }
+}
+
+/** The Blossom frame's bottom: low drifts of blossom rising from both bottom corners and along the edge. */
+function bottomBlooms(g: CanvasRenderingContext2D, w: number, h: number, live: boolean, seed: number): void {
+  const R = rng(seed);
+  const m = Math.min(w, h);
+  // two corner mounds, taller at the left (the lockup sits bottom right)
+  const mounds: Array<[number, number, number]> = [[0, m * 0.34, 1], [w, m * 0.24, -1]];
+  for (const [cx, rad, dir] of mounds) {
+    // a few twigs poking up out of the mound
+    g.strokeStyle = '#4a2f27'; g.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const bx = cx + dir * rad * (0.15 + i * 0.25), top = h - rad * (0.75 + R() * 0.45);
+      g.lineWidth = m * 0.012;
+      g.beginPath(); g.moveTo(bx, h); g.quadraticCurveTo(bx + dir * rad * 0.15, (h + top) / 2, bx + dir * rad * (0.1 + R() * 0.2), top); g.stroke();
+    }
+    const n = live ? 12 : 22;
+    for (let i = 0; i < n; i++) {
+      const a = R() * Math.PI / 2, d = Math.sqrt(R()) * rad;
+      const x = cx + dir * Math.cos(a) * d, y = h - Math.sin(a) * d * 0.95;
+      bloom(g, x, y, m * (0.03 + R() * 0.03), R() * 6, PINKS[i % PINKS.length]);
+    }
+  }
+  // fallen petals scattered along the bottom edge
+  const strip = live ? 7 : 14;
+  for (let i = 0; i < strip; i++) {
+    const x = m * 0.2 + R() * (w - m * 0.4), y = h - m * (0.012 + R() * 0.06);
+    g.fillStyle = PINKS[i % 3];
+    g.beginPath(); g.ellipse(x, y, m * 0.02, m * 0.012, R() * 3, 0, Math.PI * 2); g.fill();
+  }
+  // a few petals drifting in the air
+  for (let i = 0; i < (live ? 4 : 8); i++) {
+    const x = R() * w, y = h * (0.25 + R() * 0.5);
+    if (x > w * 0.22 && x < w * 0.78 && y > h * 0.2 && y < h * 0.75) continue; // never across the face
+    g.fillStyle = '#ffb7c9';
+    g.beginPath(); g.ellipse(x, y, m * 0.017, m * 0.01, R() * 3, 0, Math.PI * 2); g.fill();
+  }
+}
+
 function checkerBorder(g: CanvasRenderingContext2D, w: number, h: number): void {
   const b = Math.round(Math.min(w, h) * 0.035), c = Math.max(4, Math.round(b / 2));
   g.fillStyle = '#283a8f';
@@ -138,7 +245,12 @@ function checkerBorder(g: CanvasRenderingContext2D, w: number, h: number): void 
 export function drawFrameArt(g: CanvasRenderingContext2D, w: number, h: number, s: FrameSpec): void {
   if (s.filter) applyFilter(g, w, h, s.filter);
   const frame = s.frame ?? 'blossom';
-  if (frame === 'blossom') { branch(g, w, h, 1, s.live ? 0.5 : 0.62, !!s.live); branch(g, w, h, -1, s.live ? 0.42 : 0.52, !!s.live); }
+  if (frame === 'blossom') {
+    // Dapo (round 5): bigger top boughs with blossoms dangling down, and blossoms coming up from the bottom too
+    drapeBranch(g, w, h, 1, s.live ? 0.62 : 0.72, !!s.live, 11);
+    drapeBranch(g, w, h, -1, s.live ? 0.52 : 0.6, !!s.live, 23);
+    bottomBlooms(g, w, h, !!s.live, 37);
+  }
   if (frame === 'parade') checkerBorder(g, w, h);
   if (!s.title || s.live || !wm || !logo) return;
   const lw = w * (s.titleWidth ?? 0.3), lh = lockupHeight(lw);

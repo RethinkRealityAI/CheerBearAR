@@ -109,7 +109,7 @@ export class HouseWalk {
     if (Math.abs(lp.x) > 0.3 || lp.z < -1.4) this.glides.push({ to: this.poseFor(c, yaw, -0.95), dur: this.sh.reduced ? 0.4 : 0.8, t: 0 });
     this.glides.push(
       { to: this.poseFor(c, yaw, 1.6), dur: this.sh.reduced ? 0.5 : 1.1, t: 0, then: () => { if (this.inside) hs.setInside(false); } },
-      { to: () => ({ pos: hs.restPos(new THREE.Vector3()), yaw: 0 }), dur: this.sh.reduced ? 0.5 : 1.2, t: 0, then: () => this.host.hint(BACK_IN, 5) },
+      { to: () => ({ pos: hs.restPos(new THREE.Vector3()), yaw: 0 }), dur: this.sh.reduced ? 0.5 : 1.2, t: 0, then: () => { this.backToDoor(); this.host.hint(BACK_IN, 5); } },
     );
     this.host.syncHud();
   }
@@ -148,6 +148,17 @@ export class HouseWalk {
     const l = hs.fromStage(a.position, V);
     const hw = COT.w / 2 + 0.25;
     if (Math.abs(l.x) < hw && l.z < 0.35 && l.z > -COT.d - 0.3) this.hopTo(this.toDoor(new THREE.Vector3()), a.heading, 0.2);
+  }
+
+  /** The house is home again after Leave: Happi pops out in front of its door, facing you (never left behind where
+   *  the room was while it glided). */
+  private backToDoor(): void {
+    const st = this.st, hs = st.houseSet;
+    const to = this.toDoor(new THREE.Vector3());
+    const c = this.camFlat().c;
+    const yaw = Math.atan2(c.x - to.x, c.z - to.z);
+    if (st.actor.position.distanceTo(to) > 0.2) this.hopTo(to, yaw, 0.05);
+    void hs;
   }
 
   private toDoor(out: THREE.Vector3): THREE.Vector3 {

@@ -3,7 +3,7 @@
 
 .cbx {
   --cbx-reserved: 0px; /* bottom-right corner kept free for an app button (none since the talk button went) */
-  --cbx-head: 112px; /* the top bar: mode tabs + menu (52) and the lockup under them; hints sit below it */
+  --cbx-head: 112px; /* the top bar: lockup + menu (44), the mode tabs (52) under them; hints sit below it */
   --cbx-pad: 14px;
   --cbx-top: calc(var(--cb-safe-top) + 10px);
   --cbx-bottom: calc(var(--cb-safe-bottom) + 14px);
@@ -175,22 +175,34 @@
   position: absolute; left: 0; right: 0; top: 0; padding: var(--cbx-top) calc(var(--cb-safe-right) + 10px) 0 calc(var(--cb-safe-left) + 10px);
   display: flex; flex-direction: column; align-items: stretch; gap: 8px; pointer-events: none;
 }
-.cbx-top .lockup { align-self: flex-start; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(26, 12, 30, 0.25)); }
-.cbx-top .lockup img { display: block; width: auto; }
-.cbx-top .lockup img:first-child { height: 21px; }
-.cbx-top .lockup img:last-child { height: 27px; margin-left: 1px; }
-/* the selfie view keeps the face clear: no lockup there (the photo frames carry the brand) */
-.cbx[data-mode="face"] .cbx-top .lockup { display: none; }
-.cbx[data-mode="face"] { --cbx-head: 62px; }
+/* row 1: the lockup in one line, right-aligned against the menu; row 2: the mode tabs */
+.cbx-row1 { display: flex; align-items: center; justify-content: flex-end; gap: 10px; pointer-events: none; }
+.cbx-row1 > * { pointer-events: auto; }
+.cbx-top .lockup { display: flex; align-items: center; gap: 7px; min-width: 0; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(26, 12, 30, 0.28)); }
+.cbx-top .lockup img { display: block; width: auto; flex: none; }
+.cbx-top .lockup img.wm { height: 21px; }
+.cbx-top .lockup img.hp { height: 30px; }
+/* "AR" in the logo's style: heavy rounded white letters in a thick navy outline */
+.cbx-top .lockup .ar {
+  font-family: var(--cb-font); font-weight: 700; font-size: 25px; line-height: 1; letter-spacing: 0.01em; color: var(--cb-white);
+  -webkit-text-stroke: 7px var(--cb-blue); paint-order: stroke fill; margin-left: -2px; translate: 0 -1px;
+}
+@media (max-width: 370px) {
+  .cbx-top .lockup { gap: 5px; }
+  .cbx-top .lockup img.wm { height: 17px; }
+  .cbx-top .lockup img.hp { height: 26px; }
+  .cbx-top .lockup .ar { font-size: 21px; -webkit-text-stroke-width: 6px; }
+}
 
-/* ---- the top bar: mode tabs + the menu in line at the right */
+/* ---- the top bar: lockup + menu, the mode tabs under them */
 .cbx-dock {
   align-self: center; width: min(100%, 480px);
-  display: flex; align-items: center; gap: 8px; pointer-events: none;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; pointer-events: none;
 }
 .cbx-dock > * { pointer-events: auto; }
-.cbx-dock .cbx-switch { margin: 0; max-width: none; background: rgba(27, 35, 64, 0.72); }
-.cbx-menu { flex: none; width: 52px; height: 52px; background: var(--cb-blue); border-color: rgba(255, 255, 255, 0.35); }
+.cbx-dock .cbx-row1 { pointer-events: none; }
+.cbx-dock .cbx-switch { margin: 0; max-width: none; width: 100%; background: rgba(27, 35, 64, 0.72); }
+.cbx-menu { flex: none; width: 44px; height: 44px; background: var(--cb-blue); border-color: rgba(255, 255, 255, 0.35); }
 @media (hover: hover) { .cbx-menu:hover { background: #33479f; } }
 
 /* ---- mode switcher: one sliding pill (transform only), icon + label on every tab */
@@ -245,7 +257,6 @@
   .cbx-switch button { flex-direction: column; gap: 3px; padding: 5px 2px 4px; font-size: 12px; min-height: 46px; }
   .cbx-switch button svg { width: 19px; height: 19px; }
 }
-@media (max-width: 360px) { .cbx-top .lockup img:first-child { height: 21px; } .cbx-top .lockup img:last-child { height: 28px; } }
 
 .cbx-ib {
   pointer-events: auto; flex: none; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--cb-glass-line);
@@ -357,9 +368,10 @@
   box-shadow: var(--cb-shadow-1); transition: transform var(--cb-dur-2) var(--cb-ease);
 }
 .cbx-stick.on { transform: scale(1.03); cursor: grabbing; }
-.cbx-stick-ring { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--cb-white); pointer-events: none; animation: cbx-spin 3.2s linear infinite; }
-.cbx-stick-ring .arc { stroke: var(--cb-pink); }
-.cbx-stick.on .cbx-stick-ring { animation-duration: 1.1s; }
+.cbx-stick { border: 3px solid var(--cb-blue); }
+/* a calm navy ring (Dapo, round 5: no orange arc); a thin white inner line keeps it readable on dark floors */
+.cbx-stick-ring { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--cb-white); pointer-events: none; }
+.cbx-stick-ring .arc { display: none; }
 @keyframes cbx-spin { to { transform: rotate(360deg); } }
 /* White knob with a four-way glyph: a pink disc in a ring reads as a record button. It springs home on release. */
 .cbx-stick span {
@@ -378,6 +390,17 @@
 }
 .cbx-shutter i { display: block; width: 58px; height: 58px; border-radius: 50%; background: var(--cb-white); transition: transform var(--cb-dur-1) var(--cb-ease), background-color var(--cb-dur-2), border-radius var(--cb-dur-2); }
 .cbx-shutter:active i { transform: scale(0.84); }
+.cbx-shutter { position: relative; -webkit-touch-callout: none; touch-action: none; }
+/* hold to record: the inner disc turns into a red rounded square and a red ring fills over the 30 s limit */
+.cbx-rec-ring { position: absolute; inset: -9px; width: calc(100% + 18px); height: calc(100% + 18px); transform: rotate(-90deg); pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+.cbx-rec-ring circle { fill: none; stroke: var(--cb-red); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 100 100; stroke-dashoffset: 100; }
+.cbx-shutter.rec .cbx-rec-ring { opacity: 1; }
+.cbx-shutter.rec { transform: scale(1.12); }
+.cbx-shutter.rec i { background: var(--cb-red); border-radius: 12px; transform: scale(0.55); }
+.cbx-shutter.down:not(.rec) i { transform: scale(0.84); }
+/* the 3D / AR shutter: smaller, bottom right under Games and Actions (always the lowest in that stack) */
+.cbx-shutter.mini { width: 60px; height: 60px; border-width: 4px; order: -1; align-self: flex-end; }
+.cbx-shutter.mini i { width: 44px; height: 44px; }
 
 .cbx-flash { position: absolute; inset: 0; z-index: 50; background: #fff; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 
@@ -414,6 +437,22 @@
 .cbx-dots i:nth-child(2) { animation-delay: 0.15s; }
 .cbx-dots i:nth-child(3) { animation-delay: 0.3s; }
 @keyframes cbx-dot { 0%, 60%, 100% { transform: none; opacity: 0.55; } 30% { transform: translateY(-5px); opacity: 1; } }
+/* the title, set like the Happi logo: heavy rounded white letters in a thick navy outline */
+.cbx-cover-title {
+  display: block; max-width: 86vw; text-align: center; font-family: var(--cb-font); font-weight: 700; font-size: clamp(26px, 8vw, 36px);
+  line-height: 1.1; color: var(--cb-white); -webkit-text-stroke: 8px var(--cb-blue); paint-order: stroke fill; letter-spacing: 0.01em;
+}
+/* one brand colour per destination (flat): 3D sky, AR navy, Selfie orange, Photo blossom */
+.cbx-cover { --cv: var(--cb-pink); --cv-ink: var(--cb-white); }
+.cbx-cover[data-to="showcase"] { --cv: var(--cb-sky); --cv-ink: var(--cb-blue); }
+.cbx-cover[data-to="ar"] { --cv: var(--cb-blue); --cv-ink: var(--cb-white); }
+.cbx-cover[data-to="face"] { --cv: var(--cb-pink); --cv-ink: var(--cb-white); }
+.cbx-cover[data-to="photo"] { --cv: #f6a5bd; --cv-ink: var(--cb-blue); }
+.cbx-cover .cbx-cover-disc { background: var(--cv); }
+.cbx-cover .cbx-cover-in { color: var(--cv-ink); }
+.cbx-cover .cbx-cover-badge { color: var(--cb-blue); }
+.cbx-cover[data-to="ar"] .cbx-cover-title { -webkit-text-stroke-color: #16225e; }
+.cbx-cover[data-to="ar"] .cbx-cover-sky i { opacity: 0.12; }
 /* flat white clouds drifting across the orange while the camera switches */
 .cbx-cover-sky { position: absolute; inset: 0; pointer-events: none; }
 .cbx-cover-sky i {

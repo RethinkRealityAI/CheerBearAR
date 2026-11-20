@@ -28,7 +28,7 @@ import { PlayKit, type PlayGame, type PlayHost } from '../../play';
 /** The "throw hearts" hint shows once per visit. */
 let tossHinted = false;
 
-const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tall, her house life size
+const SCALE = { def: 0.85, min: 0.4, max: 1.6 }; // 0.85: Happi about a metre tall (Dapo 2026-11-20: near the 3D size), the house life size
 /**
  * The pinch sizes her house too (ar-4, Dapo: "I can't really resize it"): life size at the default, from 0.6x to 1.6x.
  * Move puts both back to the default.
@@ -207,6 +207,7 @@ export class ArMode implements Mode {
   }
 
   exit(_to: ExperienceMode): void {
+    (this.sh.ctx.bear as { setIdleStyle?: (s: 'front' | 'roam') => void } | null)?.setIdleStyle?.('front');
     this.active = false;
     this.live = false;
     this.runner.cancel();
@@ -517,6 +518,8 @@ export class ArMode implements Mode {
     st.update(dt, xr.camera);
     a.update(dt, xr.camera.getWorldPosition(this.w));
     this.trackLost(dt, xr.camera);
+    // facing you outside; looking around the room in the house
+    (this.sh.ctx.bear as { setIdleStyle?: (s: 'front' | 'roam') => void } | null)?.setIdleStyle?.(this.inside ? 'roam' : 'front');
     this.hints(dt, eng.tracking, settled);
   }
 

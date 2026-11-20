@@ -5,7 +5,12 @@
 import bpy, bmesh, sys, mathutils
 argv = sys.argv[sys.argv.index('--') + 1:]
 BLEND, OUT = argv[0], argv[1]
-OPEN_FU = (0.54, 0.74)  # opening half-width / half-height in FU (the old code hood's, sized on real faces)
+# opening half-width / half-height in FU at build scale, how much of the panel's height it fills, and how far its
+# centre drops (in panel half-heights). Round 5 (Dapo): a wider, longer oval that shows the whole face and chin; the
+# runtime then draws the hood 15% narrower and taller (src/happi/hood.ts HOOD_SCALE).
+OPEN_FU = (float(argv[2]), float(argv[3])) if len(argv) > 3 else (0.77, 0.80)
+FILL = float(argv[4]) if len(argv) > 4 else 1.0
+DROP = float(argv[5]) if len(argv) > 5 else 0.05
 bpy.ops.wm.open_mainfile(filepath=BLEND)
 sc = bpy.context.scene
 arm = bpy.data.objects['Happi']
@@ -27,7 +32,7 @@ fmax = mathutils.Vector([max(v[i] for v in fv) for i in range(3)])
 fc = (fmin + fmax) / 2
 print('face panel', tuple(fmin), tuple(fmax))
 half_h = (fmax.z - fmin.z) / 2
-s = OPEN_FU[1] / (half_h * 0.92)      # FU per model unit: the opening fills 92% of the panel's height
+s = OPEN_FU[1] / (half_h * FILL)      # FU per model unit: the opening fills FILL of the panel's height
 ox, oz = OPEN_FU[0] / s, OPEN_FU[1] / s
 neck = fmin.z - 0.015
 # a fresh mesh of the evaluated body, then cut
@@ -84,7 +89,7 @@ bpy.ops.object.select_all(action='DESELECT')
 fob.select_set(True); ob.select_set(True); bpy.context.view_layer.objects.active = ob
 bpy.ops.object.join()
 # the opening: a clean vertical oval cut (boolean with an elliptic cylinder through the front only)
-bpy.ops.mesh.primitive_cylinder_add(vertices=96, radius=1, depth=0.5, location=(fc.x, fc.y - 0.1, fc.z), rotation=(1.5708, 0, 0))
+bpy.ops.mesh.primitive_cylinder_add(vertices=96, radius=1, depth=0.5, location=(fc.x, fc.y - 0.1, fc.z - DROP * half_h), rotation=(1.5708, 0, 0))
 cut = bpy.context.active_object
 cut.scale = (ox, oz, 1)
 cut.data.materials.append(inner)

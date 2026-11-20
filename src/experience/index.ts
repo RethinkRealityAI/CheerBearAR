@@ -28,6 +28,7 @@ import { Stage } from './scene/stage';
 import { addHousePhoto } from './scene/house';
 import { MOMENT_NAMES, MomentRunner, canonicalMoment } from './scene/moments';
 import { ShowcaseMode } from './modes/showcase';
+import { CaptureDock } from './capture/dock';
 import { ArMode } from './modes/ar';
 import { bindGestures, type Shared } from './modes/shared';
 import { createFacePlaceholder } from './placeholders/face-placeholder';
@@ -64,6 +65,8 @@ class Experience implements ExperienceApi {
   private host: HTMLElement | null = null;
   private box: HTMLElement | null = null;
   private hud: Hud | null = null;
+  /** The 3D and AR views' shutter (bottom right): tap a photo, hold a video. */
+  private dock: CaptureDock | null = null;
   private engine: Engine | null = null;
   private assets = new Assets();
   private media: Media | null = null;
@@ -126,6 +129,7 @@ class Experience implements ExperienceApi {
       onRestart: () => this.restart(),
     });
     this.hud = hud;
+    this.dock = new CaptureDock(hud, box, (blob) => { addHousePhoto(blob); this.ev.emit('photo', { blob, mode: this.mode }); }, reducedMotion);
     this.media = new Media();
     this.engine = new Engine(box, {
       onScene: (xr, kind) => this.onScene(xr, kind),
@@ -440,6 +444,7 @@ class Experience implements ExperienceApi {
     // (awaited: the hud's iris finishes covering the old view before it is torn down; ~0.35 s)
     if (from) await hud.cover(camera ? (to.camera === 'face' ? 'Turning the camera round…' : 'Opening the camera…') : 'Back to New York…');
     this.entered = false;
+    this.dock?.show(false); // (stops a clip that is still recording)
     try {
       if (from) await from.exit(id);
     } catch (e) {
@@ -458,6 +463,7 @@ class Experience implements ExperienceApi {
         await to.enter(from?.id ?? null);
       }
       this.entered = true;
+      this.dock?.show(id === 'showcase' || id === 'ar');
     } catch (e) {
       const err = e instanceof EngineError ? e : new EngineError('error', String((e as Error)?.message ?? e));
       console.warn('[experience] could not start', id, err.reason, err.message);

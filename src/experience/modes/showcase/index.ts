@@ -6,6 +6,7 @@
 //
 // Controls: joystick (or arrow keys / WASD) walks her, the camera follows; drag to look around a little; pinch or
 // scroll to zoom within limits; tap her for a reaction.
+import { recorder } from '../../capture/recorder';
 import * as THREE from 'three';
 import { happiPlaza } from '../../../happi/plaza';
 import { MOVES_ICON } from '../../../happi/moves';
@@ -408,6 +409,7 @@ export class ShowcaseMode implements Mode {
     this.scene.backgroundIntensity = st.bg;
     a.update(dt, this.active ? this.cam.position : null);
     r.render(this.scene, this.cam);
+    if (this.active) recorder.frame(r.domElement); // video clips / stills copy the frame while it is valid
   };
 
   private placeCamera(_dt: number): void {

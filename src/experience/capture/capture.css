@@ -54,6 +54,11 @@
 }
 .cbx .cbc-strip-row::-webkit-scrollbar { display: none; }
 .cbx .cbc-strip-group { display: flex; gap: 10px; }
+.cbx .cbc-strip-sec { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cbx .cbc-strip-cap {
+  font-size: 10.5px; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; font-weight: var(--cb-w-label);
+  color: rgba(255, 255, 255, 0.82); padding: 3px 8px; border-radius: var(--cb-r-pill); background: rgba(8, 8, 10, 0.38);
+}
 .cbx .cbc-strip-div { flex: none; width: 1px; height: 40px; margin: 8px 2px 0; background: rgba(255, 255, 255, 0.4); }
 .cbx .cbc-chipc {
   flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 60px; padding: 0; border: 0;
@@ -115,7 +120,7 @@
 .cbx .cbc-rv-top h2 { margin: 0; font-size: 20px; font-weight: 800; color: var(--cb-blue); }
 .cbx .cbc-rv-top .cbc-ib { width: 42px; height: 42px; background: var(--cb-white); color: var(--cb-blue); }
 .cbx .cbc-rv-photo { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 4px 0 10px; }
-.cbx .cbc-rv-photo img {
+.cbx .cbc-rv-photo img, .cbx .cbc-rv-photo video {
   display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 16px;
   border: 5px solid var(--cb-white); background: var(--cb-sky); box-shadow: 0 6px 0 rgba(40, 58, 143, 0.25);
   -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; pointer-events: auto;
