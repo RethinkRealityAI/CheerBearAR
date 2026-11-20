@@ -30,6 +30,72 @@
 .cbx .cbx-shutter.cbc-armed i { background: var(--cb-pink); transform: scale(0.62); border-radius: 18px; }
 .cbx .cbx-shutter:disabled { opacity: 0.5; }
 
+/* ---------------------------------------------------------------- tap = photo, hold = video (round 5, camera-5)
+   The shutter grows a red ring that fills over the 30 s limit while it records; the button turns into a red stop. */
+.cbx .cbx-shutter { position: relative; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.cbx .cbx-shutter.can-rec { touch-action: none; }
+.cbx .cbx-rec-ring { position: absolute; inset: -10px; width: calc(100% + 20px); height: calc(100% + 20px); transform: rotate(-90deg); pointer-events: none; opacity: 0; transition: opacity 0.2s; overflow: visible; }
+.cbx .cbx-rec-ring circle { fill: none; stroke: var(--cb-red); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 100 100; stroke-dashoffset: 100; }
+.cbx .cbx-shutter.rec .cbx-rec-ring { opacity: 1; }
+.cbx .cbx-shutter.rec { transform: scale(1.12); border-color: var(--cb-white); }
+.cbx .cbx-shutter.rec i { background: var(--cb-red); border-radius: 12px; transform: scale(0.52); }
+.cbx .cbx-shutter.rec-wait i { animation: cbc-recwait 0.6s ease-in-out infinite alternate; }
+@keyframes cbc-recwait { to { opacity: 0.55; } }
+.cbx .cbx-shutter.down:not(.rec) i { transform: scale(0.84); }
+@media (prefers-reduced-motion: reduce) { .cbx .cbx-shutter.rec { transform: none; } .cbx .cbx-shutter.rec-wait i { animation: none; } }
+/* "0:04" with a red dot over the shutter while a clip runs (inside the button, so it moves with it) */
+.cbx .cbx-shutter .cbx-rec-time {
+  position: absolute; left: 50%; bottom: calc(100% + 18px); transform: translateX(-50%); display: none; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px; pointer-events: none; white-space: nowrap;
+  background: var(--cb-glass-hint); color: var(--cb-white); font-size: 14px; font-weight: var(--cb-w-strong); font-variant-numeric: tabular-nums;
+}
+.cbx .cbx-shutter .cbx-rec-time::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--cb-red); }
+.cbx .cbx-shutter.rec .cbx-rec-time { display: inline-flex; }
+
+/* ---------------------------------------------------------------- live frame + filter strip (Selfie, round 5)
+   Round glass chips with a preview, the name under each, a caption under each group (style-strip.ts). */
+.cbx .cbc-strip { width: 100%; max-width: 560px; pointer-events: auto; transition: opacity 0.25s ease, transform 0.25s ease; }
+.cbx .cbc-strip.cbc-tuck { opacity: 0; transform: translateY(10px); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .cbx .cbc-strip.cbc-tuck { transform: none; } }
+.cbx .cbc-strip-row {
+  display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+  padding: 4px 14px 2px; scroll-snap-type: x proximity; touch-action: pan-x; justify-content: safe center;
+}
+.cbx .cbc-strip-row::-webkit-scrollbar { display: none; }
+.cbx .cbc-strip-group { display: flex; gap: 8px; }
+.cbx .cbc-strip-sec { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cbx .cbc-strip-cap {
+  font-size: 10.5px; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; font-weight: var(--cb-w-label);
+  color: var(--cb-on-glass-soft); padding: 3px 8px; border-radius: var(--cb-r-pill); background: var(--cb-glass-hint);
+}
+.cbx .cbc-strip-div { flex: none; width: 1px; height: 40px; margin: 8px 2px 0; background: rgba(255, 255, 255, 0.45); }
+.cbx .cbc-chipc {
+  flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 58px; padding: 0; border: 0;
+  background: none; color: var(--cb-white); cursor: pointer; scroll-snap-align: center; font: inherit;
+}
+.cbx .cbc-chipc-face {
+  display: block; width: 52px; height: 52px; padding: 3px; border-radius: 50%; background: var(--cb-glass);
+  border: 1px solid var(--cb-glass-line); -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur);
+  transition: transform 0.2s var(--cb-ease-spring), box-shadow 0.2s;
+}
+.cbx .cbc-chipc canvas { display: block; width: 100%; height: 100%; border-radius: 50%; }
+.cbx .cbc-chipc-label { font-size: 11.5px; font-weight: var(--cb-w-strong); line-height: 1.1; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+.cbx .cbc-chipc[aria-checked="true"] .cbc-chipc-face { box-shadow: 0 0 0 3px var(--cb-pink); transform: scale(1.07); }
+.cbx .cbc-chipc:active .cbc-chipc-face { transform: scale(0.92); }
+.cbx .cbc-chipc:focus-visible { outline: none; }
+.cbx .cbc-chipc:focus-visible .cbc-chipc-face { box-shadow: var(--cb-focus); }
+@media (max-height: 700px) {
+  .cbx .cbc-chipc { width: 52px; }
+  .cbx .cbc-chipc-face { width: 46px; height: 46px; }
+  .cbx .cbc-strip-cap { display: none; }
+}
+/* the live filter tint (candy) over the camera, under the frame overlay */
+.cbx .cbc-tint { position: absolute; inset: 0; pointer-events: none !important; }
+
+/* Selfie bottom stack (above the shutter): the look picker, then the chips, centred and close together */
+.cbx .cbc-selfie-stack { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; pointer-events: none; }
+.cbx .cbc-selfie-stack > * { pointer-events: auto; }
+
 /* ---------------------------------------------------------------- pickers (look, pose) */
 .cbx .cbc-seg {
   display: inline-flex; padding: 4px; gap: 2px; border-radius: 999px; background: var(--cb-glass);
@@ -70,47 +136,78 @@
 }
 .cbx .cbc-ib svg { width: 22px; height: 22px; }
 
-/* ---------------------------------------------------------------- review sheet */
+/* ---------------------------------------------------------------- review sheet (round 5, camera-5)
+   Branded and flat: Care-a-Lot sky with a faint pattern of white hearts and clouds, a six-stripe rainbow band along
+   the top (six flat stripes, drawn as an inline SVG). The photo is as big as it can be; one compact row of
+   buttons: Retake (plum) | Save | Share (pink). */
 .cbx .cbc-review {
-  position: absolute; inset: 0; z-index: 60; background: var(--cb-white); color: var(--cb-ink);
+  position: absolute; inset: 0; z-index: 60; color: var(--cb-ink);
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22132%22%20height%3D%22132%22%20viewBox%3D%220%200%20132%20132%22%3E%3Cg%20fill%3D%22%23ffffff%22%20opacity%3D%220.7%22%3E%3Cg%20transform%3D%22translate(30%2034)%20scale(1.1)%22%3E%3Cpath%20d%3D%22M0%206C-1%205.2-6%202-6-1.6-6-4.4-2.6-5.6%200-3-2.6-5.6%206-4.4%206-1.6%206%202%201%205.2%200%206z%22/%3E%3C/g%3E%3Cg%20transform%3D%22translate(98%2096)%20rotate(18)%20scale(0.8)%22%3E%3Cpath%20d%3D%22M0%206C-1%205.2-6%202-6-1.6-6-4.4-2.6-5.6%200-3-2.6-5.6%206-4.4%206-1.6%206%202%201%205.2%200%206z%22/%3E%3C/g%3E%3Ccircle%20cx%3D%2296%22%20cy%3D%2228%22%20r%3D%227%22/%3E%3Ccircle%20cx%3D%22106%22%20cy%3D%2226%22%20r%3D%229%22/%3E%3Ccircle%20cx%3D%22116%22%20cy%3D%2230%22%20r%3D%226%22/%3E%3Crect%20x%3D%2290%22%20y%3D%2229%22%20width%3D%2230%22%20height%3D%227%22%20rx%3D%223.5%22/%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%22104%22%20r%3D%222.5%22/%3E%3C/g%3E%3C/svg%3E") 0 0 / 132px 132px repeat, var(--cb-sky);
   display: flex; flex-direction: column; pointer-events: auto; touch-action: manipulation;
-  padding: calc(var(--cb-safe-top) + 10px) calc(var(--cb-safe-right) + 14px) 0 calc(var(--cb-safe-left) + 14px);
+  padding: calc(var(--cb-safe-top) + 12px) calc(var(--cb-safe-right) + 14px) 0 calc(var(--cb-safe-left) + 14px);
   animation: cbc-in 0.28s var(--cb-ease);
+}
+.cbx .cbc-review::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: calc(var(--cb-safe-top) + 7px); pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%201%206%22%20preserveAspectRatio%3D%22none%22%3E%3Crect%20y%3D%220%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ff5a5f%22/%3E%3Crect%20y%3D%221%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ff9a3d%22/%3E%3Crect%20y%3D%222%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23ffd84a%22/%3E%3Crect%20y%3D%223%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%235fcf86%22/%3E%3Crect%20y%3D%224%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%23439bdd%22/%3E%3Crect%20y%3D%225%22%20width%3D%221%22%20height%3D%221%22%20fill%3D%22%239a6bff%22/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
 }
 @keyframes cbc-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .cbx .cbc-review { animation: cbc-fade 0.2s linear; } }
 @keyframes cbc-fade { from { opacity: 0; } to { opacity: 1; } }
-.cbx .cbc-rv-top { display: flex; align-items: center; gap: 10px; min-height: 52px; flex: none; }
-.cbx .cbc-rv-top h2 { margin: 0; font-size: 22px; font-weight: 650; color: var(--cb-pink-deep); }
-.cbx .cbc-rv-photo { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px 0 10px; }
-.cbx .cbc-rv-photo img {
-  display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 18px;
-  border: 4px solid var(--cb-pink-soft); background: var(--cb-sky);
+.cbx .cbc-rv-top { display: flex; align-items: center; gap: 10px; min-height: 46px; flex: none; padding-top: 4px; }
+.cbx .cbc-rv-top h2 { margin: 0; font-size: 20px; font-weight: var(--cb-w-heavy); color: var(--cb-pink-deep); }
+.cbx .cbc-rv-top .cbc-ib { width: 42px; height: 42px; background: var(--cb-white); color: var(--cb-pink-deep); box-shadow: var(--cb-shadow-1); }
+.cbx .cbc-rv-photo { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 4px 0 10px; }
+.cbx .cbc-rv-photo img, .cbx .cbc-rv-photo video {
+  display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 16px;
+  border: 5px solid var(--cb-white); background: var(--cb-pink-soft); box-shadow: 0 6px 0 rgba(216, 27, 124, 0.22);
   -webkit-touch-callout: default; -webkit-user-select: auto; user-select: auto; pointer-events: auto;
 }
+.cbx .cbc-rv-photo video { cursor: pointer; }
+.cbx .cbc-review.cbc-busy .cbc-rv-photo img { opacity: 0.7; transition: opacity 0.15s; }
 .cbx .cbc-rv-actions {
-  flex: none; display: flex; flex-direction: column; gap: 10px; width: min(100%, 460px); margin: 0 auto;
-  /* the app's talk button lives in the bottom-right corner: keep the whole bottom strip under the buttons free */
-  padding-bottom: calc(var(--cb-safe-bottom) + max(12px, var(--cbx-reserved, 88px)));
+  flex: none; display: flex; flex-direction: column; gap: 8px; width: min(100%, 460px); margin: 0 auto;
+  /* the app's talk button lives in the bottom-right corner: the foot row (small) sits beside it, the buttons above */
+  padding-bottom: calc(var(--cb-safe-bottom) + 10px);
 }
-.cbx .cbc-rv-actions .row { display: flex; gap: 10px; }
-/* Retake keeps its natural width so "Watch photo animation" fits on a 375 px phone */
-.cbx .cbc-rv-actions .row .cbc-btn.alt:first-child:not(:only-child) { flex: 0 0 auto; padding: 0 16px; }
+.cbx .cbc-rv-actions .row { display: flex; gap: 8px; }
+.cbx .cbc-rv-actions .row.main .cbc-btn { min-height: 46px; padding: 0 12px; font-size: 15px; gap: 6px; box-shadow: 0 3px 0 var(--cb-pink-deep); }
+.cbx .cbc-rv-actions .row.main .cbc-btn svg { width: 19px; height: 19px; }
+.cbx .cbc-btn.plum { background: var(--cb-ink); color: var(--cb-white); }
+.cbx .cbc-rv-actions .row.main .cbc-btn.plum { box-shadow: 0 3px 0 #22102a; }
+.cbx .cbc-rv-actions .row .cbc-btn.alt:only-child { min-height: 42px; font-size: 14px; background: var(--cb-white); color: var(--cb-pink-deep); }
 .cbx .cbc-rv-actions .row .cbc-btn.alt { padding: 0 14px; gap: 6px; }
-.cbx .cbc-rv-actions .row.foot { align-items: center; justify-content: space-between; min-height: 44px; gap: 6px; }
-.cbx .cbc-status { margin: 0; font-size: 14px; font-weight: 600; color: var(--cb-pink-deep); text-align: right; flex: 1 1 auto; }
+.cbx .cbc-rv-actions .row.foot {
+  align-items: center; justify-content: space-between; gap: 6px;
+  min-height: max(40px, calc(var(--cbx-reserved, 88px) - 26px)); padding-right: var(--cbx-reserved, 88px);
+}
+.cbx .cbc-status { margin: 0; font-size: 14px; font-weight: var(--cb-w-strong); color: var(--cb-pink-deep); text-align: left; flex: 1 1 auto; }
 .cbx .cbc-status.light { color: var(--cb-white); text-align: center; flex-basis: 100%; }
+/* post-snap frame / filter chips (3D Photo) */
+.cbx .cbc-rv-styles { display: flex; flex-direction: column; gap: 6px; }
+.cbx .cbc-chips { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 1px 0; }
+.cbx .cbc-chips::-webkit-scrollbar { display: none; }
+.cbx .cbc-chips .lbl { flex: 0 0 46px; font-size: 13px; font-weight: var(--cb-w-strong); color: var(--cb-ink-soft); }
+.cbx .cbc-chip {
+  flex: none; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 2px solid var(--cb-pink-soft); background: var(--cb-white);
+  color: var(--cb-pink-deep); font: inherit; font-size: 14px; font-weight: var(--cb-w-strong); cursor: pointer; touch-action: manipulation;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.cbx .cbc-chip[aria-pressed="true"] { background: var(--cb-pink); color: var(--cb-white); border-color: var(--cb-pink); }
+.cbx .cbc-chip:focus-visible { outline: 3px solid var(--cb-ink); outline-offset: 2px; }
+@media (max-width: 380px) { .cbx .cbc-chips { gap: 4px; } .cbx .cbc-chips .lbl { flex-basis: 40px; } .cbx .cbc-chip { padding: 0 9px; font-size: 13px; } }
 @media (max-height: 700px) {
-  .cbx .cbc-btn { min-height: 46px; font-size: 15px; }
-  .cbx .cbc-rv-actions { gap: 8px; }
+  .cbx .cbc-btn { min-height: 44px; font-size: 15px; }
+  .cbx .cbc-rv-actions { gap: 6px; }
+  .cbx .cbc-rv-top { min-height: 40px; }
 }
 @media (min-width: 900px) and (min-aspect-ratio: 1/1) {
   /* computers / landscape tablets: photo left, buttons right */
-  .cbx .cbc-review { display: grid; grid-template-columns: 1fr minmax(300px, 420px); grid-template-rows: auto 1fr; column-gap: 28px; padding-bottom: 24px; }
+  .cbx .cbc-review { display: grid; grid-template-columns: 1fr minmax(300px, 400px); grid-template-rows: auto 1fr; column-gap: 28px; padding-bottom: 24px; }
   .cbx .cbc-rv-top { grid-column: 1 / -1; }
   .cbx .cbc-rv-photo { grid-row: 2; }
   .cbx .cbc-rv-actions { grid-row: 2; align-self: center; padding-bottom: var(--cbx-reserved, 88px); }
-  .cbx .cbc-rv-actions .row:not(.foot) { flex-direction: column; }
+  .cbx .cbc-rv-actions .row.foot { padding-right: 0; min-height: 44px; }
 }
 
 /* ---------------------------------------------------------------- players (reveal, behind the scenes) */
@@ -162,3 +259,19 @@
 .cbx .cbc-count .cbc-lead.pop { animation: cbc-lead 0.6s var(--cb-ease-spring); }
 @keyframes cbc-lead { 0% { transform: scale(0.4) rotate(-6deg); opacity: 0; } 60% { transform: scale(1.08) rotate(2deg); opacity: 1; } 100% { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .cbx .cbc-count .cbc-lead.pop { animation: none; } }
+
+/* ---------------------------------------------------------------- 3D Photo: "Welcome to photo mode" (round 5)
+   Three numbered steps in the HUD's sheet; flat pink number discs, no art. */
+.cbx .cbx-sheet .cbc-welcome { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.cbx .cbx-sheet .cbc-wstep {
+  display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border-radius: var(--cb-r-md); background: var(--cb-cloud);
+  border: 2px solid var(--cb-pink-soft);
+}
+.cbx .cbx-sheet .cbc-wnum {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--cb-pink); color: var(--cb-white); font-size: 17px; font-weight: var(--cb-w-heavy);
+}
+.cbx .cbx-sheet .cbc-wstep b { display: block; font-size: 16px; color: var(--cb-ink); margin-bottom: 1px; }
+.cbx .cbx-sheet .cbc-wstep > span:last-child { font-size: 14px; line-height: 1.35; color: var(--cb-ink-soft); }
+.cbx .cbx-sheet .cbc-wfoot { font-size: 13.5px; text-align: center; }
+.cbx .cbx-sheet .cbc-wfoot b { color: var(--cb-ink); }

@@ -1,9 +1,9 @@
 // Talk tab: call controls, then what the chosen UI mode shows.
 //   Calm ("Just talk"): audio only, no text.
 //   Chat: typed messages (and call transcripts when the admin's visibility policy allows them in chat).
-//   Call debug ("Staff view"): live transcripts with partials, transcription state, trigger details.
+// (The old "Staff view" with partial transcripts and trigger details left the visitor app in round 5: chrome-5.)
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { Heart, Lightbulb, Mic, MicOff, Phone, PhoneOff, Send, Sparkles } from 'lucide-react';
+import { Heart, Lightbulb, MessageCircle, Mic, MicOff, Phone, PhoneOff, Send, Sparkles } from 'lucide-react';
 import type { UiMode } from '@/shared/config';
 import { useApp, useController } from '../context';
 import type { ChatMessage } from '../state/appState';
@@ -13,7 +13,7 @@ import { formatClock } from './callText';
 import { MicExplainer } from './TalkOrb';
 import { VoiceCard } from './VoiceCard';
 
-const MODE_LABELS: Record<UiMode, string> = { calm: 'Just talk', chat: 'Chat', call_debug: 'Staff' };
+const MODE_LABELS: Record<UiMode, string> = { calm: 'Just talk', chat: 'Chat', call_debug: 'Chat' };
 
 export function TalkPanel() {
   const uiMode = useApp((s) => s.uiMode);
@@ -48,10 +48,13 @@ function CallCard() {
   const canCall = useApp((s) => s.ui.show.call);
   const message = useApp((s) => s.callMessage);
   const micAsk = useApp((s) => s.micAsk);
+  const turnPhase = useApp((s) => (s.callDemo ? s.callTurn.phase : 'off'));
   if (!canCall) return null;
   const inCall = call === 'in-call';
   const busy = call === 'connecting' || call === 'ringing' || call === 'ending';
-  const line = inCall ? (speaking ? 'Cheer Bear is talking' : muted ? 'You are muted' : 'Listening…')
+  // voice-5: the demo call says whose turn it is
+  const turn = TURN_LINE[turnPhase];
+  const line = inCall ? (muted ? 'You are muted' : turn ?? (speaking ? 'Cheer Bear is talking' : 'Listening…'))
     : busy ? (call === 'ringing' ? 'Ringing…' : call === 'ending' ? 'Hanging up…' : 'Calling…')
       : call === 'error' ? 'That call did not connect.' : 'Call Cheer Bear and say hello!';
   return (
@@ -66,6 +69,12 @@ function CallCard() {
       </div>
       {inCall ? (
         <div className="cb-callcard-actions">
+          {(turnPhase === 'paused' || turnPhase === 'bear') && !muted && (
+            // voice-5: the panel covers the mic on phones: talk now from here (interrupts her / resumes listening)
+            <button type="button" className="cb-round is-soft" aria-label="Talk now" onClick={() => c.tapOrb()}>
+              <MessageCircle aria-hidden="true" size={22} />
+            </button>
+          )}
           <button
             type="button"
             className={`cb-round ${muted ? 'is-warn' : 'is-soft'}`}
@@ -94,6 +103,11 @@ function CallCard() {
   );
 }
 
+const TURN_LINE: Record<string, string | undefined> = {
+  bear: 'Cheer Bear is talking', listening: 'Your turn: talk to Cheer Bear!', hearing: 'Cheer Bear is listening…',
+  thinking: 'Cheer Bear is thinking…', paused: 'Tap the mic to talk',
+};
+
 function friendlyDetail(message: string): string | null {
   return /permission|denied|microphone/i.test(message)
     ? 'Tip: tap the lock or settings icon next to the web address and allow the microphone.'
@@ -103,13 +117,13 @@ function friendlyDetail(message: string): string | null {
 function ModeSwitch() {
   const c = useController();
   const uiMode = useApp((s) => s.uiMode);
-  const options: UiMode[] = uiMode === 'call_debug' ? ['calm', 'chat', 'call_debug'] : ['calm', 'chat'];
+  const options: UiMode[] = ['calm', 'chat'];
   return (
     <div
       className="cb-seg"
       role="radiogroup"
       aria-label="How do you want to talk?"
-      style={{ '--n': options.length, '--i': Math.max(0, options.indexOf(uiMode)) } as React.CSSProperties}
+      style={{ '--n': options.length, '--i': Math.max(0, options.indexOf(uiMode === 'calm' ? 'calm' : 'chat')) } as React.CSSProperties}
     >
       <span className="cb-seg-pill" aria-hidden="true" />
       {options.map((m) => (
@@ -117,7 +131,7 @@ function ModeSwitch() {
           key={m}
           type="button"
           role="radio"
-          aria-checked={uiMode === m}
+          aria-checked={(uiMode === 'calm' ? 'calm' : 'chat') === m}
           className="cb-seg-opt"
           onClick={() => c.setUiMode(m)}
         >{MODE_LABELS[m]}</button>
@@ -180,12 +194,11 @@ function MessageList() {
   const uiMode = useApp((s) => s.uiMode);
   const callVisible = useApp((s) => transcriptsVisible(s.ui.transcriptVisibility, s.uiMode, s.staffTranscripts));
   const messages = useApp((s) => s.messages);
-  const transcription = useApp((s) => s.transcription);
   const listRef = useRef<HTMLOListElement>(null);
   const stick = useRef(true);
   const mountedAt = useRef(Date.now());
-  const visible = messages.filter((m) => isVisible(m, uiMode, callVisible));
-  const staff = uiMode === 'call_debug';
+  const visible = messages.filter((m) => isVisible(m, uiMode === 'call_debug' ? 'chat' : uiMode, callVisible));
+  const staff = false;
   const thinking = useThinking(visible, messages, staff, callVisible);
 
   useLayoutEffect(() => {
@@ -195,13 +208,6 @@ function MessageList() {
 
   return (
     <>
-      {staff && (
-        <p className="cb-staffbar">
-          <span className={`cb-dot is-${transcription.cheer_bear.state}`} /> Cheer Bear: {transcription.cheer_bear.state}
-          <span className={`cb-dot is-${transcription.user.state}`} /> You: {transcription.user.state}
-          {!callVisible && <em> · transcripts hidden by policy</em>}
-        </p>
-      )}
       <ol
         ref={listRef}
         className="cb-msgs"

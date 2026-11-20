@@ -8,6 +8,10 @@
 // inside exactly as if you had walked (same crossing, same room). Leave glides it back out over you and home.
 //
 // She can walk in first (joystick through the doorway): she waits just inside the cottage, waving, until you come.
+//
+// Round 5 (camera-5, from the Happi demo, Dapo: "no dead ends"): the door swings open by itself when she walks up to
+// it (even while the after-Place door is still waiting for calm tracking); after you leave (walking out or Leave) she
+// pops out in front of the door facing you, the Step inside pill comes back and the hint says it is always there.
 import * as THREE from 'three';
 import type { Stage } from '../../scene/stage';
 import type { MomentRunner } from '../../scene/moments';
@@ -32,6 +36,7 @@ export interface WalkHost {
 const V = new THREE.Vector3(), V2 = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 const FC = new THREE.Vector3(), FF = new THREE.Vector3();
 const TIP_INSIDE = 'Tap the jukebox!';
+const BACK_IN = 'Step inside works anytime';
 
 export class HouseWalk {
   readonly stepBtn: HTMLButtonElement;
@@ -54,6 +59,8 @@ export class HouseWalk {
   get inside(): boolean {
     return this.st.houseSet.inside;
   }
+  /** Times the door opened because she walked up to it (tests). */
+  doorAutoOpens = 0;
   /** The house is gliding (step inside / leave). */
   get busy(): boolean {
     return this.glides.length > 0;
@@ -108,9 +115,18 @@ export class HouseWalk {
     if (Math.abs(lp.x) > 0.3 || lp.z < -1.4) this.glides.push({ to: this.poseFor(c, yaw, -0.95), dur: this.sh.reduced ? 0.4 : 0.8, t: 0 });
     this.glides.push(
       { to: this.poseFor(c, yaw, 1.6), dur: this.sh.reduced ? 0.5 : 1.1, t: 0, then: () => { if (this.inside) hs.setInside(false); } },
-      { to: () => ({ pos: hs.restPos(new THREE.Vector3()), yaw: 0 }), dur: this.sh.reduced ? 0.5 : 1.2, t: 0 },
+      { to: () => ({ pos: hs.restPos(new THREE.Vector3()), yaw: 0 }), dur: this.sh.reduced ? 0.5 : 1.2, t: 0, then: () => { this.backToDoor(); this.host.hint(BACK_IN, 4); } },
     );
     this.host.syncHud();
+  }
+
+  /** The house is home again after Leave: she pops out in front of its door, facing you (never left behind where the
+   *  room was while it glided). */
+  private backToDoor(): void {
+    const to = this.toDoor(new THREE.Vector3());
+    const c = this.camFlat().c;
+    const yaw = Math.atan2(c.x - to.x, c.z - to.z);
+    if (this.st.actor.position.distanceTo(to) > 0.2) this.hopTo(to, yaw, 0.05);
   }
 
   /** At once: house home, you outside, her by the door (Move, leaving AR, Start again, a game starting). */
@@ -177,7 +193,8 @@ export class HouseWalk {
       if (a.position.distanceTo(out) > 0.2) this.hopTo(out, yaw, 0.25);
       this.bearIn = false;
       this.tipT = 0;
-      this.host.hint('', 0);
+      // the way back in is always there: the Step inside pill comes back (syncHud below) and the hint says so
+      this.host.hint(BACK_IN, 4);
     }
     this.host.syncHud();
   }
@@ -209,6 +226,15 @@ export class HouseWalk {
       return;
     }
     const hw = COT.w / 2 + 0.2, z0 = -COT.d - 0.2, z1 = 0.16;
+    // she walks up to a shut door: it swings open by itself (round 5, Dapo on Happi). (`l` is the shared scratch V:
+    // nothing here may write V before the wall check below.)
+    if (door && hs.openTarget < 1 && Math.abs(l.x) < DOOR.w / 2 + 0.35 && l.z > -0.1 && l.z < 0.9) {
+      this.openIn = 0;
+      this.doorAutoOpens++;
+      this.host.note('door opens (she walked up)');
+      hs.setOpen(true);
+      this.st.fx.emit({ count: 14, glyph: ['heart', 'sparkle'], colors: [PAL.pink, PAL.white, PAL.yellow], at: hs.toStage(new THREE.Vector3(0, DOOR.h * 0.6, 0.2)), spread: [0.3 * hs.k, 0.5 * hs.k, 0.05 * hs.k], burst: 0.3 * hs.k, drag: 1.5, life: [0.7, 1.1], size: [0.05 * hs.k, 0.1 * hs.k] });
+    }
     if (Math.abs(l.x) < hw && l.z > z0 && l.z < z1) {
       if (door && Math.abs(l.x) < gap && hs.open > 0.6) {
         // through the open door: in she goes

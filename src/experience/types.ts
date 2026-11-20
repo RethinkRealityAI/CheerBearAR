@@ -120,11 +120,14 @@ export interface HudApi {
   /** A standard round tool button (icon + short label). */
   toolButton(opts: { label: string; icon: string; aria?: string; onClick: () => void }): HTMLButtonElement;
   /** The standard white shutter button (76 px). Put it in `centre`. */
-  shutter(onClick: () => void, aria?: string): HTMLButtonElement;
+  /** With `hold`: tap = photo, press and hold = video (src/experience/capture/recorder.ts clipHold). */
+  shutter(onClick: () => void, aria?: string, hold?: { start(): boolean; stop(): void }): HTMLButtonElement;
   /** A white flash (photo taken). */
   flash(): void;
   /** Show a sheet with a title, text and buttons. Resolves with the index of the button pressed. */
   sheet(opts: { title: string; body: string; buttons: string[] }): Promise<number>;
+  /** (chrome-5) Show / hide the Actions + Games pair, bottom right above the talk button. */
+  dock?(show: boolean | 'actions'): void;
   /** Joystick (bottom centre). Read `vector` every frame: x right, y down, length <= 1. */
   joystick(show: boolean): { readonly vector: THREE.Vector2; readonly active: boolean };
 }

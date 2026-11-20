@@ -56,7 +56,8 @@ export function loadPrefs(): Prefs {
   try {
     const parsed = JSON.parse(raw) as Partial<Prefs>;
     const p = { ...DEFAULT_PREFS, ...parsed };
-    if (p.uiMode !== null && !['calm', 'chat', 'call_debug'].includes(p.uiMode)) p.uiMode = null;
+    if (p.uiMode === 'call_debug') p.uiMode = 'chat'; // the staff view left the app (chrome-5, round 5)
+    if (p.uiMode !== null && !['calm', 'chat'].includes(p.uiMode)) p.uiMode = null;
     if (typeof p.welcomeSeenVersion !== 'number') p.welcomeSeenVersion = 0;
     return p;
   } catch {

@@ -237,6 +237,29 @@ export class AppController {
       voice.on('transcription', ({ speaker, state, message }) =>
         this.set((s) => ({ transcription: { ...s.transcription, [speaker]: { state, message } } }))),
     );
+    // voice-5: the demo call's turn taking (whose turn, your live words, thinking) and its voice commands
+    const ext = voice as VoiceSession & {
+      onCallTurn?(cb: (t: AppState['callTurn']) => void): () => void;
+      setCallCommandHandler?(fn: ((text: string) => string | null | false) | null): void;
+    };
+    if (ext.onCallTurn) this.offs.push(ext.onCallTurn((t) => {
+      this.set({ callTurn: t });
+      // voice-5: her caption and the turn bubble share the bottom of a phone: her last line stays a moment after she
+      // ends (the turn bubble waits for it, see TalkOrb), and goes as soon as the child talks
+      if (!this.demoLive || !this.s.captionOn) return;
+      if (t.phase === 'hearing' || t.phase === 'thinking') this.clearCaption();
+      else if (t.phase === 'listening' || t.phase === 'paused') this.timer('caption', 1200, () => this.clearCaption());
+    }));
+    if (ext.setCallCommandHandler) {
+      ext.setCallCommandHandler((text) => this.voiceUi.handleCallWords(text));
+      this.offs.push(() => ext.setCallCommandHandler?.(null));
+    }
+  }
+
+  /** The demo call is live (her lines and your words are generated here, so they show like chat). */
+  private get demoLive(): boolean {
+    const s = this.s;
+    return s.callDemo && (s.call === 'in-call' || s.call === 'ending');
   }
 
   // ------------------------------------------------------------------ voice events
@@ -266,6 +289,12 @@ export class AppController {
     }
   }
 
+  private clearCaption() {
+    this.cancel('caption');
+    this.experience?.setSpeechText(null);
+    this.set({ captionOn: false });
+  }
+
   private endSpeech() {
     this.cancel('caption');
     this.cancel('speaking');
@@ -275,19 +304,25 @@ export class AppController {
 
   private onTranscript(t: TranscriptEvent) {
     const kind = t.speaker === 'cheer_bear' ? 'bear' : 'user';
+    // voice-5: in the demo call both sides are made here (her lines by the demo brain), so the conversation shows in
+    // the chat like typed chat, finals only (no privacy policy applies: nothing came off a phone line)
+    const demo = this.demoLive;
     const exists = this.s.messages.some((m) => m.id === t.id);
     if (exists) this.patchMessage(t.id, { text: t.text, final: t.final });
     // `chat`: the demo Cheer Bear answering a typed message: shown like a chat reply (not a call transcript)
-    else this.addMessage({ id: t.id, kind, text: t.text, final: t.final, source: t.chat ? 'typed' : 'call' });
+    else if (!demo || t.final) this.addMessage({ id: t.id, kind, text: t.text, final: t.final, source: t.chat || demo ? 'typed' : 'call', note: demo && kind === 'user' ? 'Said out loud' : undefined });
 
     if (t.speaker !== 'cheer_bear') return;
     this.set({ speaking: true });
     this.timer('speaking', t.final ? 900 : 1600, () => this.set({ speaking: false }));
     const s = this.s;
-    if (t.final && (t.chat || transcriptsVisible(s.ui.transcriptVisibility, s.uiMode, s.staffTranscripts))) {
+    // her speech bubble grows word by word WHILE she talks (the HUD keeps the words already shown): with no voice at
+    // all (iOS not unlocked, no voices) the child can still read her. Real calls keep the admin's transcript policy.
+    const generated = t.chat || demo;
+    if (generated || (t.final && transcriptsVisible(s.ui.transcriptVisibility, s.uiMode, s.staffTranscripts))) {
       this.experience?.setSpeechText(t.text);
-      this.set({ captionOn: true });
-      this.timer('caption', Math.min(9000, 2500 + t.text.length * 50), () => { this.experience?.setSpeechText(null); this.set({ captionOn: false }); });
+      if (!s.captionOn) this.set({ captionOn: true });
+      this.timer('caption', t.final ? Math.min(9000, 2500 + t.text.length * 50) : 6000, () => { this.experience?.setSpeechText(null); this.set({ captionOn: false }); });
     }
   }
 
@@ -326,6 +361,13 @@ export class AppController {
   /** The talk button. */
   tapOrb() {
     const { call, ui } = this.s;
+    // voice-5, demo call: the button is the mic. A tap while she talks interrupts her and listens; a paused call (nobody
+    // spoke, or the browser wants a tap to listen again) listens now. While it already listens, it opens the panel.
+    const phase = this.s.callTurn.phase;
+    if (call === 'in-call' && this.s.callDemo && (phase === 'bear' || phase === 'paused' || phase === 'thinking')) {
+      const v = this.voice as (VoiceSession & { listenNow?(): boolean }) | null;
+      if (v?.listenNow?.()) { this.clearCaption(); return; }
+    }
     if (!ui.show.call || call === 'connecting' || call === 'ringing' || call === 'in-call' || call === 'ending') {
       this.openSheet('talk');
       return;
@@ -358,7 +400,9 @@ export class AppController {
     unlockAudio();
     if (!this.s.prefs.orbNudgeDone) this.updatePrefs({ orbNudgeDone: true });
     this.set({ call: 'connecting', callMessage: null });
-    v.startCall().catch((err: unknown) => {
+    // voice-5: where calling is not set up (no Twilio keys), "Call Cheer Bear" is the demo call instead of an error
+    const demo = !this.s.callsAvailable;
+    (v.startCall as (opts?: { mock?: boolean }) => Promise<void>)(demo ? { mock: true } : undefined).catch((err: unknown) => {
       console.warn('[app] startCall failed', err);
       if (this.s.call !== 'error') this.onStatus('error', err instanceof Error ? err.message : String(err));
     });

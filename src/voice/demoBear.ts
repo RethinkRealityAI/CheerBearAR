@@ -6,7 +6,7 @@
 import type { AppConfig } from '../shared/config';
 import type { VisemeFrame } from '../shared/contracts';
 import { BrowserVoice } from './browserVoice';
-import { DemoBrain } from './brain';
+import { DemoBrain, type BrainAnswer } from './brain';
 import type { MockFlags } from './mock';
 
 export interface DemoBearOptions {
@@ -68,14 +68,20 @@ export class DemoBear {
     return this.enqueue(async () => this.brain.greeting(), { chat: false, claimed: [] });
   }
 
-  /** Answers what the child said or typed. `claimed`: keywords their own words already fired. */
-  answer(userText: string, opts: { chat: boolean; claimed?: string[]; thinkMs?: number }): Promise<void> {
+  /**
+   * Answers what the child said or typed. `claimed`: keywords their own words already fired. `onReply`: the answer,
+   * as soon as it is known (before she says it). An AI answer claims every keyword (it never fires a moment).
+   */
+  answer(userText: string, opts: { chat: boolean; claimed?: string[]; thinkMs?: number; onReply?(r: BrainAnswer): void }): Promise<void> {
     const reply = this.brain.reply(userText); // starts now (AI request in flight while an earlier line plays)
-    const think = (opts.thinkMs ?? 450) / Math.max(1, this.opts.flags.speed);
+    const think = (opts.thinkMs ?? 200) / Math.max(1, this.opts.flags.speed);
+    const claimed = [...(opts.claimed ?? [])];
     return this.enqueue(async () => {
       const [r] = await Promise.all([reply, sleep(think)]);
+      if (r.blockAll) claimed.push(...this.opts.getConfig().localClassifier.keywords);
+      try { opts.onReply?.(r); } catch { /* ignore */ }
       return r.text;
-    }, { chat: opts.chat, claimed: opts.claimed ?? [] });
+    }, { chat: opts.chat, claimed });
   }
 
   /**

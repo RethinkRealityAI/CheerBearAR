@@ -13,7 +13,11 @@ export function ActionsPanel() {
         {keywords.map((k) => {
           const look = actionLook(k);
           return (
-            <button key={k} type="button" className="cb-action" onClick={() => c.quickAction(k)}>
+            <button key={k} type="button" className="cb-action" onClick={() => {
+              c.quickAction(k);
+              // phones: the half sheet covers her, so it closes and you see her do it (computers keep the sidebar)
+              if (!c.store.get().isDesktop) c.closeSheet();
+            }}>
               <span className="cb-action-icon" style={{ background: look.color }} aria-hidden="true">
                 <look.icon size={18} strokeWidth={2.4} />
               </span>

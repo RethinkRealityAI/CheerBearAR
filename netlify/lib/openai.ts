@@ -2,8 +2,12 @@
 import { openaiEnv } from './env';
 import { HttpError } from './http';
 
-/** Models that do not support server VAD: the browser must send input_audio_buffer.commit itself. */
-const CLIENT_COMMIT_MODELS = new Set(['gpt-live-transcribe', 'gpt-realtime-whisper']);
+/**
+ * Models that do not support server VAD: the browser must send input_audio_buffer.commit itself. voice-5: the current
+ * Realtime transcription guide sets turn_detection null and commits manually for gpt-transcribe too (it does not say
+ * it accepts server VAD), so it is committed client-side as well (always valid).
+ */
+const CLIENT_COMMIT_MODELS = new Set(['gpt-live-transcribe', 'gpt-realtime-whisper', 'gpt-transcribe']);
 /** Models that take `languages: [...]` (plural) and `keywords`, per the Realtime transcription docs. */
 const PLURAL_LANGUAGE_MODELS = new Set(['gpt-live-transcribe', 'gpt-transcribe']);
 

@@ -9,8 +9,10 @@
 // Everything frees what it made: object URLs on close, video elements paused, src removed and detached.
 export { Countdown, flash } from './countdown';
 export { compose, drawCover, engineShot, JPEG_QUALITY, MAX_EDGE, type OverlayFn } from './compose';
-export { ReviewSheet, type ReviewOptions } from './review';
+export { ReviewSheet, type ReviewOptions, type ReviewStyles } from './review';
 export { RevealPlayer, BtsPlayer, REVEAL_URL, BTS_URL } from './reveal';
 export { photoFile, saveBlob, shareFile, canShareFile } from './share';
 export { chromaMaterial } from './chroma';
 export { el, esc, CICON, actionButton, iconButton, segmented, loadImage } from './ui';
+export { recorder, clipHold, clipExt, CLIP_MAX_S } from './recorder';
+export { styleStrip, FILTER_CSS, type StyleStrip } from './style-strip';

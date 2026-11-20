@@ -18,6 +18,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import type { CameraKind, EngineView, FaceEvent, XrScene } from '../types';
 import { qs, now } from './device';
 import { worldHealth, type WorldHealth } from './world-health';
+import { recorder } from '../capture/recorder';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type XR8Api = any;
@@ -460,6 +461,7 @@ export class Engine implements EngineView {
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
       }
+      recorder.frame(this.canvas); // camera-5: the frame is drawn (three renders before us): video clips copy it now
     },
     onUpdate: ({ processCpuResult }: { processCpuResult?: { reality?: { trackingStatus?: string } } }) => {
       const t = now();

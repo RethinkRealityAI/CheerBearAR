@@ -13,7 +13,7 @@
 //               The first-time "Hold to talk" nudge points straight at it: the panel button above it waits until the
 //               nudge goes (first words, or after NUDGE_MS) so nothing sits between the two.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { LayoutGrid, MessageCircle, Mic, MicOff, Phone, PhoneOff, RotateCcw, Sparkles } from 'lucide-react';
+import { MessageCircle, Mic, MicOff, Phone, PhoneOff, RotateCcw, Sparkles } from 'lucide-react';
 import { useApp, useController } from '../context';
 import type { VoiceBubble } from '../state/appState';
 import { VoiceDiagHost } from './VoiceDiagHost';
@@ -38,6 +38,9 @@ export function TalkOrb() {
   const voiceEnabled = useApp((s) => s.ui.voiceMode.enabled);
   const voice = useApp((s) => s.voice);
   const voiceBubble = useApp((s) => s.voiceBubble);
+  // voice-5: the demo call's turn taking (whose turn it is, your live words, "thinking")
+  const turn = useApp((s) => (s.callDemo && s.call === 'in-call' ? s.callTurn : null));
+  const captionOn = useApp((s) => s.captionOn);
   const voiceNudge = useApp((s) => !s.prefs.voiceNudgeDone);
   const tapToTalk = useApp((s) => s.prefs.tapToTalk ?? !s.ui.voiceMode.holdToTalk);
   const keyHeld = useRef(false);
@@ -117,7 +120,9 @@ export function TalkOrb() {
     chat: text.openChat,
     idle: text.call,
     busy: 'Calling Cheer Bear. Open the conversation',
-    live: `On a call with Cheer Bear. Open the conversation. Press and hold to ${text.hangUp.toLowerCase()}`,
+    live: turn?.phase === 'bear' ? 'Cheer Bear is talking. Tap to talk instead'
+      : turn?.phase === 'paused' ? 'Tap to talk to Cheer Bear'
+        : `On a call with Cheer Bear. Open the conversation. Press and hold to ${text.hangUp.toLowerCase()}`,
     error: 'Call did not connect. Tap to try again',
     voice: voiceOff ? 'Open the magic words'
       : listening ? (tapToTalk ? 'Listening. Tap again when you are done' : 'Listening. Let go when you are done')
@@ -148,11 +153,18 @@ export function TalkOrb() {
       : state === 'error' ? 'Tap to try again' : null;
   // the first-time voice nudge: right above the mic, its tail pointing at it (the panel button waits)
   const voiceNudgeOn = state === 'voice' && !micAsk && !voiceBubble && voiceNudge && !nudgeExpired && !voiceOff && !quietCorner && !listening;
-  const showMore = (state === 'idle' || state === 'error' || (state === 'voice' && !listening && !voiceBubble && !voiceNudgeOn)) && !micAsk && !(isDesktop && sheetOpen);
+  // (chrome-5, round 5) the old panel button above the talk button is gone: the experience's Actions + Games pair sits
+  // there now and opens the sheet on those tabs (it steps aside while a bubble or a call uses this corner)
+  const showMore = false;
   const above = showMore ? 1 : 0;
   // voice mode's bubble: live words, hints, "try saying" chips, the camera chip; else the first-time nudge
-  const vBubble: VoiceBubble | null = state !== 'voice' || micAsk ? null
-    : voiceBubble ?? (voiceNudgeOn ? { id: 0, kind: 'nudge', text: tapToTalk ? 'Tap to talk' : 'Hold to talk' } : null);
+  // (voice-5) while her last line is still on screen the turn bubble waits (they sit in the same place on phones)
+  const vBubble: VoiceBubble | null = state === 'live' && turn ? voiceBubble ?? (captionOn && (turn.phase === 'listening' || turn.phase === 'paused') ? null : turnBubble(turn))
+    : state !== 'voice' || micAsk ? null
+      // (voice-5) once she answers, your words step aside for her caption (same place on phones)
+      : voiceBubble ? (captionOn && !listening && voiceBubble.kind === 'caption' ? null : voiceBubble)
+        : voiceNudgeOn ? { id: 0, kind: 'nudge', text: tapToTalk ? 'Tap to talk' : 'Hold to talk' } : null;
+  const turnLive = !!turn && (turn.phase === 'listening' || turn.phase === 'hearing');
 
 
   // ---- voice mode input (pointer hold, keyboard hold, click)
@@ -193,21 +205,16 @@ export function TalkOrb() {
       {bubble && !micAsk && state !== 'voice' && (
         <div key={bubble} className={`cb-orb-bubble${state === 'error' ? ' is-error' : ''}${showMore ? ' is-above-more' : ''}`} aria-hidden="true">{bubble}</div>
       )}
-      {vBubble && <VoiceBubbleView b={vBubble} above={above} listening={listening} />}
+      {vBubble && <VoiceBubbleView b={vBubble} above={above} listening={listening || turnLive} />}
       {inCall ? (
         <button type="button" className="cb-hangup" onClick={() => c.hangUp()} aria-label={text.hangUp}>
           <PhoneOff aria-hidden="true" size={22} strokeWidth={2.4} />
         </button>
-      ) : showMore && (
-        // without a call, the talk button calls (or listens): this opens chat, actions, games and settings instead
-        <button type="button" className="cb-more" onClick={() => c.openSheet()} aria-label="Open chat, games and settings">
-          <LayoutGrid aria-hidden="true" size={22} strokeWidth={2.4} />
-        </button>
-      )}
+      ) : null}
       <button
         ref={orbRef}
         type="button"
-        className={`cb-orb is-${state}${call === 'ringing' ? ' is-ringing' : ''}${speaking && inCall ? ' is-speaking' : ''}${holding ? ' is-holding' : ''}${listening ? ' is-listening' : ''}${voiceOff ? ' is-voice-off' : ''}`}
+        className={`cb-orb is-${state}${call === 'ringing' ? ' is-ringing' : ''}${speaking && inCall ? ' is-speaking' : ''}${holding ? ' is-holding' : ''}${listening ? ' is-listening' : ''}${voiceOff ? ' is-voice-off' : ''}${turn ? ` is-turn-${turn.phase}` : ''}`}
         aria-label={label}
         aria-haspopup={state === 'idle' || state === 'voice' ? undefined : 'dialog'}
         aria-pressed={state === 'voice' && tapToTalk && !voiceOff ? listening : undefined}
@@ -234,10 +241,26 @@ export function TalkOrb() {
         {inCall && <span className="cb-orb-hold" aria-hidden="true" />}
       </button>
       <span className="cb-sr-only" role="status" aria-live="polite">
-        {call === 'connecting' ? 'Calling Cheer Bear' : call === 'in-call' ? 'Connected to Cheer Bear' : listening ? 'Listening' : call === 'error' ? 'Call did not connect' : ''}
+        {call === 'connecting' ? 'Calling Cheer Bear' : turn ? TURN_SR[turn.phase] : call === 'in-call' ? 'Connected to Cheer Bear' : listening ? 'Listening' : call === 'error' ? 'Call did not connect' : ''}
       </span>
     </div>
   );
+}
+
+const TURN_SR: Record<string, string> = {
+  off: 'Connected to Cheer Bear', bear: 'Cheer Bear is talking', listening: 'Your turn. Cheer Bear is listening',
+  hearing: 'Cheer Bear is listening', thinking: 'Cheer Bear is thinking', paused: 'Tap the button to talk', muted: 'You are muted',
+};
+
+/** voice-5: the demo call's bubble above the mic: your turn, your words as you say them, her "thinking" dots, paused. */
+function turnBubble(t: { phase: string; text?: string; message?: string }): VoiceBubble | null {
+  switch (t.phase) {
+    case 'listening': return { id: -1, kind: 'caption', text: 'Your turn! Talk to me.' };
+    case 'hearing': return t.text ? { id: -1, kind: 'caption', text: t.text } : null;
+    case 'thinking': return { id: -2, kind: 'thinking', text: 'Cheer Bear is thinking' };
+    case 'paused': return { id: -3, kind: 'hint', text: t.message ? `${t.message} Tap me to talk!` : 'Tap me to talk!' };
+    default: return null;
+  }
 }
 
 /** The experience's bottom controls the bubble must never cover: Place, Move, the shutter, the joystick, tools. */
@@ -295,7 +318,9 @@ function VoiceBubbleView({ b, above, listening }: { b: VoiceBubble; above: numbe
       data-testid="voice-bubble"
     >
       {b.kind === 'caption' && listening && !/^Getting ready/.test(b.text) && <span className="cb-vbubble-rec" aria-hidden="true" />}
-      <span className="cb-vbubble-text">{b.text}</span>
+      {b.kind === 'thinking'
+        ? <span className="cb-vbubble-dots" aria-label={b.text}><i /><i /><i /></span>
+        : <span className="cb-vbubble-text">{b.text}</span>}
       {b.kind === 'problem' && b.help && <span className="cb-vbubble-help">{b.help}</span>}
       {(b.kind === 'unknown' || b.kind === 'problem') && b.examples && (
         <span className="cb-vbubble-chips">

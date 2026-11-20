@@ -1,0 +1,24 @@
+PASS Talk tab has "Call Cheer Bear"
+PASS without Twilio, "Call Cheer Bear" starts the demo call (no "calling isn't working")
+PASS her words show in her speech bubble WHILE she talks (demo call)
+PASS after her greeting it is your turn ("Your turn!" bubble)
+PASS her old line is gone while you talk or she thinks (no two bubbles at the bottom)
+PASS "thinking" shows between your words and her answer
+PASS the thinking dots render in the bubble
+PASS "good" after "how are you?" gets a happy answer, not "not sure" (Hooray! Happy friends are the best!)
+PASS knock knock: "Boo who?" (Boo who?)
+PASS "can you dance?" -> she says dance (Ooh, I love to dance! Here I go!)
+PASS tap the mic while she talks: she stops and it is your turn (listening)
+PASS after a tap her caption goes at once (no two bubbles) (false)
+PASS "take a picture" in the call is a command (camera mode or the shutter), not small talk (Selfie time!)
+PASS the conversation shows in the chat (your words and hers) (22 messages)
+PASS the mic is never open while she talks (half duplex; warm-up at ring time excluded)
+PASS she never answers her own voice (0)
+PASS your words end -> her voice under 1.2 s every turn (800, 765, 641, 645, 857, 761, 807, 745)
+PASS moments fired only when asked (Dance), never from small talk (Dance)
+PASS quiet: one "still there?", then it waits for a tap (no endless listening)
+PASS a tap resumes listening
+PASS hang up: mic closed
+PASS hold to talk: your words step aside while her answer shows (no two bubbles)
+PASS hold to talk "how are you today" -> she answers (same brain as the call) (I feel great! Talking with you makes my day. How are you feeling?)
+PASS no console errors

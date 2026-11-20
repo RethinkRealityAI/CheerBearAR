@@ -9,6 +9,12 @@
 //            it with your phone (or tap "Step inside" / the house and the room comes to you), the TV plays the theme;
 //            walk back out or tap Leave (./house-walk.ts, scene/house/)
 //
+// Placement (round 5, camera-5, from the Happi demo): Place lights only after the reticle has sat on a steady floor for
+// half a second (on top of the settled gate ar-4 re-arms on every Move); the reticle always sits above the bottom
+// controls (a far floor point that would land under them is pushed out, and "Tilt your phone down" shows when the
+// phone is held too level); Move brings her home to the stage's centre so she previews right on the reticle in view,
+// at the default size; "Can't see Cheer Bear?" offers Move when she has been off screen for a few seconds.
+//
 // Leaving AR remembers where the stage stood relative to the phone; coming back (from 3D or Selfie) puts it back in
 // the same place in front of you once tracking has settled again (a new run has a new world origin).
 import * as THREE from 'three';
@@ -23,6 +29,7 @@ import { ICON } from '../../hud/icons';
 import { bindGestures, type Shared } from '../shared';
 import { HeartToss, hugBear } from '../../physics/toss';
 import { PlayKit, type PlayGame, type PlayHost } from '../../play';
+import { SceneShot } from '../../capture/scene-shot';
 
 /** The "throw hearts" hint shows once per visit. */
 let tossHinted = false;
@@ -33,7 +40,10 @@ const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tal
  * Move puts both back to the default.
  */
 const houseMul = (s: number) => THREE.MathUtils.clamp(s / SCALE.def, 0.6, 1.6);
-const REACH = { min: 0.8, max: 3.6 }; // metres from the phone the reticle may sit
+const REACH = { min: 0.8, max: 3.6, far: 6 }; // metres from the phone the reticle may sit (far: only to clear the controls)
+const STEADY = 0.5; // seconds the reticle must sit steadily on the floor before Place lights up
+const LOST_S = 4; // seconds off screen before "Can't see Cheer Bear?"
+const LOST_HINT = "Can't see her? Tap Move";
 const AREA = 3.0; // stage units she may walk from the stage centre
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
 const TOSS_HINT = 'Swipe up to throw hearts';
@@ -46,6 +56,8 @@ export class ArMode implements Mode {
   readonly root = new THREE.Group();
   private anchor = new THREE.Group();
   private reticle = new THREE.Group();
+  /** camera-5: the capture button (dock top) and its review. */
+  shot: SceneShot | null = null;
   private state: State = 'placing';
   private scale = SCALE.def;
   private everPlaced = false;
@@ -73,6 +85,16 @@ export class ArMode implements Mode {
   private hintT = 0;
   private limitedT = 0;
   private lastHint = '';
+  /** How long the reticle has sat on the floor without a break (Place waits for a steady half second). */
+  private steadyT = 0;
+  /** The phone is held too level: the floor point is past reach (or there is none), so ask to tilt down. */
+  private aimLow = false;
+  /** How long she has been off screen while placed (a hint then offers Move). */
+  private lostT = 0;
+  /** The lowest the reticle may sit on screen (NDC y), above the bottom controls; re-measured every second. */
+  private floorY = -0.55;
+  private floorYAt = 0;
+  private pv2 = new THREE.Vector3();
   // scratch
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private hit = new THREE.Vector3();
@@ -193,12 +215,24 @@ export class ArMode implements Mode {
       this.state = 'placed';
     } else this.state = 'placing';
     this.anchor.visible = false;
+    // camera-5 (round 5): tap = photo, hold = video, from the top of the Actions + Games stack (shows once she is placed:
+    // it follows the dock)
+    this.shot ??= new SceneShot({
+      container: this.sh.container, reduced: this.sh.reduced, capture: (b) => this.sh.ctx.capture(b),
+      shutter: (on, aria, hold) => this.sh.hud.shutter(on, aria, hold), toast: (t) => this.sh.hud.toast(t, 2000),
+      source: this.sh.ctx.engine, name: 'cheer-bear-ar', title: 'Your AR photo',
+      can: () => this.live && this.state === 'placed' && !this.restoring && !this.game && !this.inside,
+    });
+    this.shot.setLive(true);
+    this.sh.hud.dockShutter(this.shot.el);
     this.syncHud();
   }
 
   exit(_to: ExperienceMode): void {
     this.active = false;
     this.live = false;
+    this.shot?.setLive(false);
+    this.sh.hud.dockShutter(null);
     this.runner.cancel();
     this.toss.show(false);
     this.toss.reset();
@@ -348,7 +382,11 @@ export class ArMode implements Mode {
 
   // ------------------------------------------------------------------ placing
   private canPlace(): boolean {
-    return this.state === 'placing' && this.sh.ctx.engine.settled() && this.reticle.visible;
+    return this.state === 'placing' && this.sh.ctx.engine.settled() && this.reticle.visible && this.steadyT >= STEADY;
+  }
+  /** Tests: the steady-floor gate and the hints' inputs. */
+  get placeDiag(): { steady: number; aimLow: boolean; lost: number; floorY: number } {
+    return { steady: +this.steadyT.toFixed(2), aimLow: this.aimLow, lost: +this.lostT.toFixed(2), floorY: +this.floorY.toFixed(3) };
   }
 
   private place(): void {
@@ -383,6 +421,16 @@ export class ArMode implements Mode {
     this.runner.cancel();
     this.collapseNow();
     this.walk.reset();
+    // she comes home to the stage's centre, facing you: the preview then sits right on the reticle, in view (round 5,
+    // Dapo on Happi: after a reset the character must always be in view, never left where the joystick took her)
+    if (!this.game) {
+      const a = this.stage.actor;
+      a.position.set(0, 0, 0);
+      a.setHeading(0);
+      a.settle();
+    }
+    this.steadyT = 0;
+    this.lostT = 0;
     this.game?.pause('move'); // the round waits; Place carries on (the game keeps its state)
     this.scale = SCALE.def;
     this.applyScale();
@@ -453,6 +501,7 @@ export class ArMode implements Mode {
     if (this.state === 'placing') {
       const hasHit = settled && this.floorHit();
       this.reticle.visible = hasHit;
+      this.steadyT = hasHit ? this.steadyT + dt : 0;
       if (hasHit) {
         const first = !this.anchor.visible;
         this.reticle.position.copy(this.hit);
@@ -469,8 +518,9 @@ export class ArMode implements Mode {
         }
         this.anchor.visible = true;
       }
-      this.placeBtn.disabled = !hasHit;
-      this.placeBtn.textContent = hasHit ? 'Place Cheer Bear' : 'Getting ready…';
+      const ready = hasHit && this.steadyT >= STEADY;
+      this.placeBtn.disabled = !ready;
+      this.placeBtn.textContent = ready ? 'Place Cheer Bear' : 'Getting ready…';
     }
 
     // walking
@@ -494,7 +544,38 @@ export class ArMode implements Mode {
     st.root.updateMatrixWorld();
     st.update(dt, xr.camera);
     a.update(dt, xr.camera.getWorldPosition(this.w));
+    this.trackLost(dt, xr.camera);
     this.hints(dt, eng.tracking, settled);
+  }
+
+  /** Count how long she has been off screen while placed (outside the house, no game, nothing gliding). */
+  private trackLost(dt: number, cam: THREE.Camera): void {
+    if (this.state !== 'placed' || this.restoring || this.inside || this.game || this.walk.busy || this.walk.bearIn) { this.lostT = 0; return; }
+    const p = this.stage.actor.holder.getWorldPosition(this.pv);
+    p.y += 0.4 * this.scale;
+    const v = this.pv2.copy(p).applyMatrix4(cam.matrixWorldInverse);
+    let on = v.z < -0.05;
+    if (on) { p.project(cam); on = Math.abs(p.x) < 1.02 && Math.abs(p.y) < 1.02; }
+    this.lostT = on ? 0 : this.lostT + dt;
+  }
+
+  /** NDC y below which the reticle would sit under the bottom controls (measured from the HUD once a second). */
+  private controlsY(): number {
+    const t = performance.now();
+    if (t - this.floorYAt > 1000) {
+      this.floorYAt = t;
+      const box = this.sh.container.getBoundingClientRect();
+      let top = box.bottom - 150; // fallback: the bottom row and the Place pill
+      for (const n of this.sh.container.querySelectorAll<HTMLElement>('.cbx-bottom, .cbx-above')) {
+        for (const c of n.querySelectorAll<HTMLElement>('button, .cbx-stick')) {
+          const r = c.getBoundingClientRect();
+          if (r.height && r.width && c.offsetParent && r.left < box.left + box.width * 0.7 && r.right > box.left + box.width * 0.3) top = Math.min(top, r.top);
+        }
+      }
+      const y = ((top - 24 - box.top) / Math.max(1, box.height)) * 2; // 24 px clear above them
+      this.floorY = THREE.MathUtils.clamp(1 - y, -0.85, -0.2);
+    }
+    return this.floorY;
   }
 
   /** Keep her in the play area and out of the house walls; the open doorway lets her in (./house-walk.ts). */
@@ -517,13 +598,15 @@ export class ArMode implements Mode {
       this.v.copy(this.hit).sub(this.camPos).setY(0);
       d = this.v.length();
     } else d = REACH.max;
+    this.aimLow = !got || d > REACH.max + 0.3;
     d = THREE.MathUtils.clamp(d, REACH.min, REACH.max);
-    this.hit.copy(this.camPos).addScaledVector(this.camFwd, d).setY(0);
-    if (got) {
-      // keep the sideways offset of the real hit
-      const side = this.w.set(-this.camFwd.z, 0, this.camFwd.x);
-      const off = this.v.dot(side);
-      this.hit.addScaledVector(side, THREE.MathUtils.clamp(off, -1, 1));
+    const side = this.w.set(-this.camFwd.z, 0, this.camFwd.x);
+    const off = got ? THREE.MathUtils.clamp(this.v.dot(side), -1, 1) : 0; // keep the sideways offset of the real hit
+    this.hit.copy(this.camPos).addScaledVector(this.camFwd, d).addScaledVector(side, off).setY(0);
+    // a clamped point can land low on screen, under Place / the joystick: push it out until it sits above them
+    const lim = this.controlsY();
+    for (let dd = d; dd < REACH.far && this.pv.copy(this.hit).project(xr.camera).y < lim; dd += 0.25) {
+      this.hit.copy(this.camPos).addScaledVector(this.camFwd, dd + 0.25).addScaledVector(side, off).setY(0);
     }
     return true;
   }
@@ -548,12 +631,9 @@ export class ArMode implements Mode {
     if (walking && this.inside) hud.left.appendChild(this.leaveBtn);
     else this.leaveBtn.remove();
     this.walk.syncHud(walking && !this.game);
-    // Games (above Move) once she is placed, while no game runs and you're not inside the house
-    if (walking && !this.inside && !this.game && this.onPickGame) {
-      this.gamesBtn ??= hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Cheer Bear', onClick: () => this.onPickGame?.() });
-      this.gamesBtn.dataset.cmd = 'games';
-      hud.left.appendChild(this.gamesBtn);
-    } else this.gamesBtn?.remove();
+    // Actions + Games (bottom right, above the talk button) once she is placed, while no game runs and you're not
+    // inside the house (chrome-5, round 5: they moved from the left, so Move has the bottom left to itself)
+    hud.dock?.(walking && !this.inside && !this.game);
   }
 
   private flashHint(text: string, s: number): void {
@@ -569,7 +649,9 @@ export class ArMode implements Mode {
     this.limitedT = tracking === 'LIMITED' ? this.limitedT + dt : 0;
     if (this.limitedT > 1.5) text = 'Move your phone slowly';
     else if (this.restoring || (this.state === 'placing' && !settled)) text = 'Point at the floor';
+    else if (this.state === 'placing' && this.aimLow) text = 'Tilt down to the floor';
     else if (this.state === 'placing') text = 'Pinch to size, then Place';
+    else if (this.lostT > LOST_S) text = LOST_HINT;
     else if (this.hintT > 0) {
       this.hintT -= dt;
       text = this.hintT > 0 ? this.lastHint : '';

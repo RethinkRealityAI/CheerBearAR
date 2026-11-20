@@ -13,16 +13,24 @@
 //               itself has no countdown; round 2 assumed it did, so nothing was shown between her pose and the photo.)
 //               The shutter shoots at once during the 3-2-1 and plays the clip again for another take afterwards.
 //               Autoplay refused -> a "Tap to play" button.
+//     Just me   no bear: you, the face effects, the frame (round 5: the show / hide-the-bear option, as on Happi).
+//   frames    round 5 (camera-5, ported from the Happi demo): live frame + filter chips above the shutter (Rainbow,
+//             Clouds, Hearts, Clean | Natural, Warm, Candy, Mono). The frame draws on the overlay at once, the filter
+//             is a CSS look on the camera canvas; both are baked into the photo and the video exactly.
+//   shutter   tap = photo (the countdown as before); press and hold = a video clip (frame, filter, title and the
+//             experience's sound in it; capture/recorder.ts), up to 30 s, then the review plays it inline.
 //   smile     optional "Smile" switch (bottom left, off by default): a held smile starts the shot.
-//   review    camera + 3D (+ the keyed clip) + the title art in one JPEG (the selfie is the mirror image you saw; the
-//             art is never mirrored): Save / Share / Retake / Watch photo animation / Behind the scenes.
+//   review    camera + 3D (+ the keyed clip) + frame + filter + the title art in one JPEG (the selfie is the mirror
+//             image you saw; the art is never mirrored): Retake / Save / Share / Watch photo animation / Behind the scenes.
 import * as THREE from 'three';
 import type { BearClip, BearExpression, ExperienceMode } from '../../../shared/contracts';
 import type { FaceEvent, Mode, ModeContext, XrScene } from '../../types';
 import {
   BtsPlayer, CICON, Countdown, RevealPlayer, ReviewSheet, chromaMaterial, compose, engineShot, flash, el, segmented,
 } from '../../capture';
-import { drawFrameArt, loadFrameArt } from '../../capture/frame-art';
+import { drawFrameArt, loadFrameArt, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
+import { styleStrip, FILTER_CSS, type StyleStrip } from '../../capture/style-strip';
+import { clipHold, recorder } from '../../capture/recorder';
 import { shutterSound } from '../../capture/sounds';
 import { FaceFx } from './face-fx';
 import { FaceSignals, type FaceCue } from './signals';
@@ -38,8 +46,9 @@ const CLASSIC_COUNT_S = 3;
 /** Draw order of the 3D bear: after everything else, behind a depth clear. */
 const OVERLAY_ORDER = 1000;
 
-type State = 'off' | 'live' | 'countdown' | 'clip' | 'busy' | 'review';
-type Look = '3d' | 'classic';
+type State = 'off' | 'live' | 'countdown' | 'clip' | 'busy' | 'review' | 'recording';
+/** 3D bear beside you, the Classic clip, or just you (no bear). */
+type Look = '3d' | 'classic' | 'none';
 
 // trigger words -> what the selfie bear does
 const REACT: Record<string, BearClip> = {
@@ -59,7 +68,7 @@ export class FaceMode implements Mode {
   smileSnap = false;
   /** Test hooks. */
   readonly diag = {
-    shots: 0, lastPhoto: null as Blob | null, faceEvents: 0, soundPrimed: false,
+    shots: 0, clips: 0, lastPhoto: null as Blob | null, lastClip: null as Blob | null, faceEvents: 0, soundPrimed: false,
     clipPlays: 0, clipEnds: 0, clipAutoShots: 0, clipBlocked: 0, clipMuted: false, clipT: 0, clipCounts: 0,
     reactions: {} as Record<string, number>, expression: 'neutral' as BearExpression, smileShots: 0,
     overlayClears: 0, attachmentKeys: [] as string[],
@@ -79,6 +88,11 @@ export class FaceMode implements Mode {
   private overlay: HTMLCanvasElement;
   private shutterBtn: HTMLButtonElement | null = null;
   private picker: { el: HTMLElement; set(id: string): void };
+  /** The live frame + filter chips above the shutter (round 5: pick them while framing, not after). */
+  private strip: StyleStrip;
+  private tint: HTMLElement;
+  frame: FrameStyle = 'rainbow';
+  filter: PhotoFilter = 'natural';
   private smileBtn: HTMLButtonElement;
   private tapPlay: HTMLButtonElement;
   private countdown: Countdown | null = null;
@@ -160,7 +174,16 @@ export class FaceMode implements Mode {
     this.overlay = el('canvas', 'cbc-overlay');
     this.overlay.setAttribute('aria-hidden', 'true');
     // choosing Classic is a tap: the clip starts (with sound) inside it
-    this.picker = segmented('Selfie look', [{ id: '3d', label: '3D bear' }, { id: 'classic', label: 'Classic' }], this.look, (id) => this.setLook(id as Look, true));
+    this.picker = segmented('Selfie look', [{ id: '3d', label: '3D bear' }, { id: 'classic', label: 'Classic' }, { id: 'none', label: 'Just me' }], this.look, (id) => this.setLook(id as Look, true));
+    this.picker.el.classList.add('cbc-look');
+    this.strip = styleStrip(this.frame, this.filter, (frame, filter) => {
+      this.frame = frame;
+      this.filter = filter;
+      this.drawOverlay();
+      this.liveFilter();
+    });
+    this.tint = el('div', 'cbc-tint');
+    this.tint.setAttribute('aria-hidden', 'true');
     this.smileBtn = ctx.hud.toolButton({ label: 'Smile', icon: SMILE_ICON, aria: 'Smile to take the photo', onClick: () => this.toggleSmileSnap() });
     this.smileBtn.setAttribute('aria-pressed', 'false');
     this.smileBtn.classList.add('cbc-toggle');
@@ -209,11 +232,13 @@ export class FaceMode implements Mode {
     this.signals.reset();
     const hud = this.ctx.hud;
     this.countdown = new Countdown(hud.layer, this.ctx.reducedMotion);
-    hud.layer.appendChild(this.overlay);
+    hud.layer.append(this.tint, this.overlay);
     this.measureTitle();
     this.drawOverlay();
-    this.resizeObs = new ResizeObserver(() => { this.measureTitle(); this.drawOverlay(); });
+    this.liveFilter();
+    this.resizeObs = new ResizeObserver(() => { this.measureTitle(); this.drawOverlay(); this.publishStripHeight(); });
     this.resizeObs.observe(this.ctx.container);
+    this.resizeObs.observe(this.strip.el);
     this.borrowBear();
     this.state = 'live';
     this.toLive(true);
@@ -221,6 +246,7 @@ export class FaceMode implements Mode {
   }
 
   exit(_to: ExperienceMode): void {
+    if (this.state === 'recording') void recorder.stop(); // the clip is dropped (onDone sees the mode is off)
     this.state = 'off';
     this.stopClip();
     this.countdown?.dispose();
@@ -231,11 +257,15 @@ export class FaceMode implements Mode {
     this.shutterBtn?.remove();
     this.shutterBtn = null;
     this.picker.el.remove();
+    this.strip.el.remove();
+    this.tint.remove();
+    this.liveFilter(true);
     this.smileBtn.remove();
     this.tapPlay.remove();
     this.overlay.remove();
     this.resizeObs?.disconnect();
     this.resizeObs = null;
+    this.ctx.container.style.removeProperty('--cbx-strip-h');
     this.setExpression('neutral');
     this.returnBear();
     this.root.visible = false;
@@ -266,8 +296,10 @@ export class FaceMode implements Mode {
     // the 3D bear: big, bottom left, peeking in beside you (like the old art), turned towards the middle
     if (this.bearHolder.visible) {
       const d = 1.3, hh = d * tanY, hw = d * tanX;
-      const H = hh * Math.min(1.08, (hw / hh) * 2.3); // head about 45 % of the width on a phone, less on wide screens
-      const top = -hh + 1.04 * hh; // top of her head ~52 % up the screen (her face clears the look picker)
+      // round 5: a little smaller, so her face sits clear above the look picker and the frame / filter chips (her
+      // body may stand behind them) and never covers yours
+      const H = hh * Math.min(0.9, (hw / hh) * 1.95); // head about 38 % of the width on a phone, less on wide screens
+      const top = -hh + 1.1 * hh; // top of her head ~55 % up the screen
       // live reactions: a little bounce when she beams, a small step back when she gasps, a lean with your tilt
       const kb = 1 - Math.exp(-dt * 3.2);
       this.bounce -= this.bounce * kb;
@@ -372,6 +404,7 @@ export class FaceMode implements Mode {
     this.picker.set('3d');
     this.setSmileSnap(false);
     if (this.state !== 'off') {
+      if (this.state === 'recording') void recorder.stop();
       this.review.close();
       this.reveal.close();
       this.bts.close();
@@ -511,13 +544,36 @@ export class FaceMode implements Mode {
     if (this.state === 'off') return;
     this.state = 'live';
     const hud = this.ctx.hud;
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a selfie with Cheer Bear');
+    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a selfie with Cheer Bear', clipHold({
+      // hold the shutter for a video: the chosen frame, filter and the title are baked into the clip
+      can: () => this.state === 'live' && !this.review.open,
+      options: () => {
+        const frame = this.frame, top = this.titleTop;
+        return { overlay: (g, w, h) => drawFrameArt(g, w, h, { title: true, titleTop: top, frame }), filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint };
+      },
+      onStart: () => {
+        this.state = 'recording';
+        this.tuckPicker(true);
+        this.ctx.hud.hint('');
+        if (this.look === '3d') this.cheer(); // she hams it up for the camera
+      },
+      onDone: (blob) => {
+        if (this.state !== 'recording') return;
+        if (!blob) { this.ctx.hud.toast('Hold a little longer for a video', 2000); this.toLive(false); return; }
+        this.diag.clips++;
+        this.diag.lastClip = blob;
+        this.state = 'review';
+        this.review.show(blob);
+      },
+    }));
     this.shutterBtn.disabled = false;
     this.armShutter(false);
     if (this.shutterBtn.parentElement !== hud.centre) hud.centre.appendChild(this.shutterBtn);
     this.tuckPicker(false);
-    hud.above.appendChild(this.picker.el);
+    // above the shutter, close together: the look picker, then the frame + filter chips
+    hud.above.append(this.picker.el, this.strip.el);
     hud.left.appendChild(this.smileBtn);
+    this.publishStripHeight();
     // Classic between takes: she stays on her last frame (the clip is paused there); the shutter plays it again
     this.clipQuad.visible = this.look === 'classic';
     this.setBearVisible(this.look === '3d');
@@ -550,17 +606,50 @@ export class FaceMode implements Mode {
       this.clipQuad.visible = false;
       this.state = 'live';
       this.armShutter(false);
-      this.setBearVisible(true);
-      if (was !== '3d') this.hello();
+      this.setBearVisible(l === '3d');
+      if (l === '3d' && was !== '3d') this.hello();
+      if (fromTap && l !== was) this.ctx.hud.toast(l === 'none' ? 'Just you this time' : 'Cheer Bear is back', 1400);
     }
     this.drawOverlay();
   }
 
-  /** Classic's countdown: the look picker (over her face at phone size) fades out and is inert until live again. */
+  /** Countdowns and recording: the look picker and the chips (over her at phone size) fade out, inert until live. */
   private tuckPicker(on: boolean): void {
-    const el = this.picker.el;
-    el.classList.toggle('cbc-tuck', on);
-    el.inert = on;
+    for (const el of [this.picker.el, this.strip.el]) {
+      el.classList.toggle('cbc-tuck', on);
+      el.inert = on;
+    }
+  }
+
+  /** The chosen filter's live look on the camera canvas (and the candy tint); `off` clears it on leaving. */
+  private liveFilter(off = false): void {
+    const css = FILTER_CSS[off ? 'natural' : this.filter];
+    const cam = this.ctx.engine.canvas;
+    if (cam) cam.style.filter = css.filter;
+    this.tint.style.background = css.tint;
+    this.tint.hidden = !css.tint;
+  }
+
+  /**
+   * The height of what the Selfie stacks above the shutter (look picker + chip strip, in hud.above), as
+   * `--cbx-strip-h` on the experience root, so the HUD can sit its bottom-right toggle above it (chrome-5): that
+   * stack spans from `--cbx-bottom + 124px` up to `--cbx-bottom + 124px + --cbx-strip-h`. Removed on leaving.
+   */
+  private publishStripHeight(): void {
+    if (this.state === 'off') return;
+    const a = this.picker.el.getBoundingClientRect(), b = this.strip.el.getBoundingClientRect();
+    if (!a.height && !b.height) return;
+    const h = Math.round(Math.max(a.bottom, b.bottom) - Math.min(a.top || b.top, b.top || a.top));
+    this.ctx.container.style.setProperty('--cbx-strip-h', `${Math.max(0, h)}px`);
+  }
+
+  /** Test hook: pick a frame / filter as a chip tap would. */
+  setStyle(frame: FrameStyle, filter: PhotoFilter): void {
+    this.frame = frame;
+    this.filter = filter;
+    this.strip.set(frame, filter);
+    this.drawOverlay();
+    this.liveFilter();
   }
 
   private setBearVisible(on: boolean): void {
@@ -572,7 +661,7 @@ export class FaceMode implements Mode {
     const b = this.shutterBtn;
     if (!b) return;
     b.classList.toggle('cbc-armed', on);
-    b.setAttribute('aria-label', on ? aria : this.look === 'classic' ? 'Play Cheer Bear’s countdown again' : 'Take a selfie with Cheer Bear');
+    b.setAttribute('aria-label', on ? aria : this.look === 'classic' ? 'Play Cheer Bear’s countdown again. Hold to record a video' : 'Take a selfie. Hold to record a video');
   }
 
   private onShutter(): void {
@@ -632,8 +721,8 @@ export class FaceMode implements Mode {
       shutterSound(this.ctx.reducedMotion);
       const img = await engineShot(this.ctx.engine);
       if (this.state !== 'busy') return;
-      const top = this.titleTop;
-      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleTop: top }));
+      const top = this.titleTop, frame = this.frame, filter = this.filter;
+      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleTop: top, frame, filter }));
       img.src = '';
       if (this.state !== 'busy') return;
       this.diag.shots++;
@@ -770,7 +859,7 @@ export class FaceMode implements Mode {
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, w, h);
     if (this.state === 'off') return;
-    drawFrameArt(g, w, h, { title: true, titleTop: this.titleTop });
+    drawFrameArt(g, w, h, { title: true, titleTop: this.titleTop, frame: this.frame, live: true });
   }
 }
 

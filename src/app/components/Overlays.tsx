@@ -1,7 +1,7 @@
 // The app's modals: welcome, game details + hints, completion, keyboard shortcuts. All native <dialog>s.
 import { useState } from 'react';
 import {
-  Check, Clock, Gamepad2, Heart, House, Info, Lightbulb, MessageSquare, Phone, RotateCcw, Sparkles, Trophy, X,
+  Check, Clock, Gamepad2, Heart, House, Info, Lightbulb, MessageSquare, Mic, Phone, RotateCcw, Sparkles, Trophy, X,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp, useController } from '../context';
@@ -10,7 +10,7 @@ import { actionLabel } from '../actions';
 import { Dialog } from './Dialog';
 
 const WELCOME_ICONS: Record<string, LucideIcon> = {
-  Phone, MessageSquare, Home: House, House, Gamepad2, Heart, Sparkles, Info,
+  Phone, MessageSquare, Home: House, House, Gamepad2, Heart, Sparkles, Info, Mic,
 };
 
 function CloseX({ onClick, label = 'Close' }: { onClick(): void; label?: string }) {

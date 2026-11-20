@@ -341,17 +341,26 @@ await check("demo call where the browser can't listen: a status message says to 
   await h.context.close();
 });
 
-await check('AI brain (fake OpenAI behind /api/chat): used when the server has a key; moderation then chat; answer fires from her words', async () => {
+await check('AI brain (fake OpenAI behind /api/chat): only for what the local brain does not know; an AI line never fires a moment; requests stay local', async () => {
   chatLog.length = 0;
   const h = await openSpeechHarness('');
   assert.equal(await h.page.evaluate(() => (window as any).__services.chatAi), true);
-  await h.type('wiggle wiggle');
+  // voice-5: the fake model slips a magic word into its answer to a question the local brain has no answer for
+  await h.type('why is the grass green');
   await h.waitBearFinals(1);
   await h.page.waitForTimeout(1500);
   const ans = (await h.bearFinals())[0];
-  assert.equal(ans.text, "Ooh, wiggles! Let's dance!");
+  assert.equal(ans.text, "Ooh, wiggles! Let's dance!", 'the AI answered');
+  assert.deepEqual(chatLog, ['/v1/moderations', '/v1/chat/completions', '/v1/moderations'], 'moderation, chat, moderation');
+  assert.deepEqual((await h.getLog()).filter((e) => e.t === 'trigger').map((t) => t.keyword), [], 'an AI line fires nothing (no uninvited dance)');
+  // an action request is answered by the local brain at once (no network) and fires from her words
+  chatLog.length = 0;
+  await h.type('wiggle wiggle');
+  await h.waitBearFinals(2);
+  await h.page.waitForTimeout(1500);
+  assert.deepEqual(chatLog, [], 'no AI call for a request');
+  assert.match((await h.bearFinals())[1].text, /dance/i);
   assert.deepEqual((await h.getLog()).filter((e) => e.t === 'trigger').map((t) => t.keyword), ['Dance']);
-  assert.deepEqual(chatLog, ['/v1/moderations', '/v1/chat/completions', '/v1/moderations']);
   assert.deepEqual(h.errors, []);
   await h.context.close();
 });

@@ -39,7 +39,7 @@ export type VoiceUiState = 'idle' | 'starting' | 'listening' | 'finishing' | 'un
 /** The bubble above the talk button in voice mode. */
 export interface VoiceBubble {
   id: number;
-  kind: 'nudge' | 'hint' | 'caption' | 'unknown' | 'camera' | 'info' | 'problem';
+  kind: 'nudge' | 'hint' | 'caption' | 'unknown' | 'camera' | 'info' | 'problem' | 'thinking';
   text: string;
   /** 'problem' (voice-4): a line for a grown-up on what to change (Siri & Dictation, mic permission...). */
   help?: string;
@@ -91,6 +91,11 @@ export interface AppState {
   voiceBubble: VoiceBubble | null;
   /** Calling can actually connect here (Twilio set up, or the demo call): show the small phone button. */
   callsAvailable: boolean;
+  /**
+   * voice-5, the demo call's turn taking: 'bear' (she talks, mic closed), 'listening' (your turn, mic open),
+   * 'hearing' (your words in `text`), 'thinking' (she is about to answer), 'paused' (tap the mic to talk), 'muted'.
+   */
+  callTurn: { phase: 'off' | 'bear' | 'listening' | 'hearing' | 'thinking' | 'paused' | 'muted'; text?: string; message?: string };
 }
 
 export function createAppStore() {
@@ -129,6 +134,7 @@ export function createAppStore() {
     voiceText: '',
     voiceBubble: null,
     callsAvailable: false,
+    callTurn: { phase: 'off' },
   });
 }
 

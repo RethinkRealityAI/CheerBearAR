@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import {
   Camera, ChevronDown, ChevronUp, Gamepad2, Gift, Heart, Home, MessageSquare, Music, PartyPopper, Phone, Plus, Rainbow,
-  Smile, Sparkles, Star, Trash2, type LucideIcon,
+  Mic, Smile, Sparkles, Star, Trash2, type LucideIcon,
 } from 'lucide-react';
 import type { SettingsPanelItemId, UiCustomization, WelcomeModalItem } from '@/shared/config';
 import { useAdmin } from '../AdminContext';
@@ -10,7 +10,7 @@ import { LIMITS } from '../lib/validate';
 
 /** Icon keys the app maps to icons (WelcomeModalItem.icon). Unknown keys fall back to a default in the app. */
 export const WELCOME_ICONS: Record<string, LucideIcon> = {
-  Phone, MessageSquare, Home, Gamepad2, Sparkles, Camera, Star, Heart, Music, Rainbow, PartyPopper, Smile, Gift,
+  Phone, MessageSquare, Home, Gamepad2, Sparkles, Camera, Star, Heart, Music, Rainbow, PartyPopper, Smile, Gift, Mic,
 };
 
 const USER_ITEMS: { id: SettingsPanelItemId; label: string; hint: string }[] = [

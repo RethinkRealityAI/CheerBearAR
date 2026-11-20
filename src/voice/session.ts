@@ -15,7 +15,7 @@ import { getAudioContext } from '../audio/context';
 import { api, ApiError } from './api';
 import { Emitter } from './emitter';
 import { DemoBear } from './demoBear';
-import { MockCall, mockFlagsFromUrl, type MockFlags } from './mock';
+import { MockCall, mockFlagsFromUrl, type CallTurn, type MockFlags } from './mock';
 import type { SpeechInputState } from './speechInput';
 import { RealtimeTranscriber } from './transcriber';
 import { TriggerPipeline } from './triggerPipeline';
@@ -55,6 +55,16 @@ export interface VoiceSessionExt extends VoiceSession {
   readonly transcriptionState: Record<Speaker, VoiceEvents['transcription']['state']>;
   /** Voice mode (hold to talk, no call): created on first use. See voiceMode.ts and docs/handoff/voice-3.md. */
   readonly voiceMode: VoiceModeApi;
+  /** voice-5, demo call turn taking: whose turn it is ('bear' / 'listening' / 'hearing' / 'thinking' / 'paused'...). */
+  readonly callTurn: CallTurn;
+  onCallTurn(cb: (t: CallTurn) => void): () => void;
+  /** A tap on the mic during the demo call: she stops talking and it listens now (also resumes a paused call). */
+  listenNow(): boolean;
+  /**
+   * The app's voice commands for the demo call ("go to AR", "take a picture", "play heart run"...): called with the
+   * child's finished turn. Return false to let her brain answer, a line for her to say, or null (handled, silent).
+   */
+  setCallCommandHandler(fn: ((text: string) => string | null | false) | null): void;
   // `status` payloads are VoiceStatusEvent at runtime (extra `code` and `mock`): `(e as VoiceStatusEvent).code`.
 }
 
@@ -80,6 +90,9 @@ class VoiceSessionImpl implements VoiceSessionExt {
   /** A "can't listen, type instead" message from before the demo call connected (shown once it has). */
   private listenNotice: string | null = null;
   private _voiceMode: VoiceMode | null = null;
+  private turnEvents = new Emitter<{ turn: CallTurn }>();
+  private _callTurn: CallTurn = { phase: 'off' };
+  private callCommands: ((text: string) => string | null | false) | null = null;
   transcriptionState: Record<Speaker, VoiceEvents['transcription']['state']> = { cheer_bear: 'off', user: 'off' };
 
   constructor(private opts: CreateVoiceSessionOptions) {
@@ -109,6 +122,45 @@ class VoiceSessionImpl implements VoiceSessionExt {
 
   on<K extends keyof VoiceEvents>(event: K, cb: (payload: VoiceEvents[K]) => void): () => void {
     return this.events.on(event, cb);
+  }
+
+  get callTurn(): CallTurn {
+    return this._callTurn;
+  }
+
+  onCallTurn(cb: (t: CallTurn) => void): () => void {
+    return this.turnEvents.on('turn', cb);
+  }
+
+  private setTurn(t: CallTurn) {
+    this._callTurn = t;
+    this.turnEvents.emit('turn', t);
+  }
+
+  listenNow(): boolean {
+    return this.mockCall?.listenNow() ?? false;
+  }
+
+  setCallCommandHandler(fn: ((text: string) => string | null | false) | null): void {
+    this.callCommands = fn;
+  }
+
+  /** The child's finished turn in the demo call: a voice command (the app runs it, she says a short line), else her
+   * brain answers. Resolves when her answer has been said. */
+  private async userTurn(text: string, claimed: string[]): Promise<void> {
+    const bear = this.demoBear();
+    let handled: string | null | false = false;
+    try {
+      handled = this.callCommands?.(text) ?? false;
+    } catch (err) {
+      console.warn('[voice] call command failed:', err);
+    }
+    if (handled === null) return;
+    if (typeof handled === 'string') {
+      await bear.say(handled, { chat: false, claimed: [...this.opts.getConfig().localClassifier.keywords] });
+      return;
+    }
+    await bear.answer(text, { chat: false, claimed });
   }
 
   private setStatus(status: CallStatus, extra: Omit<VoiceStatusEvent, 'status'> = {}) {
@@ -166,7 +218,10 @@ class VoiceSessionImpl implements VoiceSessionExt {
           console.warn('[voice] call error:', code, message);
           if (seq === this.callSeq && (this._status === 'connecting' || this._status === 'ringing')) {
             this.teardown();
-            this.setStatus('error', { code: 'call_failed', message: 'The call could not connect. Please try again.' });
+            const mic = code === 31208 || code === 31401 || code === 31402;
+            this.setStatus('error', mic
+              ? { code: 'mic_denied', message: 'Cheer Bear needs your microphone to hear you. Allow it and try again.' }
+              : { code: 'call_failed', message: 'The call could not connect. Please try again.' });
           }
         },
       });
@@ -179,6 +234,12 @@ class VoiceSessionImpl implements VoiceSessionExt {
       }
       console.error('[voice] could not start the call:', err);
       this.teardown();
+      // voice-5: the SDK's microphone errors (31208 permission denied, 31401/31402 acquisition failed) say so
+      const sdkCode = (err as { code?: number })?.code;
+      if (sdkCode === 31208 || sdkCode === 31401 || sdkCode === 31402) {
+        this.setStatus('error', { code: 'mic_denied', message: 'Cheer Bear needs your microphone to hear you. Allow it and try again.' });
+        return;
+      }
       const tokenFailed = err instanceof ApiError;
       this.setStatus('error', {
         code: tokenFailed ? 'token_failed' : 'call_failed',
@@ -256,7 +317,9 @@ class VoiceSessionImpl implements VoiceSessionExt {
       userTranscript: (id, text, final) => seq === this.callSeq && this.onTranscript('user', id, text, final),
       userKeywords: (text) => this.userKeywords(text),
       listening: (state, msg) => seq === this.callSeq && this.onListening(state, msg),
-    });
+      turn: (t) => seq === this.callSeq && this.setTurn(t),
+      userTurn: (text, claimed) => (seq === this.callSeq ? this.userTurn(text, claimed) : Promise.resolve()),
+    }, undefined, () => [...this.opts.getConfig().localClassifier.keywords]);
     this.mockCall = call;
     call.start(); // synchronous part runs inside the tap (speech + recognition unlock)
   }
@@ -304,6 +367,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
     for (const s of ['cheer_bear', 'user'] as const) if (this.transcriptionState[s] !== 'off') this.setTranscription(s, 'off');
     this.mockCall?.stop();
     this.mockCall = null;
+    if (this._callTurn.phase !== 'off') this.setTurn({ phase: 'off' });
     this.caller?.disconnect();
     this.setRemote(null);
     this.pipeline.endOfCall();
@@ -371,6 +435,16 @@ class VoiceSessionImpl implements VoiceSessionExt {
         if (this.disposed || (this._status !== 'idle' && this._status !== 'error')) return; // a call owns her voice
         void this.demoBear().say(line, { chat: true, claimed: [...this.opts.getConfig().localClassifier.keywords] });
       },
+      // voice-5: what you hold and say that is no command gets a real answer (the same brain as typed chat and the
+      // demo call): "how are you?" while holding is answered, not met with "Try saying...".
+      converse: (text, claimed) => {
+        if (this.disposed || (this._status !== 'idle' && this._status !== 'error')) return Promise.resolve(null);
+        return new Promise((resolve) => {
+          let intent: string | null = null;
+          void this.demoBear().answer(text, { chat: true, claimed, onReply: (r) => { intent = r.intent; resolve({ intent, via: r.via }); } })
+            .finally(() => { if (intent === null) resolve(null); });
+        });
+      },
       hush: () => this.bear?.cancel(),
       unlock: () => this.demoBear().unlock(),
     });
@@ -426,6 +500,7 @@ class VoiceSessionImpl implements VoiceSessionExt {
       document.removeEventListener('visibilitychange', this.onVisibility);
     }
     this.events.clear();
+    this.turnEvents.clear();
   }
 }
 

@@ -6,6 +6,7 @@ import qrcode from 'qrcode-generator';
 import type { ExperienceMode } from '../../shared/contracts';
 import type { HudApi } from '../types';
 import { ICON } from './icons';
+import { recorder, CLIP_MAX_S } from '../capture/recorder';
 import './hud.css';
 
 const MODES: Array<{ id: ExperienceMode; label: string; icon: string; aria: string }> = [
@@ -15,12 +16,20 @@ const MODES: Array<{ id: ExperienceMode; label: string; icon: string; aria: stri
   { id: 'photo', label: 'Photo', icon: ICON.photo, aria: '3D photo with Cheer Bear' },
 ];
 
+/** Press-and-hold video on a shutter: start() returns false when this view can't record right now. */
+export interface ShutterHold {
+  start(): boolean;
+  stop(): void;
+}
+
 export interface HudOptions {
   title: string;
   lead: string;
   onStart(): void;
   onSwitch(mode: ExperienceMode): void;
   onRestart(): void;
+  /** The Actions / Games pair (bottom right) was tapped. */
+  onDock?(kind: 'actions' | 'games'): void;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] => {
@@ -31,10 +40,31 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
 };
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
+/**
+ * A flat heart with a face hopping on a sky disc under a flat rainbow, a new expression on every landing (happy,
+ * wink, surprised, grin). Our own simple shapes (no Care Bears art). The loading hero and the mode-change cover.
+ */
+const HH_FACES = [
+  // happy
+  '<circle cx="44" cy="46" r="5.5"/><circle cx="76" cy="46" r="5.5"/><path d="M47 61q13 12 26 0" fill="none" stroke-width="5" stroke-linecap="round"/>',
+  // wink
+  '<path d="M38 47q6-7 12 0" fill="none" stroke-width="5" stroke-linecap="round"/><circle cx="76" cy="46" r="5.5"/><path d="M47 61q13 12 26 0" fill="none" stroke-width="5" stroke-linecap="round"/>',
+  // surprised
+  '<circle cx="44" cy="45" r="6.5"/><circle cx="76" cy="45" r="6.5"/><ellipse cx="60" cy="66" rx="6" ry="7"/>',
+  // grin
+  '<path d="M38 48q6-8 12 0M70 48q6-8 12 0" fill="none" stroke-width="5" stroke-linecap="round"/><path d="M45 59h30q-2 17-15 17t-15-17z"/>',
+];
+function heartHop(cls = ''): string {
+  const faces = HH_FACES.map((f, i) => `<g class="hh-face" style="--k:${i}">${f}</g>`).join('');
+  return `<div class="hh ${cls}" aria-hidden="true"><i class="hh-ring"><svg class="hh-bow" viewBox="0 0 100 52"><g fill="none" stroke-width="7"><path d="M8 50a42 42 0 0 1 84 0" stroke="#ff5a5f"/><path d="M15 50a35 35 0 0 1 70 0" stroke="#ffd84a"/><path d="M22 50a28 28 0 0 1 56 0" stroke="#5fcf86"/><path d="M29 50a21 21 0 0 1 42 0" stroke="#439bdd"/></g></svg></i><i class="hh-shadow"></i><span class="hh-head"><svg viewBox="0 0 120 108"><path class="hh-heart" d="M60 101S9 72 7 39C5.6 17 20 5 36 5c11 0 19 6 24 14 5-8 13-14 24-14 16 0 30.4 12 29 34-2 33-53 62-53 62z"/><ellipse class="hh-cheek" cx="33" cy="60" rx="7.5" ry="4.6"/><ellipse class="hh-cheek" cx="87" cy="60" rx="7.5" ry="4.6"/>${faces}</svg></span></div>`;
+}
+
 export class Hud implements HudApi {
   readonly root: HTMLElement;
   readonly hudEl: HTMLElement;
   readonly left: HTMLElement;
+  /** Bottom-right column: stacks bottom-up ABOVE the app's talk button (the reserved corner). Actions + Games live here. */
+  readonly right: HTMLElement;
   readonly centre: HTMLElement;
   readonly above: HTMLElement;
   readonly layer: HTMLElement;
@@ -53,6 +83,13 @@ export class Hud implements HudApi {
   private coverDisc: HTMLElement;
   private coverIcon: HTMLElement;
   private coverText: HTMLElement;
+  private coverTitle: HTMLElement;
+  private dockEl: HTMLElement;
+  /** camera-5: the capture shutter at the top of the dock (3D and AR), and how to stop a clip it is holding. */
+  private dockShot: HTMLButtonElement | null = null;
+  private holdStops = new WeakMap<HTMLButtonElement, () => void>();
+  private actOne: HTMLButtonElement;
+  private fx: HTMLElement;
   private coverOutT = 0;
   private coverOnAt = 0;
   private flashEl: HTMLElement;
@@ -75,12 +112,14 @@ export class Hud implements HudApi {
   constructor(container: HTMLElement, private opts: HudOptions) {
     this.root = container;
 
-    // ---- splash (full branded: title art, the bear as hero, one-line lead, Start, loading bar, Activated by MEDIALIFE)
+    // ---- splash (full branded: title art, the bear as hero, one-line lead, Start, loading bar, Activated by MEDIALIFE).
+    // The entrance (chrome-5, round 5): flat clouds drift across the sky, hearts and sparkles float up behind the
+    // card, the title drops in and floats, the card's lines rise one by one; Start bursts hearts when tapped.
     this.splash = el('section', 'cbx-splash');
     this.splash.setAttribute('aria-label', opts.title);
     this.splash.innerHTML = `
       <div class="sp-col">
-        <div class="sp-top"><img class="title" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="450" height="238"></div>
+        <div class="sp-top"><div class="sp-clouds" aria-hidden="true"><i></i><i></i><i></i></div><img class="title" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="450" height="238"></div>
         <div class="sp-bottom">
           <p class="lead">${esc(opts.lead)}</p>
           <button type="button" class="cbx-start" disabled>Loading…</button>
@@ -88,7 +127,7 @@ export class Hud implements HudApi {
           <img class="act-by" src="/img/activated-by.webp" alt="Activated by MEDIALIFE" width="148" height="58">
         </div>
       </div>
-      <div class="sp-hero"><div class="sp-wait" aria-hidden="true">${ICON.heart}</div></div>`;
+      <div class="sp-hero"><div class="sp-wait" aria-hidden="true">${heartHop('hh-sm')}</div></div>`;
     // portrait order: title, hero window, card (the column wrapper is display: contents there)
     const col = this.splash.querySelector('.sp-col')!;
     const hero = this.splash.querySelector('.sp-hero')!;
@@ -96,13 +135,28 @@ export class Hud implements HudApi {
     if (matchMedia('(min-aspect-ratio: 1/1) and (min-width: 700px)').matches) this.splash.appendChild(hero);
     this.startBtn = this.splash.querySelector('.cbx-start')!;
     this.loadBar = this.splash.querySelector('.cbx-load')!;
-    this.startBtn.addEventListener('click', () => opts.onStart());
+    this.startBtn.addEventListener('click', () => { this.burst(); opts.onStart(); });
+    // hearts and sparkles floating up (flat shapes, CSS only: transform + opacity)
+    this.fx = el('div', 'sp-fx');
+    this.fx.setAttribute('aria-hidden', 'true');
+    this.fx.innerHTML = Array.from({ length: 14 }, (_, i) => {
+      const kind = i % 3 === 2 ? 'sp-spark' : 'sp-heart';
+      const tone = ['t1', 't2', 't3', 't4'][i % 4];
+      const x = ((i * 37) % 92) + 4, d = 9 + ((i * 7) % 8), delay = -((i * 1.9) % d), s = 0.6 + ((i * 13) % 9) / 10;
+      return `<i class="${kind} ${tone}" style="--x:${x}%;--d:${d}s;--dl:${delay.toFixed(1)}s;--s:${s.toFixed(2)};--sw:${(i % 2 ? 1 : -1) * (10 + (i * 5) % 18)}px"></i>`;
+    }).join('');
+    this.splash.prepend(this.fx);
 
     // ---- HUD
     this.hudEl = el('div', 'cbx-hud');
     this.hudEl.hidden = true;
+    // top (chrome-5, round 5, after Dapo's Happi notes): a one-line lockup top left, then the mode tabs with the menu
+    // in line with them on the right. Wide screens: one row (lockup, tabs centred, menu).
     const top = el('div', 'cbx-top');
-    top.innerHTML = `<img class="mini" src="/img/cb-title.webp" alt="${esc(opts.title)}" width="76" height="40">`;
+    const lockup = el('div', 'cbx-lockup', `<img src="/img/cb-lockup.webp" alt="" width="295" height="63"><b aria-hidden="true">AR</b>`);
+    lockup.setAttribute('role', 'img');
+    lockup.setAttribute('aria-label', `${opts.title} AR`);
+    const row = el('div', 'cbx-tabsrow');
     // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
     // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
@@ -125,13 +179,13 @@ export class Hud implements HudApi {
     });
     this.switchEl.style.setProperty('--i', '0');
     this.switchEl.addEventListener('keydown', (e) => this.onSwitchKey(e));
-    top.appendChild(this.switchEl);
-    const menuBtn = el('button', 'cbx-ib', ICON.menu);
+    const menuBtn = el('button', 'cbx-ib cbx-menu', ICON.menu);
     menuBtn.type = 'button';
     menuBtn.setAttribute('aria-label', 'Menu');
     menuBtn.setAttribute('aria-haspopup', 'dialog');
     menuBtn.addEventListener('click', () => this.openMenu());
-    top.appendChild(menuBtn);
+    row.append(this.switchEl, menuBtn);
+    top.append(lockup, row);
 
     this.hintEl = el('p', 'ml-hint');
     this.hintEl.setAttribute('role', 'status');
@@ -146,27 +200,53 @@ export class Hud implements HudApi {
     const bottom = el('div', 'cbx-bottom');
     this.left = el('div', 'cbx-slot-left');
     this.centre = el('div', 'cbx-slot-centre');
-    const right = el('div', 'cbx-slot-right');
-    bottom.append(this.left, this.centre, right);
+    this.right = el('div', 'cbx-slot-right');
+    bottom.append(this.left, this.centre, this.right);
+    // Actions + Games: one pair, bottom right above the talk button (dock(true) shows it). The app opens its sheet
+    // on those tabs; without the app (the experience alone) they open the experience's own small sheets.
+    this.dockEl = el('div', 'cbx-dock');
+    this.dockEl.hidden = true;
+    const dockBtn = (kind: 'actions' | 'games', label: string, icon: string, aria: string) => {
+      const b = this.toolButton({ label, icon, aria, onClick: () => this.opts.onDock?.(kind) });
+      b.classList.add('cbx-pd', `is-${kind}`);
+      b.dataset.cmd = kind;
+      return b;
+    };
+    this.dockEl.append(
+      dockBtn('actions', 'Actions', ICON.actions, 'Actions: pick something for Cheer Bear to do'),
+      dockBtn('games', 'Games', ICON.games, 'Games: play with Cheer Bear'),
+    );
+    this.right.appendChild(this.dockEl);
+    // Selfie / Photo: a single small Actions toggle, bottom right ABOVE camera-5's live look chips (hud.above at
+    // bottom + 124 px, its height in --cbx-strip-h), so it never meets the shutter or the chips
+    this.actOne = el('button', 'cbx-act1', `${ICON.actions}<span>Actions</span>`);
+    this.actOne.type = 'button';
+    this.actOne.dataset.cmd = 'actions';
+    this.actOne.setAttribute('aria-label', 'Actions: pick something for Cheer Bear to do');
+    this.actOne.hidden = true;
+    this.actOne.addEventListener('click', (e) => { e.stopPropagation(); this.opts.onDock?.('actions'); });
 
-    // joystick (bottom centre, walking modes)
-    this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M51 17l7-7 7 7"/><path d="M51 99l7 7 7-7"/><path d="M17 51l-7 7 7 7"/><path d="M99 51l7 7-7 7"/></g></svg><span><svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></g></svg></span>`);
+    // joystick (bottom centre, walking modes): a plain branded stick: glass base, a thin white ring with one short
+    // white arc gliding round it (a flat shimmer, no gradient), a white thumb with a small pink heart. No arrows.
+    this.stick = el('div', 'cbx-stick pe', `<svg class="cbx-stick-ring" viewBox="0 0 116 116" aria-hidden="true"><circle cx="58" cy="58" r="53" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.45"/><circle class="arc" cx="58" cy="58" r="53" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" pathLength="100" stroke-dasharray="14 86"/></svg><span>${ICON.heart}</span>`);
     this.stick.setAttribute('role', 'application');
     this.stick.setAttribute('aria-label', 'Joystick: walk Cheer Bear');
     this.stick.hidden = true;
     this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
 
-    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom);
+    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom, this.actOne);
     this.layer = el('div', 'cbx-layer');
 
-    // the mode-change cover: a flat pink iris grows from the tapped tab, the target mode's badge sits in the middle,
-    // then the whole cover fades off the new view (reduced motion: a plain crossfade)
-    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-in"><span class="cbx-cover-badge"></span><p></p></div>`);
+    // the mode-change cover (chrome-5, round 5): a flat iris in the destination's colour grows from the tapped tab,
+    // clouds drift across it, the heart hops on its rainbow disc (a new face on every landing) above "Switching to
+    // AR" and the camera line; then the whole cover fades off the new view (reduced motion: a plain crossfade)
+    this.coverEl = el('div', 'cbx-cover', `<i class="cbx-cover-disc"></i><div class="cbx-cover-sky" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="cbx-cover-in">${heartHop()}<strong class="cbx-cover-title"></strong><p><span class="cbx-cover-badge"></span><b></b><em class="cbx-dots"><i></i><i></i><i></i></em></p></div>`);
     this.coverEl.setAttribute('role', 'status');
     this.coverDisc = this.coverEl.querySelector('.cbx-cover-disc')!;
     this.coverIcon = this.coverEl.querySelector('.cbx-cover-badge')!;
-    this.coverText = this.coverEl.querySelector('p')!;
+    this.coverText = this.coverEl.querySelector('.cbx-cover-in p b')!;
+    this.coverTitle = this.coverEl.querySelector('.cbx-cover-title')!;
     this.flashEl = el('div', 'cbx-flash');
 
     container.append(this.layer, this.hudEl, this.splash, this.coverEl, this.flashEl);
@@ -203,7 +283,25 @@ export class Hud implements HudApi {
     this.hudEl.hidden = false;
     this.hudEl.classList.add('off');
     requestAnimationFrame(() => this.hudEl.classList.remove('off'));
-    window.setTimeout(() => { this.splash.hidden = true; }, 800);
+    window.setTimeout(() => { if (this.splash.classList.contains('gone')) this.splash.hidden = true; }, 1000);
+  }
+  /** Start was tapped: a one-shot burst of flat hearts and sparkles out of the button (none with reduced motion). */
+  private burst(): void {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const r = this.startBtn.getBoundingClientRect(), box = this.splash.getBoundingClientRect();
+    const b = el('div', 'sp-burst');
+    b.setAttribute('aria-hidden', 'true');
+    b.style.left = `${r.left + r.width / 2 - box.left}px`;
+    b.style.top = `${r.top + r.height / 2 - box.top}px`;
+    const n = 18;
+    b.innerHTML = Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * Math.PI * 2 + (i % 2) * 0.17;
+      const d = 90 + ((i * 29) % 70);
+      const kind = i % 3 === 1 ? 'sp-spark' : 'sp-heart';
+      return `<i class="${kind} t${(i % 4) + 1}" style="--bx:${Math.round(Math.cos(a) * d * 1.25)}px;--by:${Math.round(Math.sin(a) * d - 40)}px;--s:${(0.7 + (i % 5) * 0.12).toFixed(2)};--r:${(i * 47) % 90 - 45}deg"></i>`;
+    }).join('');
+    this.splash.appendChild(b);
+    window.setTimeout(() => b.remove(), 1300);
   }
   showSplashAgain(): void {
     this.splash.hidden = false;
@@ -216,7 +314,9 @@ export class Hud implements HudApi {
   // ------------------------------------------------------------------ mode switcher
   setMode(mode: ExperienceMode, busy: boolean): void {
     const prev = this.curMode;
+    if (prev !== mode) this.closeAllSheets(); // a sheet from the last mode (Games, Actions) never follows you
     this.curMode = mode;
+    this.root.dataset.mode = mode;
     this.busy = busy;
     const i = MODES.findIndex((m) => m.id === mode);
     const focused = this.switchEl.contains(document.activeElement);
@@ -283,6 +383,26 @@ export class Hud implements HudApi {
   }
   setReserved(px: number): void {
     this.root.style.setProperty('--cbx-reserved', Math.max(0, px) + 'px');
+  }
+  /** Show / hide the Actions + Games pair (bottom right, above the talk button). Modes call it as their state allows. */
+  dock(show: boolean | 'actions'): void {
+    const full = show === true;
+    if (!full && this.dockShot) this.holdStops.get(this.dockShot)?.(); // the dock hides mid-clip: the clip ends there
+    if (this.dockEl.hidden !== !full) this.dockEl.hidden = !full;
+    if (full && this.dockEl.parentElement !== this.right) this.right.appendChild(this.dockEl);
+    // Selfie and Photo: one compact Actions toggle above the look chips (games are 3D / AR only)
+    const one = show === 'actions';
+    if (this.actOne.hidden !== !one) this.actOne.hidden = !one;
+  }
+  /** camera-5 (round 5): put a capture shutter (from shutter()) at the TOP of the Actions + Games stack, over the talk
+   *  button, or take it away (null). It shows and hides with the dock. */
+  dockShutter(b: HTMLButtonElement | null): void {
+    if (this.dockShot && this.dockShot !== b) {
+      this.holdStops.get(this.dockShot)?.();
+      this.dockShot.remove();
+    }
+    this.dockShot = b;
+    if (b && b.parentElement !== this.dockEl) this.dockEl.prepend(b);
   }
 
   // ------------------------------------------------------------------ HudApi
@@ -364,11 +484,80 @@ export class Hud implements HudApi {
     b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
     return b;
   }
-  shutter(onClick: () => void, aria = 'Take a photo'): HTMLButtonElement {
-    const b = el('button', 'cbx-shutter', '<i></i>');
+  /**
+   * The round shutter. With `hold` (camera-5, round 5): tap = photo, press and hold = video. Holding past 0.28 s calls
+   * hold.start() (false = can't record here: nothing happens, letting go takes no photo); letting go calls
+   * hold.stop(). A red ring fills over the clip limit while it records (CSS in capture/capture.css). Keyboard Enter /
+   * Space is always a photo.
+   */
+  shutter(onClick: () => void, aria = 'Take a photo', hold?: ShutterHold): HTMLButtonElement {
+    const b = el('button', 'cbx-shutter', '<svg class="cbx-rec-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" pathLength="100"/></svg><i></i>');
     b.type = 'button';
     b.setAttribute('aria-label', aria);
-    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    if (!hold) {
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+      return b;
+    }
+    b.classList.add('can-rec');
+    b.dataset.hold = 'video';
+    const clock = el('b', 'cbx-rec-time', '0:00');
+    clock.setAttribute('aria-hidden', 'true');
+    b.appendChild(clock);
+    let timer = 0, pid: number | null = null, recording = false, raf = 0;
+    const ring = b.querySelector('circle') as SVGCircleElement;
+    const loop = () => {
+      if (!recording) return;
+      if (!recorder.recording) { endRec(false); return; } // stopped by itself (the time limit)
+      ring.style.strokeDashoffset = String(100 - Math.min(100, (recorder.seconds / CLIP_MAX_S) * 100));
+      const sec = Math.floor(recorder.seconds);
+      clock.textContent = `0:${String(sec).padStart(2, '0')}`;
+      raf = requestAnimationFrame(loop);
+    };
+    const endRec = (callStop: boolean) => {
+      cancelAnimationFrame(raf);
+      if (!recording) return;
+      recording = false;
+      b.classList.remove('rec', 'rec-wait');
+      ring.style.strokeDashoffset = '100';
+      if (callStop) hold.stop();
+    };
+    b.addEventListener('pointerdown', (e) => {
+      if (pid !== null || b.disabled || e.button > 0) return;
+      e.stopPropagation();
+      pid = e.pointerId;
+      try { b.setPointerCapture(e.pointerId); } catch { /* fine */ }
+      b.classList.add('down');
+      timer = window.setTimeout(() => {
+        timer = 0;
+        if (pid === null || !hold.start()) return;
+        recording = true;
+        clock.textContent = '0:00';
+        b.classList.add('rec', 'rec-wait');
+        window.setTimeout(() => b.classList.remove('rec-wait'), 600); // the first frames may take a moment
+        loop();
+      }, 280);
+    });
+    const up = (e: PointerEvent, cancel: boolean) => {
+      if (e.pointerId !== pid) return;
+      e.stopPropagation();
+      pid = null;
+      b.classList.remove('down');
+      if (recording) { endRec(true); return; }
+      if (timer) { clearTimeout(timer); timer = 0; if (!cancel) onClick(); }
+    };
+    // stop from outside (the dock hiding mid-clip): end the press, finish the clip
+    this.holdStops.set(b, () => {
+      if (timer) { clearTimeout(timer); timer = 0; }
+      if (pid !== null) { try { b.releasePointerCapture(pid); } catch { /* gone */ } }
+      pid = null;
+      b.classList.remove('down');
+      endRec(true);
+    });
+    b.addEventListener('pointerup', (e) => up(e, false));
+    b.addEventListener('pointercancel', (e) => up(e, true));
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    // keyboard / assistive tech (and voice commands' .click()): a click with no pointer press is a photo
+    b.addEventListener('click', (e) => { e.stopPropagation(); if (e.detail === 0) onClick(); });
     return b;
   }
   flash(): void {
@@ -429,6 +618,9 @@ export class Hud implements HudApi {
       this.coverText.textContent = text;
       const m = MODES.find((x) => x.id === this.curMode);
       this.coverIcon.innerHTML = m ? m.icon : ICON.heart;
+      // each destination has its own flat colour and says where it is going
+      this.coverTitle.textContent = m?.id === 'showcase' ? 'Back to 3D' : `Switching to ${m ? m.label : '3D'}`;
+      c.dataset.to = m ? m.id : 'showcase';
       if (c.classList.contains('on')) return Promise.resolve();
       const box = this.root.getBoundingClientRect();
       const o = this.irisFrom ?? { x: box.width / 2, y: Math.min(60, box.height / 2) };
@@ -446,8 +638,9 @@ export class Hud implements HudApi {
       return new Promise((r) => { window.setTimeout(r, wasOut ? 0 : reduced ? 180 : 340); });
     }
     if (!c.classList.contains('on')) return Promise.resolve();
-    // a fast swap still gets the whole wipe: the iris finishes covering before the cover fades off the new view
-    const minOn = matchMedia('(prefers-reduced-motion: reduce)').matches ? 220 : 460;
+    // a fast swap still gets the whole wipe, and the branded cover stays long enough to read as a moment (the heart
+    // lands at least once and changes face; chrome-5, round 5: 460 -> 950 ms) before it fades off the new view
+    const minOn = matchMedia('(prefers-reduced-motion: reduce)').matches ? 300 : 950;
     const out = () => {
       c.classList.remove('on');
       c.classList.add('out');
@@ -504,7 +697,7 @@ export class Hud implements HudApi {
     const url = location.href.replace(/[?&](test|desktop|diag|verbose)\b[^&]*/g, '').replace(/[?&]$/, '');
     return this.sheet({
       title: 'Open this on your phone',
-      body: `${what} uses your phone's camera. Scan this to open it there. The 3D view and the call work right here.`,
+      body: `${what} uses your phone's camera. Scan this to open it there. The 3D view, talking and games work right here.`,
       buttons: ['Close'],
       qr: url,
     });
@@ -539,10 +732,10 @@ export class Hud implements HudApi {
       title: 'How it works',
       body: '',
       html: `<ol>
-        <li><b>3D</b>: Cheer Bear in Care-a-Lot. Drag to look around, pinch to zoom, the joystick walks her.</li>
-        <li><b>AR</b>: point your phone at the floor, tap <b>Place</b>. Walk her into her house to go inside. <b>Move</b> puts it all somewhere else.</li>
+        <li><b>Talk to her</b>: hold the pink mic, say <b>rainbow</b>, <b>dance</b>, <b>party</b> or <b>house</b>, then let go. You can call her too.</li>
+        <li><b>Actions</b> makes her do something. <b>Games</b> has Heart Run, Heart Hoops and word games.</li>
+        <li><b>3D</b>: drag to look around; the joystick walks her. <b>AR</b>: point at the floor and tap <b>Place</b>.</li>
         <li><b>Selfie</b> and <b>Photo</b>: the white button takes a picture with her.</li>
-        <li>Talk to her! Say <b>house</b>, <b>rainbow</b>, <b>party</b>, <b>magic</b>, <b>dance</b> or <b>sleep</b> and watch what happens.</li>
       </ol>`,
       buttons: ['Got it'],
     });

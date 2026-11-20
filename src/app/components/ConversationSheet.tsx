@@ -2,7 +2,7 @@
 // visible above it, and full). Wider than 900px: a right sidebar, and the scene fills the rest.
 // Non-modal on purpose: the scene stays live and tappable while you talk.
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { Gamepad2, Keyboard, MessageCircle, Settings, Sparkles, X, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Gamepad2, Keyboard, MessageCircle, Settings, Sparkles, X, ChevronDown } from 'lucide-react';
 import { useApp, useController } from '../context';
 import type { TabId } from '../state/appState';
 import { TalkPanel } from './TalkPanel';
@@ -11,11 +11,12 @@ import { GamesPanel } from './GamesPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { callStatusText } from './callText';
 
+// Three tabs (chrome-5, round 5): Talk, Actions, Games. The few settings a child or parent needs sit behind the gear
+// in the header (tab 'settings', shown without the tab bar).
 const TABS: { id: TabId; label: string; icon: typeof MessageCircle }[] = [
   { id: 'talk', label: 'Talk', icon: MessageCircle },
   { id: 'actions', label: 'Actions', icon: Sparkles },
   { id: 'games', label: 'Games', icon: Gamepad2 },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 function snapHeights() {
@@ -39,8 +40,11 @@ export function ConversationSheet() {
   const tabs = TABS.filter((t) =>
     t.id === 'actions' ? ui.show.quickActions
       : t.id === 'games' ? true // the mini games (Heart Run, Heart Hoops) are always there (games-3)
-        : t.id === 'settings' ? ui.show.settings : true);
-  const activeTab = tabs.some((t) => t.id === tab) ? tab : 'talk';
+        : true);
+  const inSettings = tab === 'settings' && ui.show.settings;
+  const activeTab: TabId = inSettings ? 'settings' : tabs.some((t) => t.id === tab) ? tab : 'talk';
+  const lastTab = useRef<TabId>('talk');
+  if (!inSettings) lastTab.current = activeTab;
 
   // focus in on open, back to the talk button on close
   const wasOpen = useRef(open);
@@ -129,10 +133,20 @@ export function ConversationSheet() {
           ><span aria-hidden="true" /></button>
         )}
         <header className="cb-sheet-head">
+          {inSettings && (
+            <button type="button" className="cb-icon-btn" onClick={() => c.setTab(lastTab.current)} aria-label="Back">
+              <ArrowLeft aria-hidden="true" size={22} />
+            </button>
+          )}
           <div className="cb-sheet-title">
-            <h2>{ui.title}</h2>
-            <p className="cb-sheet-status">{status}</p>
+            <h2>{inSettings ? 'Settings' : ui.title}</h2>
+            {!inSettings && <p className="cb-sheet-status">{status}</p>}
           </div>
+          {!inSettings && ui.show.settings && (
+            <button type="button" className="cb-icon-btn" onClick={() => c.setTab('settings')} aria-label="Settings">
+              <Settings aria-hidden="true" size={21} />
+            </button>
+          )}
           {isDesktop && ui.show.keyboardHelp && (
             <button type="button" className="cb-icon-btn" onClick={() => c.openOverlay('keys')} aria-label="Keyboard shortcuts">
               <Keyboard aria-hidden="true" size={20} />
@@ -142,7 +156,7 @@ export function ConversationSheet() {
             {isDesktop ? <X aria-hidden="true" size={22} /> : <ChevronDown aria-hidden="true" size={24} />}
           </button>
         </header>
-        {tabs.length > 1 && (
+        {tabs.length > 1 && !inSettings && (
           <div
             className="cb-tabs"
             role="tablist"
@@ -171,7 +185,7 @@ export function ConversationSheet() {
           </div>
         )}
       </div>
-      <div className={`cb-panel is-${activeTab}${activeTab === 'talk' && uiMode !== 'calm' ? ' is-chat' : ''}`} role="tabpanel" id={`cb-panel-${activeTab}`} aria-labelledby={`cb-tab-${activeTab}`}>
+      <div className={`cb-panel is-${activeTab}${activeTab === 'talk' && uiMode !== 'calm' ? ' is-chat' : ''}`} role={inSettings ? 'region' : 'tabpanel'} id={`cb-panel-${activeTab}`} aria-labelledby={inSettings ? undefined : `cb-tab-${activeTab}`} aria-label={inSettings ? 'Settings' : undefined}>
         {activeTab === 'talk' && <TalkPanel />}
         {activeTab === 'actions' && <ActionsPanel />}
         {activeTab === 'games' && <GamesPanel />}

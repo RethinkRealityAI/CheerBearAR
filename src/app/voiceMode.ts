@@ -42,6 +42,9 @@ interface VoiceModeLike {
   release(): void;
   cancel(): void;
   run(text: string): VoiceMatch[];
+  /** voice-5 (optional on older sessions): commands in the text, nothing run; free speech answered by her brain. */
+  match?(text: string): VoiceMatch[];
+  converse?(text: string): Promise<{ intent: string; via: 'local' | 'ai' } | null>;
   fireTrigger(keyword: string): void;
   reply(command: VoiceCommand, speak: boolean): string | null;
   hush(): void;
@@ -363,6 +366,18 @@ export class VoiceModeUi {
       return;
     }
     if (text) {
+      // voice-5: no command in it ("how are you?", "I have a dog"): she answers, like typed chat and the demo call,
+      // with the same brain. The "Try saying" chips only come when her brain had no idea either.
+      const vm = this.vm;
+      if (this.spokenReplies && vm?.converse) {
+        this.bubble({ kind: 'caption', text: `“${text}”` }, 2400);
+        void vm.converse(text).then((r) => {
+          if (r && r.intent !== 'unknown') return;
+          if (this.vm?.active) return; // a new hold started
+          this.bubble({ kind: 'unknown', text: r ? 'You can also say:' : 'Hmm! Try saying:', examples: this.examples() }, 9000);
+        });
+        return;
+      }
       const ex = this.examples();
       this.bubble({ kind: 'unknown', text: 'Hmm! Try saying:', examples: ex }, 9000);
       return;
@@ -375,6 +390,28 @@ export class VoiceModeUi {
     // let go to answer the permission prompt, and the mic opened after all: allowed
     if (r.problem === 'permission-pending' && r.audio) { this.bubble({ kind: 'hint', text: 'Yay! Now hold me and talk!' }, 3600); return; }
     this.bubble({ kind: 'problem', text: h.text, help: h.help, examples: h.chips ? this.examples().slice(0, 2) : undefined }, h.chips || h.help ? 9000 : 3600);
+  }
+
+  /**
+   * voice-5: the child's finished turn in the DEMO CALL. The same commands as hold-to-talk (modes, the shutter, Place /
+   * Move, games, hug), run with no gesture (a camera mode shows the "Tap to open the camera" chip). Trigger words are
+   * left to her brain: she answers "Let's dance!" and her words fire it, as in any call. Returns her short line, null
+   * (handled, nothing to say) or false (not a command: her brain answers).
+   */
+  handleCallWords(text: string): string | null | false {
+    const vm = this.vm;
+    const matches = (vm?.match?.(text) ?? []).filter((m) => m.command.kind !== 'trigger');
+    if (!matches.length) return false;
+    this.replied = null;
+    const before = this.s.voiceBubble?.id;
+    for (const m of matches) this.run(m, 'final');
+    const chip = this.s.voiceBubble?.kind === 'camera' && this.s.voiceBubble.id !== before;
+    const c = this.replied;
+    this.replied = null;
+    if (chip) return 'Tap the button, and let me see!';
+    if (c) return vm?.reply(c, false) ?? null;
+    // a command that could not run here (e.g. "place" with no floor yet): its bubble explains; let her talk too
+    return this.s.voiceBubble && this.s.voiceBubble.id !== before ? null : false;
   }
 
   /** Three things to try: two magic words and a mode you are not in. */

@@ -34,6 +34,7 @@ export function personaPrompt(keywords: string[], name: string | null): string {
     'You are Cheer Bear, a cheerful, kind, caring bear who lives in Care-a-Lot, talking with a young child (about 4 to 10 years old) in a children\'s app.',
     'Rules you always follow:',
     '- Reply in 1 or 2 short sentences (under 30 words), simple happy words a small child understands. No lists, no emoji, no markdown.',
+    '- Your reply is read aloud by a voice: no stage directions or sound effects in brackets or asterisks, just what you say.',
     '- Never ask for personal information. The only thing you may ask is the child\'s first name. Never ask for or repeat surnames, ages, addresses, schools, phone numbers, emails, photos or passwords; if the child shares one, gently say to keep it private for their grown-ups.',
     '- Never give links, websites, apps, products or prices. Never pretend to be a real person. You are a friendly bear character.',
     '- If the child brings up anything unsafe, scary, violent, grown-up, medical, or says they are hurt or in danger, answer with warmth, say a trusted grown-up can help, and do not go into details.',
@@ -60,6 +61,7 @@ export function cleanReply(raw: string): string {
   let t = String(raw || '')
     .replace(/\bhttps?:\/\/\S+|\bwww\.\S+/gi, '')
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '')
+    .replace(/\*[^*]{1,40}\*|\([^)]{1,40}\)|\[[^\]]{1,40}\]/g, ' ') // *giggles*, (smiles), [waves]: not said aloud
     .replace(/[*_`#>~|[\]{}<>]/g, '')
     .replace(/\p{Extended_Pictographic}|\p{Emoji_Modifier}|‍|️/gu, '')
     .replace(/\s+/g, ' ')
@@ -74,7 +76,7 @@ export function cleanReply(raw: string): string {
 /** True when OpenAI moderation flags the text. Throws when moderation itself fails (fail closed). */
 export async function isFlagged(text: string): Promise<boolean> {
   const o = openaiEnv();
-  const res = await post(`${o.baseUrl}/moderations`, o.apiKey, { model: o.moderationModel, input: text }, 6000);
+  const res = await post(`${o.baseUrl}/moderations`, o.apiKey, { model: o.moderationModel, input: text }, 4000);
   if (!res.ok) {
     console.error('[chat] moderation failed:', res.status, await safeText(res));
     throw new HttpError(502, 'upstream_error', 'Cheer Bear could not answer right now.');
@@ -96,7 +98,7 @@ export async function chatReply(opts: { text: string; history: ChatTurn[]; name:
     temperature: 0.8,
     max_tokens: 90,
     messages,
-  }, 9000);
+  }, 5000); // the browser gives up after 6 s and uses its local answer
   if (!res.ok) {
     console.error('[chat] completion failed:', res.status, await safeText(res));
     throw new HttpError(502, 'upstream_error', 'Cheer Bear could not answer right now.');

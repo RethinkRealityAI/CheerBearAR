@@ -2,7 +2,7 @@
 // pointer-events: none except its own controls. See docs/handoff/app-ui.md for the component map.
 import { useEffect, useRef, useState } from 'react';
 import './app.css';
-import { AppContext, useApp } from './context';
+import { AppContext, useApp, useController } from './context';
 import { AppController } from './controller';
 import { createAppStore } from './state/appState';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -80,7 +80,24 @@ function TopSlot() {
 }
 
 function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>; stageRef: React.RefObject<HTMLDivElement> }) {
+  const c = useController();
   const started = useApp((s) => s.started);
+  // the talk button is busy (a bubble, the mic explainer, a call): the experience's Actions + Games pair above it
+  // steps aside (hud.css .cb-app[data-orb-busy])
+  const orbBusy = useApp((s) => (s.call !== 'idle' && !(s.call === 'error' && s.ui.voiceMode.enabled)) || !!s.voiceBubble || s.micAsk);
+  // Actions / Games (the experience's bottom-right pair) open the conversation sheet on that tab (chrome-5)
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const onDock = (e: Event) => {
+      const kind = (e as CustomEvent<{ kind?: string }>).detail?.kind;
+      if (kind !== 'actions' && kind !== 'games') return;
+      e.preventDefault();
+      c.openSheet(kind);
+    };
+    el.addEventListener('cbx:dock', onDock);
+    return () => el.removeEventListener('cbx:dock', onDock);
+  }, [c, stageRef]);
   const isDesktop = useApp((s) => s.isDesktop);
   const sheetOpen = useApp((s) => s.sheetOpen);
   const colors = useApp((s) => s.ui.colors);
@@ -100,6 +117,7 @@ function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>
       style={style}
       data-desktop={isDesktop}
       data-side-open={isDesktop && sheetOpen && started}
+      data-orb-busy={orbBusy}
     >
       <div ref={stageRef} className="cb-stage" data-testid="stage" />
       <ErrorBoundary variant="layer">

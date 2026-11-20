@@ -385,3 +385,6 @@ await check('every problem has a short kind line (no "error", no blame), chips w
 });
 
 console.log(`voice hold: ${passed} passed${process.exitCode ? ', SOME FAILED' : ''}`);
+
+// voice-5: the demo call's turn taking (half duplex, Android ends, iOS restarts, barge-in, commands)
+await import('./check-voice-call');

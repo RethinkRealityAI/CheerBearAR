@@ -17,6 +17,8 @@ import { IS_PHONE } from '../../core/device';
 import { bindGestures, keyStick, type Shared } from '../shared';
 import { HeartToss, hugBear } from '../../physics/toss';
 import { PlayKit, type PlayGame, type PlayHost } from '../../play';
+import { recorder } from '../../capture/recorder';
+import { SceneShot } from '../../capture/scene-shot';
 
 /** The "throw hearts" hint shows once per visit (after the look-around hint). */
 let tossHinted = false;
@@ -33,6 +35,8 @@ export class ShowcaseMode implements Mode {
   readonly cam = new THREE.PerspectiveCamera(FOV_LAND, 1, 0.05, 200);
   renderer: THREE.WebGLRenderer | null = null;
   private canvas: HTMLCanvasElement | null = null;
+  /** camera-5: the capture button (dock top) and its review. */
+  shot: SceneShot | null = null;
   private env: THREE.WebGLRenderTarget | null = null;
   private ro: ResizeObserver | null = null;
   private unbind: (() => void) | null = null;
@@ -216,11 +220,21 @@ export class ShowcaseMode implements Mode {
     this.toss.show(true);
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('keyup', this.onKeyUp);
+    // camera-5 (round 5): tap = photo, hold = video, from the top of the Actions + Games stack
+    this.shot ??= new SceneShot({
+      container: this.sh.container, reduced: this.sh.reduced, capture: (b) => this.sh.ctx.capture(b),
+      shutter: (on, aria, hold) => this.sh.hud.shutter(on, aria, hold), toast: (t) => this.sh.hud.toast(t, 2000),
+      source: 'grab', can: () => this.active && !this.game, name: 'cheer-bear-3d', title: 'Your Cheer Bear photo',
+    });
+    this.shot.setLive(true);
+    this.sh.hud.dockShutter(this.shot.el);
     this.syncPlay();
   }
 
   exit(_to: ExperienceMode): void {
     this.active = false;
+    this.shot?.setLive(false);
+    this.sh.hud.dockShutter(null);
     this.runner.cancel();
     this.toss.show(false);
     this.toss.reset();
@@ -305,11 +319,8 @@ export class ShowcaseMode implements Mode {
     const stick = !g || g.showStick;
     this.stick = this.sh.hud.joystick(stick);
     if (!stick) this.stick = null;
-    if (!g && this.onPickGame) {
-      this.gamesBtn ??= this.sh.hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Cheer Bear', onClick: () => this.onPickGame?.() });
-      this.gamesBtn.dataset.cmd = 'games';
-      if (this.gamesBtn.parentElement !== this.sh.hud.left) this.sh.hud.left.appendChild(this.gamesBtn);
-    } else this.gamesBtn?.remove();
+    // Actions + Games (bottom right, above the talk button) while no game runs (chrome-5, round 5)
+    this.sh.hud.dock?.(!g);
   }
 
   private pv = new THREE.Vector3();
@@ -397,6 +408,7 @@ export class ShowcaseMode implements Mode {
     this.scene.backgroundIntensity = st.bg;
     a.update(dt, this.active ? this.cam.position : null);
     r.render(this.scene, this.cam);
+    if (this.active && this.canvas) recorder.frame(this.canvas); // camera-5: photo grabs and video clips copy the frame now
   };
 
   private placeCamera(_dt: number): void {

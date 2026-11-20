@@ -181,7 +181,8 @@ export function normaliseConfig(config: AppConfig | null | undefined): UiSetting
       desktop: bool(cu.defaultChatExpandedDesktop, true),
       mobile: bool(cu.defaultChatExpandedMobile, false),
     },
-    modeDefault: UI_MODES.includes(c.modeDefault as UiMode) ? (c.modeDefault as UiMode) : 'calm',
+    // the staff view ('call_debug') is not in the visitor app any more (chrome-5, round 5): it shows as Chat
+    modeDefault: c.modeDefault === 'call_debug' ? 'chat' : UI_MODES.includes(c.modeDefault as UiMode) ? (c.modeDefault as UiMode) : 'calm',
     transcriptVisibility: VISIBILITIES.includes(c.transcriptVisibility as TranscriptVisibility)
       ? (c.transcriptVisibility as TranscriptVisibility)
       : 'off',
@@ -195,7 +196,7 @@ export function normaliseConfig(config: AppConfig | null | undefined): UiSetting
     },
     gameModes,
     activeGameMode: typeof c.activeGameMode === 'string' ? c.activeGameMode : null,
-    welcome: {
+    welcome: currentWelcome({
       enabled: bool(wm.enabled, false),
       showOnce: bool(wm.showOnce, true),
       version: num(wm.version, 1),
@@ -212,7 +213,7 @@ export function normaliseConfig(config: AppConfig | null | undefined): UiSetting
           icon: str(it.icon, 'Sparkles'),
           imageUrl: typeof it.imageUrl === 'string' && it.imageUrl.trim() ? it.imageUrl : undefined,
         })),
-    },
+    }),
     settingsItems: { ...(cu.settingsPanel?.items ?? {}) },
     staff: {
       intentEngine: str(c.intentMatchingEngine, 'local'),
@@ -228,6 +229,29 @@ export function normaliseConfig(config: AppConfig | null | undefined): UiSetting
 }
 
 export const settingOn = (ui: UiSettings, id: string) => ui.settingsItems[id] !== false;
+
+/**
+ * The current welcome copy (chrome-5, round 5: hold-to-talk, Actions, Games). Mirrors DEFAULT_CONFIG in
+ * src/shared/config.ts. A stored config that still carries the untouched round-1 welcome ("Call or chat to Cheer
+ * Bear", version 1) gets this instead; a welcome an admin has edited is always kept as it is.
+ */
+export const CURRENT_WELCOME: Omit<WelcomeSettings, 'enabled' | 'showOnce' | 'delayMs' | 'heroImageUrl'> = {
+  version: 2,
+  title: 'Welcome to Cheer Bear AR',
+  description: 'Talk to Cheer Bear and watch the magic happen.',
+  items: [
+    { id: 'talk', title: 'Hold the mic and talk', description: 'Say “rainbow”, “dance” or “party”, then let go.', icon: 'Mic' },
+    { id: 'actions', title: 'Actions', description: 'Tap one and she does it.', icon: 'Sparkles' },
+    { id: 'games', title: 'Games', description: 'Heart Run, Heart Hoops and word games.', icon: 'Gamepad2' },
+  ],
+};
+function isStockWelcomeV1(w: WelcomeSettings): boolean {
+  return w.version === 1 && w.title === 'Welcome to Cheer Bear AR' && w.items.map((i) => i.id).join() === 'call-chat,explore-house,word-games'
+    && w.items[0]?.title === 'Call or chat to Cheer Bear';
+}
+export function currentWelcome(w: WelcomeSettings): WelcomeSettings {
+  return isStockWelcomeV1(w) ? { ...w, ...CURRENT_WELCOME, items: CURRENT_WELCOME.items.map((i) => ({ ...i })) } : w;
+}
 
 /**
  * Whether call transcripts may be shown (chat list and Cheer Bear's speech bubble).

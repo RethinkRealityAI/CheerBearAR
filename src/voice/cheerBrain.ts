@@ -48,9 +48,24 @@ const ACTION_LINES: Record<string, string[]> = {
 type SmallTalk =
   | 'greeting' | 'greetingNamed' | 'howAreYou' | 'whoAreYou' | 'whereLive' | 'age' | 'favColor' | 'favFood' | 'favThing'
   | 'canDo' | 'careBears' | 'joke' | 'love' | 'thanks' | 'bye' | 'sad' | 'happy' | 'tired' | 'encourage' | 'yes' | 'no'
-  | 'question' | 'unknown' | 'nameLearned' | 'askName' | 'stop' | 'kind' | 'safety' | 'private' | 'asleep';
+  | 'question' | 'unknown' | 'nameLearned' | 'askName' | 'stop' | 'kind' | 'safety' | 'private' | 'asleep'
+  // voice-5: more of what children really say, and answers to her own questions
+  | 'song' | 'story' | 'animal' | 'myName' | 'friends' | 'pet' | 'childAge' | 'real' | 'doing' | 'bored' | 'count'
+  | 'knockWho' | 'knockLaugh' | 'colourPicked' | 'favSong' | 'okay';
 
 const SMALL_TALK_RULES: Array<[SmallTalk, RegExp]> = [
+  ['myName', /\b(what'?s|what is) my name\b|\bdo you (know|remember) (me|my name|who i am)\b|\bwho am i\b/],
+  ['favSong', /\bfavou?rite (song|music)\b/],
+  ['song', /\bsing\b|\bsinging\b|\ba song\b|\bsongs?\b/],
+  ['story', /\bstor(y|ies)\b|\bfairy ?tale\b/],
+  ['animal', /\bfavou?rite animal\b|\bdo you (have|like) (a |any )?(pets?|animals?|dogs?|cats?|puppies|kittens?)\b/],
+  ['pet', /\bi (have|got) an? (dog|cat|puppy|kitten|fish|hamster|bunny|rabbit|guinea pig|bird|pony|horse|turtle|pet)\b/],
+  ['friends', /\bbest friend\b|\bwho are your friends\b|\bdo you have (any )?friends\b|\bbe (my )?friends?\b|\bbe friends\b/],
+  ['childAge', /^(i'?m|i am|im)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)( and a half)?( years? old)?[.!]*$|\bi'?m (\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) years? old\b/],
+  ['real', /\bare you (a )?real\b|\bare you alive\b|\bare you a robot\b|\bare you a computer\b/],
+  ['doing', /\bwhat (are|r) (you|u) doing\b|\bwhat'?re you doing\b|\bwhat are you up to\b/],
+  ['bored', /\bi'?m (so |really |very )?bored\b|\bi am (so |really |very )?bored\b|\bnothing to do\b/],
+  ['count', /\bcount\b|\bcounting\b/],
   ['howAreYou', /\bhow (are|r) (you|u)\b|\bhow'?s it going\b|\bhow do you feel\b|\bwhat'?s up\b|\bhow are things\b/],
   ['whoAreYou', /\b(what'?s|what is) your name\b|\bwho are (you|u)\b|\bare you cheer bear\b|\btell me about yourself\b/],
   ['whereLive', /\bwhere (do )?(you|u) live\b|\bwhere are you( from)?\b|\bcare ?a ?lot\b|\bwhere you'?re from\b/],
@@ -76,7 +91,7 @@ const SMALL_TALK_RULES: Array<[SmallTalk, RegExp]> = [
 const LINES: Record<SmallTalk, string[]> = {
   greeting: ["Hi there, friend! It's so nice to see you!", 'Hello! I was hoping you would come and chat!', 'Hey, friend! What a happy day!'],
   greetingNamed: ['Hi again, {name}! I missed you!', 'Hello, {name}! What a happy surprise!', 'Hey, {name}! I was just thinking about you!'],
-  howAreYou: ["I'm feeling super cheery today! How are you?", "I'm happy as can be, thanks for asking! How about you?", "I feel great! Talking with you makes my day."],
+  howAreYou: ["I'm feeling super cheery today! How are you?", "I'm happy as can be, thanks for asking! How about you?", "I feel great! Talking with you makes my day. How are you feeling?"],
   whoAreYou: ["I'm Cheer Bear! I love to cheer up my friends.", "It's me, Cheer Bear! My job is spreading happy feelings.", "I'm Cheer Bear, and I'm so glad we're friends!"],
   whereLive: ['I live in Care-a-Lot, a cozy place up in the clouds!', 'Up in Care-a-Lot, where the clouds are soft and fluffy!', 'My place is Care-a-Lot, way up in the sky with my friends.'],
   age: ["Hee hee, I'm not telling! But I'm young at heart.", "I'm just the right age for having fun!", "Old enough to be a good friend, and young enough to be silly!"],
@@ -114,7 +129,39 @@ const LINES: Record<SmallTalk, string[]> = {
   safety: ["That sounds really important. Please tell a grown-up you trust, they can help you. I'm sending you a big caring hug.", 'Please talk to a grown-up you trust about that, okay? You are not alone, and I care about you.'],
   private: ["That's private, so keep it just for your grown-ups! Now, what shall we do next?", "Let's keep things like that secret and safe. Want to hear a joke instead?"],
   asleep: ['Zzz... snore... mmm, five more minutes...', 'Zzz... Zzz...'],
+  song: [
+    'La la la! Cheer up, cheer up, it is a happy day! La la la!',
+    'Hum hum hum! When you smile, I smile too! Hee hee, that is my song!',
+    'Tra la la! Friends are fun, friends are true! Now you sing one too!',
+  ],
+  favSong: ['I love any song that makes me want to clap my paws!', 'Happy songs are my favourite! Do you have a favourite song?'],
+  story: [
+    'Once upon a time, a little cloud felt grumpy. Then a friend gave it a hug, and it smiled all day! The end.',
+    'Once there was a tiny bear who was shy. She said hello to one new friend, and her heart felt so warm! The end.',
+    'One day in Care-a-Lot, all my friends shared their cookies, and everyone was happy! The end.',
+  ],
+  animal: ['I love puppies and bunnies! What is your favourite animal?', 'Ooh, every animal is lovely! Bunnies are so fluffy.', 'I like birds that sing in the morning!'],
+  pet: ['How lovely! Give them a gentle pat from me!', 'Aww, I bet they love you so much!', 'Lucky you! Pets are the best cuddle buddies.'],
+  myName: ['You are {name}, my friend!', "Of course! You're {name}!", 'You are {name}, and you are wonderful!'],
+  friends: ['I have lots of Care Bear friends, and now I have you too!', 'You can be my friend! Friends make everything better.', 'Yes! We are friends now. Hooray!'],
+  childAge: ['Wow, what a great age! You are getting so big.', "That's a wonderful age for having fun!", 'Ooh, so grown up! I bet you know lots of things.'],
+  real: ["I'm Cheer Bear, a friendly bear character! And I'm really happy to talk with you.", "I'm a pretend bear, but my cheery feelings for you are real!"],
+  doing: ["I'm having fun talking with you!", 'Just being cheery and waiting for you to chat!', "I'm sitting on a fluffy cloud, chatting with my friend!"],
+  bored: ['Ooh, ask me to do a trick, or ask me to show you my moves!', 'Let me tell you a joke! Just ask me for one.', 'Want me to sing you a little song? Just ask!'],
+  count: ['One, two, three, four, five! Hee hee, counting is fun!', 'Let me try! One, two, three, four, five, six, seven, eight, nine, ten!'],
+  knockWho: ["Who's there?"],
+  knockLaugh: ['Hee hee hee! That is a good one!', 'Ha ha! You are so funny!', 'Hee hee! You got me!'],
+  colourPicked: ['Ooh, {colour} is so pretty! Great choice.', '{colour}! That is a lovely colour.', 'I like {colour} too! It makes me smile.'],
+  okay: ['Okay! What should we do now?', 'Alright! Ask me anything you like.'],
 };
+
+const COLOURS = /\b(red|orange|yellow|green|blue|purple|pink|violet|indigo|white|black|brown|gold|golden|silver|teal|turquoise|aqua|lilac|lavender|rainbow)\b/;
+const FEEL_GOOD = /^(i'?m |i am |i feel |im )?(so |very |really |super |pretty )?(good|great|fine|ok|okay|happy|awesome|amazing|super|well|excited|fantastic|wonderful|cool|alright|all right|not bad)\b/;
+const FEEL_BAD = /^(i'?m |i am |i feel |im )?(so |very |really |a bit |kind of |not )?(bad|sad|not good|not great|not so good|not very good|grumpy|upset|meh|so so|so-so|bad day|angry|mad|scared|worried|sick|unhappy|lonely)\b|^not (good|great|really|so good)\b/;
+const FEEL_TIRED = /^(i'?m |i am |i feel |im )?(so |very |really |a bit )?(tired|sleepy|exhausted)\b/;
+const YES = /^(yes|yeah|yep|yup|sure|ok|okay|yay|uh huh|of course|please|yes please|definitely|i do|i would)\b/;
+const NO = /^(no|nope|nah|not really|no thanks|no thank you|i don'?t)\b/;
+const KNOCK = /\bknock,? knock\b/;
 
 const GREETINGS = ["Hi friend! It's me, Cheer Bear! What's your name?", "Hello there! It's Cheer Bear! What's your name?", "Hi! Cheer Bear here! What's your name, friend?"];
 const GREETINGS_NAMED = ["Hi {name}! It's me, Cheer Bear! I'm so happy you called!", "Hello again, {name}! It's Cheer Bear! What shall we do today?"];
@@ -125,7 +172,8 @@ const NOT_NAMES = new Set(
     'sure hi hello hey bye thanks thank please what why how who when where cheer bear not just so very really a an the ' +
     'and but or it is me my you your we they he she them this that there going playing sorry excited scared angry mad ' +
     'upset lonely good fun silly cool awesome nice kind best little big new old dancing running waving magic party ' +
-    'rainbow sparkle house sleep dance wave cold idk dunno nobody someone something nothing maybe').split(' '),
+    'rainbow sparkle house sleep dance wave cold idk dunno nobody someone something nothing maybe ' +
+    'one two three four five six seven eight nine ten eleven twelve bored singing years old fine thanks').split(' '),
 );
 const RUDE = /\b(stupid|idiot|dumb|shut up|hate you|ugly|loser|jerk|crap|damn|hell|shit\w*|fuck\w*|bitch\w*|ass|asshole|bastard|dick|piss\w*|suck)\b/;
 const UNSAFE = /\b(kill\w*|die|dying|dead|death|suicide|hurt (me|myself|you|him|her)|hurts? me|gun|guns|knife|knives|blood|bleeding|drugs?|weapon\w*|abuse\w*|hit me|hits me|touch(ed)? me|kidnap\w*|bomb\w*|run away from home|nobody loves me|want to disappear)\b/;
@@ -157,6 +205,8 @@ export class CheerBrain {
   private lastLine = new Map<string, string>();
   private turns = 0;
   private seed: number;
+  /** voice-5: what her last line asked for, so a short answer ("good", "blue", "yes") gets a real reply. */
+  private expect: 'feeling' | 'colour' | 'joke' | 'knock1' | 'knock2' | null = null;
 
   constructor(opts: { seed?: number; name?: string | null } = {}) {
     this.seed = Math.abs(Math.floor(opts.seed ?? Date.now())) % 997;
@@ -185,7 +235,24 @@ export class CheerBrain {
     }
   }
 
+  /** What she is waiting for after her last line (tests and the debug view). */
+  get expecting(): string | null {
+    return this.expect;
+  }
+
   reply(input: string, classifier: ClassifierLike): BrainReply {
+    const expected = this.expect;
+    this.expect = null;
+    const r = this.replyInner(input, classifier, expected);
+    // remember what this line asks the child, so the next short answer makes sense
+    if (r.intent === 'knockWho') this.expect = expected === 'knock1' ? 'knock2' : 'knock1';
+    else if (/\bjoke\b[^.!]*\?$/i.test(r.text) || /\bjoke to cheer up\?$/i.test(r.text)) this.expect = 'joke';
+    else if (r.intent === 'howAreYou' && /\?$/.test(r.text)) this.expect = 'feeling';
+    else if (r.intent === 'favColor' && /\?$/.test(r.text)) this.expect = 'colour';
+    return r;
+  }
+
+  private replyInner(input: string, classifier: ClassifierLike, expected: CheerBrain['expect']): BrainReply {
     this.turns += 1;
     const raw = String(input || '').slice(0, 500);
     const t = normalizeInput(raw);
@@ -196,6 +263,38 @@ export class CheerBrain {
     if (UNSAFE.test(t)) return say('safety');
     if (PRIVATE.test(raw.toLowerCase())) return say('private');
     if (RUDE.test(t)) return say('kind');
+
+    // Knock knock jokes the child tells (the one place she repeats a word back, and only a short, clean one).
+    if (KNOCK.test(t) && this.asleep === 0) return { text: "Who's there?", actions: [], intent: 'knockWho' };
+    if (expected === 'knock1') {
+      const who = t.replace(/[^a-z' -]/g, '').trim();
+      const ok = who && who.split(' ').length <= 3 && who.length <= 20 && !extractKeywordMatches(who, classifier).length;
+      const line = ok ? `${who.charAt(0).toUpperCase()}${who.slice(1)} who?` : 'Who? Tell me!';
+      if (!extractKeywordMatches(line, classifier).length) return { text: line, actions: [], intent: 'knockWho' };
+    }
+    if (expected === 'knock2') return say('knockLaugh');
+
+    // Short answers to her own question ("How are you?" -> "good"; "Which colour?" -> "blue"; "A joke?" -> "yes").
+    if (expected && !this.findActions(t, classifier).length && t.split(' ').length <= 8) {
+      if (expected === 'feeling') {
+        if (FEEL_TIRED.test(t)) return say('tired');
+        if (FEEL_BAD.test(t)) return say('sad');
+        if (FEEL_GOOD.test(t)) return say('happy');
+      }
+      if (expected === 'colour') {
+        const c = t.match(COLOURS)?.[1];
+        if (c) {
+          const word = c.charAt(0).toUpperCase() + c.slice(1);
+          const pool = LINES.colourPicked.map((l) => l.replace(/\{colour\}/g, l.startsWith('{colour}') ? word : c))
+            .filter((l) => !extractKeywordMatches(l, classifier).length);
+          if (pool.length) return { text: this.rotate('colourPicked', pool), actions: [], intent: 'colourPicked' };
+        }
+      }
+      if (expected === 'joke') {
+        if (YES.test(t)) return say('joke');
+        if (NO.test(t)) return say('okay');
+      }
+    }
 
     // Her name for the child (only a first name, and only if it looks like one).
     const name = this.extractName(t, raw);
@@ -245,6 +344,11 @@ export class CheerBrain {
         this.askedName = true;
         this.awaitingName = true;
         return say('askName');
+      }
+      if (intent === 'myName' && !this._name) {
+        this.askedName = true;
+        this.awaitingName = true;
+        return { text: this.pick('myNameUnknown', ["Hmm, you haven't told me yet! What's your name?", 'I would love to know! What is your first name?'], classifier), actions: [], intent: 'askName' };
       }
       return say(intent);
     }

@@ -12,7 +12,9 @@ export function GameChip() {
   const mode = modes.find((m) => m.id === game.modeId && m.enabled);
   // Selfie and 3D Photo are about the picture: the chip would sit on the title art and in the photo's framing.
   const expMode = useApp((st) => st.expMode);
-  const shown = !!mode && expMode !== 'face' && expMode !== 'photo';
+  // Chat Time is the always-on free mode, not a game you started: no chip for it (Dapo, round 5: less clutter up
+  // top). A chosen word game shows a compact chip while it runs.
+  const shown = !!mode && mode.id !== CHAT_TIME_ID && expMode !== 'face' && expMode !== 'photo';
   // (the experience's hint pill moves down under the chip: TopSlot in App.tsx measures the slot)
   if (!mode || !shown) return null;
   const words = gameWords(mode, keywords);

@@ -11,6 +11,9 @@
 //   placed   she keeps turning to face you; tap her for a hop and hearts; shutter bottom centre takes the room photo
 //            (camera + 3D) -> the review sheet (Save / Share / Retake / Watch photo animation). Move (bottom left,
 //            always there) places her again; "Selfie" (stacked above Move) flips back for a new selfie.
+// Round 5 (camera-5, from the Happi demo): a "Welcome to photo mode" sheet the first time (the three steps), a short
+// toast explaining each switch (Selfie flip, Meet / Back to Cheer Bear, Move), tap = photo / hold = video in the room
+// (the title and the chosen frame + filter in the clip), and Frame / Filter chips on the review that restyle the photo.
 // Placement (relative to the phone, as the AR mode does), size and the selfie survive every flip and leaving the mode.
 // The model is the original baked CB-Frame.glb (bear + frame in one mesh, no skeleton): the selfie is a plane fitted
 // into the frame's opening (measured by ray casts: x -0.033..0.398, y 0.392..0.923, frame face z 0.096..0.15 in model
@@ -20,7 +23,9 @@ import * as THREE from 'three';
 import type { ExperienceMode } from '../../../shared/contracts';
 import type { CameraKind, EngineView, FaceEvent, HudApi, Mode, ModeContext, XrScene } from '../../types';
 import { ReviewSheet, RevealPlayer, compose, engineShot, flash, el } from '../../capture';
-import { drawFrameArt, loadFrameArt } from '../../capture/frame-art';
+import { FRAME_STYLES, PHOTO_FILTERS, drawFrameArt, loadFrameArt, type FrameSpec, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
+import { FILTER_CSS } from '../../capture/style-strip';
+import { clipHold, recorder } from '../../capture/recorder';
 import { askMotionPermission } from '../../core/device';
 import { bindGestures } from '../shared';
 import { ICON } from '../../hud/icons';
@@ -35,10 +40,15 @@ const OPEN_ASPECT = (OPENING.x1 - OPENING.x0) / (OPENING.y1 - OPENING.y0); // ~0
 const SELFIE_PX = { w: 612, h: Math.round(612 / OPEN_ASPECT) };
 
 type Cam = 'face' | 'world';
-type State = 'off' | 'selfie' | 'flipping' | 'placing' | 'restoring' | 'placed' | 'busy' | 'review';
+type State = 'off' | 'selfie' | 'flipping' | 'placing' | 'restoring' | 'placed' | 'busy' | 'review' | 'recording';
 
 type SwapEngine = EngineView & { start?(kind: 'world' | 'face'): Promise<void> };
 type CoverHud = HudApi & { cover?(text: string | null): void };
+type SheetHud = HudApi & { sheet(o: { title: string; body: string; buttons: string[]; html?: string }): Promise<number> };
+/** Place lights up once the reticle has sat on the floor this long without a break. */
+const STEADY = 0.5;
+/** The welcome sheet shows once per visit (page load). */
+let photoWelcomed = false;
 
 export class PhotoMode implements Mode {
   readonly id = 'photo' as ExperienceMode;
@@ -49,7 +59,14 @@ export class PhotoMode implements Mode {
   readonly diag = {
     shots: 0, lastPhoto: null as Blob | null, placedCount: 0, moved: 0, selfies: 0, flips: 0, flipMs: [] as number[],
     restored: 0, reactions: 0, lastSelfie: null as Blob | null, selfieCrop: '' as string, errors: [] as string[],
+    clips: 0, lastClip: null as Blob | null, welcomed: false, restyles: 0,
   };
+  /** The saved photo's frame and filter (chosen on the review sheet; kept for the next photo). */
+  frame: FrameStyle = 'clean';
+  filter: PhotoFilter = 'natural';
+  /** The last raw room shot, kept while the review is open so a new frame / filter can recompose it. */
+  private shot: HTMLImageElement | null = null;
+  private steadyT = 0;
 
   /** Which camera the mode runs now. The experience reads it to start the engine, route face events and scenes. */
   private cam: Cam = 'face';
@@ -152,13 +169,30 @@ export class PhotoMode implements Mode {
     this.guide.setAttribute('aria-hidden', 'true');
 
     const name = 'cheer-bear-3d-photo';
+    const self = this;
     this.review = new ReviewSheet({
       container: ctx.container,
       name,
       title: 'Your 3D photo',
       share: { title: 'Cheer Bear and me', text: 'A photo with Cheer Bear!' },
-      onRetake: () => this.toPlaced(),
+      onRetake: () => { this.dropShot(); this.toPlaced(); },
       onReveal: (b) => this.reveal.play(b),
+      styles: {
+        frames: FRAME_STYLES, filters: PHOTO_FILTERS,
+        get frame() { return self.frame; },
+        get filter() { return self.filter; },
+        restyle: async (frame, filter) => {
+          if (!this.shot) throw new Error('no shot');
+          const spec = this.spec(frame as FrameStyle, filter as PhotoFilter);
+          return (await compose(this.shot, (g, w, h) => drawFrameArt(g, w, h, spec))).blob;
+        },
+        onChange: (blob, frame, filter) => {
+          this.frame = frame as FrameStyle;
+          this.filter = filter as PhotoFilter;
+          this.diag.lastPhoto = blob;
+          this.diag.restyles++;
+        },
+      },
     });
     this.reveal = new RevealPlayer(ctx.container, name);
   }
@@ -206,12 +240,20 @@ export class PhotoMode implements Mode {
       },
     });
     this.onCamera();
+    if (!photoWelcomed) {
+      // the first time this visit: what Photo does, in three steps (Dapo, round 5: "Welcome to photo mode")
+      photoWelcomed = true;
+      this.diag.welcomed = true;
+      void (this.ctx.hud as SheetHud).sheet({ title: 'Welcome to photo mode', body: 'A photo with Cheer Bear in your room, in three steps:', html: WELCOME_HTML, buttons: ['Let’s go'] });
+    }
   }
 
   exit(_to: ExperienceMode): void {
     if (this.cam === 'world') this.remember();
+    if (this.state === 'recording') void recorder.stop();
     this.state = 'off';
     this.review.close();
+    this.dropShot();
     this.reveal.close();
     this.unbind?.();
     this.unbind = null;
@@ -242,9 +284,11 @@ export class PhotoMode implements Mode {
     const settled = this.ctx.engine.settled();
     const cam = xr.camera;
     if (this.state === 'placing') {
-      const ok = settled && this.floorHit(cam);
-      this.reticle.visible = ok;
-      if (ok) {
+      const hit = settled && this.floorHit(cam);
+      this.reticle.visible = hit;
+      this.steadyT = hit ? this.steadyT + dt : 0;
+      const ok = hit && this.steadyT >= STEADY; // Place lights only on a steady floor
+      if (hit) {
         this.reticle.position.copy(this.hit);
         this.reticle.scale.setScalar(1 + Math.sin(now / 260) * (this.ctx.reducedMotion ? 0.01 : 0.05));
         if (!this.anchor.visible) this.anchor.position.copy(this.hit);
@@ -375,6 +419,8 @@ export class PhotoMode implements Mode {
       hud.cover?.(null);
       this.onCamera();
       if (to === 'world' && this.placedOnce) this.ctx.hud.toast(this.freshSelfie ? 'Your new selfie is in her frame' : 'She is where you left her', 1600);
+      else if (to === 'world') this.ctx.hud.toast('Now find a spot on the floor for her', 2000);
+      else if (this.placedOnce) this.ctx.hud.toast('New selfie: she keeps her spot', 1800);
       if (to === 'world') this.freshSelfie = false;
     } catch (e) {
       hud.cover?.(null);
@@ -401,7 +447,7 @@ export class PhotoMode implements Mode {
     this.clearHud();
     this.anchor.visible = false;
     this.reticle.visible = false;
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take your selfie for Cheer Bear’s frame');
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
     this.shutterBtn.disabled = false;
     this.shutterBtn.setAttribute('aria-label', 'Take your selfie for Cheer Bear’s frame');
     hud.centre.appendChild(this.shutterBtn);
@@ -546,6 +592,7 @@ export class PhotoMode implements Mode {
   // ------------------------------------------------------------------ back camera: place, react, shoot
   private toPlacing(): void {
     this.state = 'placing';
+    this.steadyT = 0;
     this.anchor.visible = false;
     this.reticle.visible = false;
     const hud = this.ctx.hud;
@@ -614,9 +661,9 @@ export class PhotoMode implements Mode {
     this.state = 'placed';
     const hud = this.ctx.hud;
     this.clearHud();
-    if (!this.shutterBtn) this.shutterBtn = hud.shutter(() => this.onShutter(), 'Take a 3D photo');
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
     this.shutterBtn.disabled = false;
-    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Cheer Bear');
+    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Cheer Bear. Hold to record a video');
     hud.centre.appendChild(this.shutterBtn);
     // bottom left, always there once placed (the slot stacks bottom-up: Move at the bottom, Selfie above it)
     hud.left.append(this.moveBtn, this.flipBtn);
@@ -628,6 +675,36 @@ export class PhotoMode implements Mode {
     this.diag.moved++;
     this.toPlacing();
     this.anchor.visible = true; // keep showing her while you look for a new spot
+    this.ctx.hud.toast('Point at a new spot, then Place', 1800);
+  }
+
+  /** One shutter for both cameras; in the room, press and hold records a video with the title, frame and filter. */
+  private makeShutter(): HTMLButtonElement {
+    return this.ctx.hud.shutter(() => this.onShutter(), 'Take a photo', clipHold({
+      can: () => this.cam === 'world' && this.state === 'placed',
+      options: () => ({
+        overlay: (g, w, h) => drawFrameArt(g, w, h, { ...this.spec(this.frame, this.filter), filter: undefined }),
+        filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint,
+      }),
+      onStart: () => { this.state = 'recording'; this.ctx.hud.hint(''); this.react(); },
+      onDone: (blob) => {
+        if ((this.state as State) !== 'recording') return;
+        if (!blob) { this.ctx.hud.toast('Hold a little longer for a video', 2000); this.toPlaced(); return; }
+        this.diag.clips++;
+        this.diag.lastClip = blob;
+        this.state = 'review';
+        this.review.show(blob);
+      },
+    }));
+  }
+
+  private spec(frame: FrameStyle, filter: PhotoFilter): FrameSpec {
+    return { title: true, titleWidth: 0.34, titleAt: 'bottom-left', frame, filter };
+  }
+
+  private dropShot(): void {
+    if (this.shot) this.shot.src = '';
+    this.shot = null;
   }
 
   private onShutter(): void {
@@ -643,8 +720,10 @@ export class PhotoMode implements Mode {
       flash(this.ctx.container, this.ctx.reducedMotion);
       const img = await engineShot(this.ctx.engine);
       if (this.state !== 'busy') return;
-      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleWidth: 0.34, titleAt: 'bottom-left' }));
-      img.src = '';
+      const spec = this.spec(this.frame, this.filter);
+      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, spec));
+      this.dropShot();
+      this.shot = img; // kept while the review is open: the Frame / Filter chips recompose from it
       if (this.state !== 'busy') return;
       this.diag.shots++;
       this.diag.lastPhoto = blob;
@@ -760,3 +839,12 @@ export function createMode(ctx: ModeContext): Mode {
   return new PhotoMode(ctx);
 }
 export default createMode;
+
+const STEP = (n: number, title: string, text: string) => `<li class="cbc-wstep"><span class="cbc-wnum" aria-hidden="true">${n}</span><span><b>${title}</b>${text}</span></li>`;
+/** The welcome sheet's body: the three steps (flat, no art). */
+const WELCOME_HTML = `<ol class="cbc-welcome">
+  ${STEP(1, 'Take a selfie', 'Fit your face in the oval and tap the white button.')}
+  ${STEP(2, 'Meet Cheer Bear', 'The camera turns round. Point at the floor, pinch to size her, then Place.')}
+  ${STEP(3, 'Snap the room', 'Tap for a photo, hold for a video. Tap her for hearts. Pick a frame and a filter after.')}
+</ol>
+<p class="cbc-wfoot"><b>Selfie</b> takes a new selfie, <b>Move</b> puts her somewhere else.</p>`;

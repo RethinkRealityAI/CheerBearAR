@@ -122,6 +122,7 @@ class Experience implements ExperienceApi {
       onStart: () => this.start(),
       onSwitch: (m) => void this.setMode(m),
       onRestart: () => this.restart(),
+      onDock: (kind) => this.onDock(kind),
     });
     this.hud = hud;
     this.media = new Media();
@@ -282,7 +283,35 @@ class Experience implements ExperienceApi {
     return on ? this.play.pause('sheet') : this.play.resume('sheet');
   }
 
-  /** The Games button (bottom left in 3D, above Move in AR): a small chooser sheet. */
+  /**
+   * Actions / Games (bottom right, above the talk button). The app opens its conversation sheet on that tab: it
+   * listens for a cancelable `cbx:dock` event on the container and calls preventDefault(). Without the app (the
+   * experience alone, /experience-dev.html) these fall back to the experience's own small sheets.
+   */
+  private onDock(kind: 'actions' | 'games'): void {
+    const box = this.box;
+    if (!box || !this.hud || this.hud.sheetOpen) return;
+    const ev = new CustomEvent('cbx:dock', { detail: { kind }, bubbles: true, cancelable: true });
+    if (!box.dispatchEvent(ev)) return;
+    if (kind === 'games') this.pickGame(); else this.pickAction();
+  }
+
+  /** Fallback Actions sheet (no app): one button per moment; a tap closes it and she does it. */
+  private pickAction(): void {
+    const hud = this.hud;
+    if (!hud || hud.sheetOpen) return;
+    const names = MOMENT_NAMES.filter((n) => !/^(wakeup|idle)$/i.test(n));
+    const html = `<div class="cbx-moves">${names.map((n) => `<button type="button" data-move="${n}">${n.replace(/([a-z])([A-Z])/g, '$1 $2')}</button>`).join('')}</div>`;
+    void hud.sheet({ title: 'What should Cheer Bear do?', body: '', html, buttons: ['Close'] });
+    const wraps = this.box?.querySelectorAll<HTMLElement>('.cbx-sheet-wrap');
+    const wrap = wraps?.[wraps.length - 1];
+    wrap?.querySelectorAll<HTMLButtonElement>('[data-move]').forEach((b) => b.addEventListener('click', () => {
+      (wrap.querySelector('.row .btn') as HTMLButtonElement | null)?.click();
+      window.setTimeout(() => this.trigger(b.dataset.move!), 120);
+    }));
+  }
+
+  /** The Games button (bottom right with Actions): a small chooser sheet (only without the app, see onDock). */
   private pickGame(): void {
     const hud = this.hud;
     if (!hud || hud.sheetOpen) return;
@@ -424,6 +453,7 @@ class Experience implements ExperienceApi {
     // (awaited: the hud's iris finishes covering the old view before it is torn down; ~0.35 s)
     if (from) await hud.cover(camera ? (to.camera === 'face' ? 'Turning the camera round…' : 'Opening the camera…') : 'Back to Care-a-Lot…');
     this.entered = false;
+    hud.dock(false); // (3D and AR show it again as their state allows; Selfie and Photo below)
     try {
       if (from) await from.exit(id);
     } catch (e) {
@@ -442,6 +472,9 @@ class Experience implements ExperienceApi {
         await to.enter(from?.id ?? null);
       }
       this.entered = true;
+      // Selfie / Photo: only a small Actions toggle above the look chips (no Games there: games are 3D / AR only)
+      if (id === 'face' || id === 'photo') hud.dock('actions');
+
     } catch (e) {
       const err = e instanceof EngineError ? e : new EngineError('error', String((e as Error)?.message ?? e));
       console.warn('[experience] could not start', id, err.reason, err.message);

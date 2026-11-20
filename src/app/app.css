@@ -7,8 +7,9 @@
   position: fixed; inset: 0; overflow: hidden; background: #000;
   font-family: var(--cb-font); color: var(--cb-white);
   --side-w: 400px;
-  --top-bar: 72px; /* the experience's top bar (title, switcher, menu) */
+  --top-bar: 104px; /* the experience's top bar: the lockup, then the tabs + menu (chrome-5, round 5) */
 }
+@media (min-width: 700px) { .cb-app { --top-bar: 72px; } } /* wide: one row */
 @media (max-width: 1100px) { .cb-app { --side-w: 360px; } }
 
 .cb-stage { position: absolute; inset: 0; transition: right .3s var(--cb-ease); }
@@ -186,6 +187,13 @@
 .cb-vbubble-text { min-width: 0; overflow-wrap: anywhere; }
 .cb-vbubble-rec { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--cb-red); animation: cb-rec 1s ease-in-out infinite alternate; }
 @keyframes cb-rec { from { opacity: 1; } to { opacity: .35; } }
+/* voice-5, demo call turn taking: "thinking" dots (flat), and the mic breathing while it is your turn */
+.cb-vbubble-dots { display: inline-flex; gap: 6px; padding: 4px 2px; }
+.cb-vbubble-dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--cb-pink-deep); animation: cb-dot 1s ease-in-out infinite; }
+.cb-vbubble-dots i:nth-child(2) { animation-delay: .15s; }
+.cb-vbubble-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes cb-dot { 0%, 100% { transform: translateY(0); opacity: .45; } 40% { transform: translateY(-5px); opacity: 1; } }
+.cb-orb.is-turn-listening:not(.has-level) .cb-orb-wave, .cb-orb.is-turn-hearing:not(.has-level) .cb-orb-wave { animation: cb-fade 1.2s ease-in-out infinite; opacity: .5; }
 .cb-vbubble-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .cb-vchip {
   min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--cb-r-pill); cursor: pointer;
@@ -656,7 +664,7 @@ kbd { display: inline-block; min-width: 28px; text-align: center; padding: 3px 8
   .cb-wordchips li.is-found, .cb-chip-dots i.on, .cb-toast.is-found .cb-toast-icon { animation: cb-fade-in .25s ease-out both; }
   .cb-toast.is-leaving { animation: cb-fade-out .2s ease-in both; }
   .cb-toast-burst { display: none; }
-  .cb-typing i { animation: cb-fade 1.6s ease-in-out infinite; }
+  .cb-typing i, .cb-vbubble-dots i { animation: cb-fade 1.6s ease-in-out infinite; }
   .cb-sheet.is-bottom, .cb-sheet.is-side, .cb-stage, .cb-layer-stage { transition-duration: .01s, .01s, 0s; }
   .cb-confetti i { animation: cb-drift 3s ease-out forwards; }
   .cb-orb, .cb-action, .cb-btn, .cb-tabs-pill, .cb-seg-pill, .cb-send { transition-timing-function: ease-out; }

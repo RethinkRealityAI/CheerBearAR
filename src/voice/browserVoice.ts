@@ -185,6 +185,7 @@ class Line {
   private lastBoundaryAt = 0;
   private speed = 1;
   private audioEnded = false;
+  private endPoll: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private text: string,
@@ -207,7 +208,9 @@ class Line {
         u.voice = this.voice;
         u.lang = this.voice.lang;
       } else u.lang = 'en-US';
-      u.pitch = clamp(this.settings.pitch, 0, 2);
+      // Edge's "Ana" is already a child's voice: raising it more makes a chipmunk
+      const childVoice = !!this.voice && /\bana\b/i.test(this.voice.name);
+      u.pitch = clamp(childVoice ? Math.min(this.settings.pitch, 1.08) : this.settings.pitch, 0, 2);
       u.rate = clamp(this.settings.rate, 0.5, 2);
       u.volume = 1;
       u.onstart = () => this.onAudioStart();
@@ -254,6 +257,22 @@ class Line {
     // Some engines never send `end` (Chrome with a network voice that drops): end after a generous estimate.
     const ms = (this.tl.duration * 2.2 + 4) * 1000;
     this.watchdog = setTimeout(() => this.onAudioEnd(), ms);
+    // voice-5: the demo call only listens once she has finished, so a missing `end` (Chrome Android, network voices)
+    // used to hold the child's turn for the whole watchdog (up to ~10 s). Once most of the line should be over, the
+    // synth saying it is no longer speaking twice in a row counts as the end.
+    const synth = this.synth;
+    if (synth && typeof synth.speaking === 'boolean') {
+      const started = now();
+      let quiet = 0;
+      this.endPoll = setInterval(() => {
+        if (this.finished) return;
+        // near the end: the last word has been announced, or most of the estimated time has gone
+        const nearEnd = this.boundaryWord >= this.tl.words.length - 1 || (now() - started) / 1000 >= this.tl.duration * 0.6;
+        if (!nearEnd) return;
+        quiet = synth.speaking || synth.pending ? 0 : quiet + 1;
+        if (quiet >= 2) this.onAudioEnd();
+      }, 250);
+    }
   }
 
   private onBoundary(e: SpeechSynthesisEvent) {
@@ -324,7 +343,14 @@ class Line {
       while (idx + 1 < tl.words.length && tl.words[idx + 1].t0 <= this.clock) idx += 1;
       if (idx > this.wordShown) this.showWords(idx);
     }
-    this.handlers.onFrame?.(sampleTimeline(tl, this.clock));
+    if (this.audible && !this.audioEnded && this.boundaries === 0 && this.clock > tl.duration - 0.04 && tl.duration > 0.3) {
+      // voice-5: no word boundaries (many Android / network voices) and the voice is slower than the estimate: keep
+      // the mouth gently talking (a loop over the middle of the line) until the voice really ends, instead of a
+      // closed mouth while she is still talking.
+      const span = tl.duration * 0.7;
+      const t = tl.duration * 0.15 + ((this.clock - tl.duration) % span);
+      this.handlers.onFrame?.(sampleTimeline(tl, t, { gain: 0.75 }));
+    } else this.handlers.onFrame?.(sampleTimeline(tl, this.clock));
     if (!this.audible && this.clock >= tl.duration) return this.finish(false);
     this.timer = setTimeout(this.tick, FRAME_MS);
   };
@@ -346,6 +372,7 @@ class Line {
     if (this.finished) return;
     this.finished = true;
     for (const t of [this.timer, this.startTimeout, this.watchdog]) if (t) clearTimeout(t);
+    if (this.endPoll) clearInterval(this.endPoll);
     if (this.utter) {
       this.utter.onstart = this.utter.onend = this.utter.onerror = this.utter.onboundary = null;
       this.utter = null;

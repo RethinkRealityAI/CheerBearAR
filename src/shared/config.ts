@@ -270,16 +270,16 @@ export const DEFAULT_CONFIG: AppConfig = {
       welcomeModal: {
         enabled: true,
         showOnce: true,
-        version: 1,
+        // chrome-5, round 5: current copy (hold-to-talk, Actions, Games); src/app/state/uiConfig.ts CURRENT_WELCOME
+        version: 2,
         title: 'Welcome to Cheer Bear AR',
-        description:
-          'Meet Cheer Bear and explore the experience. Try calling or chatting, explore Cheer Bear’s house, and play word games together.',
+        description: 'Talk to Cheer Bear and watch the magic happen.',
         heroImageUrl: '',
         delayMs: 0,
         items: [
-          { id: 'call-chat', enabled: true, title: 'Call or chat to Cheer Bear', description: 'Say hello and talk with Cheer Bear in real time.', icon: 'Phone' },
-          { id: 'explore-house', enabled: true, title: 'Explore Cheer Bear’s house', description: 'Look around and discover Cheer Bear’s world in AR.', icon: 'Home' },
-          { id: 'word-games', enabled: true, title: 'Play word games', description: 'Try game modes and get Cheer Bear to say special words.', icon: 'Gamepad2' },
+          { id: 'talk', enabled: true, title: 'Hold the mic and talk', description: 'Say “rainbow”, “dance” or “party”, then let go.', icon: 'Mic' },
+          { id: 'actions', enabled: true, title: 'Actions', description: 'Tap one and she does it.', icon: 'Sparkles' },
+          { id: 'games', enabled: true, title: 'Games', description: 'Heart Run, Heart Hoops and word games.', icon: 'Gamepad2' },
         ],
       },
       settingsPanel: {

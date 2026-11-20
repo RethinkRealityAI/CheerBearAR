@@ -59,6 +59,14 @@ export interface VoiceModeApi {
   cancel(): void;
   /** Run text as if it was said (example chips). Emits phase 'tap' commands. */
   run(text: string): VoiceMatch[];
+  /** voice-5: the commands in `text`, without running anything (the demo call runs them itself). */
+  match(text: string): VoiceMatch[];
+  /**
+   * voice-5: words that were no command get a real answer from her brain (local, or AI for what it doesn't know),
+   * spoken and shown like a typed-chat answer. Resolves with the brain's intent once the answer is known (null: she
+   * can't answer now, e.g. a call owns her voice).
+   */
+  converse(text: string): Promise<{ intent: string; via: 'local' | 'ai' } | null>;
   /** Fire a trigger word through the call's pipeline (speaker 'user', via 'local'). */
   fireTrigger(keyword: string): void;
   /** A short spoken answer for a command (null when none fits). Speaks only when `speak` is true. */
@@ -76,6 +84,8 @@ export interface VoiceModeDeps {
   fireTrigger(keyword: string): void;
   /** Speak a fixed line as Cheer Bear (browser voice + mouth + speech bubble). */
   say(line: string): void;
+  /** Answer free speech with her brain (voice-5). `claimed`: keywords the words already fired. */
+  converse?(text: string, claimed: string[]): Promise<{ intent: string; via: 'local' | 'ai' } | null>;
   hush(): void;
   /** Call inside the press: unlock speech synthesis for her answer (iOS). */
   unlock(): void;
@@ -200,6 +210,16 @@ export class VoiceMode implements VoiceModeApi {
 
   fireTrigger(keyword: string): void {
     this.deps.fireTrigger(keyword);
+  }
+
+  match(text: string): VoiceMatch[] {
+    return matchVoiceCommands(text, this.classifier());
+  }
+
+  converse(text: string): Promise<{ intent: string; via: 'local' | 'ai' } | null> {
+    const t = text.trim();
+    if (!t || !this.deps.converse) return Promise.resolve(null);
+    return this.deps.converse(t, []);
   }
 
   reply(command: VoiceCommand, speak: boolean): string | null {
