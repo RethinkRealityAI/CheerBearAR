@@ -39,8 +39,12 @@ export interface FrameSpec {
   titleWidth?: number;
   /** Title top as a share of the picture height (below the HUD's top bar on screen). */
   titleTop?: number;
-  /** Where the title goes: top centre (default), or the bottom-left corner (3D Photo: she and the frame are central). */
-  titleAt?: 'top' | 'bottom-left';
+  /**
+   * Where the title goes: top centre at `titleTop` (default; the live Selfie view, just under the HUD's top bar), 'edge':
+   * top centre tucked into the frame's top edge (the saved Selfie photo and clip, polish-6: part of the frame), or the
+   * bottom-left corner (3D Photo, 3D / AR shots: she and the frame are central).
+   */
+  titleAt?: 'top' | 'edge' | 'bottom-left';
   /** The decoration (default: clean, just the title). */
   frame?: FrameStyle;
   /** The colour look, run over the picture before the art (saved photos only; the live view uses CSS). */
@@ -113,10 +117,20 @@ function sparkle(g: CanvasRenderingContext2D, x: number, y: number, r: number, c
   g.fill();
 }
 
+/** The rainbow frame's band width (chip previews: chunkier). */
+function bandW(m: number, live: boolean): number {
+  return Math.max(2, Math.round(m * (live ? 0.0085 : 0.01)), m < 200 ? Math.round(m * 0.022) : 0);
+}
+/** Where the rainbow frame's inside starts (the six bands and the white line). */
+function edgeInset(m: number, live: boolean): number {
+  const s = bandW(m, live);
+  return BANDS.length * s + Math.max(1, Math.round(s * 0.6));
+}
+
 /** Rainbow: six flat stripes round the edge, a white inner line, cloud puffs over two corners. */
 function rainbowFrame(g: CanvasRenderingContext2D, w: number, h: number, live: boolean): void {
   const m = Math.min(w, h);
-  const s = Math.max(2, Math.round(m * (live ? 0.0085 : 0.01)), m < 200 ? Math.round(m * 0.022) : 0); // chip previews: chunkier
+  const s = bandW(m, live);
   BANDS.forEach((c, i) => {
     const o = i * s;
     g.fillStyle = c;
@@ -190,5 +204,10 @@ export function drawFrameArt(g: CanvasRenderingContext2D, w: number, h: number, 
   if (s.titleAt === 'bottom-left') {
     const m = Math.min(w, h) * (frame === 'rainbow' ? 0.08 : 0.035);
     g.drawImage(title, m, h - th - m, tw, th);
+  } else if (s.titleAt === 'edge') {
+    // part of the frame: just inside the rainbow's bands, among the top clouds, or a small margin
+    const m = Math.min(w, h);
+    const y = frame === 'rainbow' ? edgeInset(m, live) + m * 0.012 : frame === 'clouds' ? m * 0.03 : m * 0.035;
+    g.drawImage(title, (w - tw) / 2, y, tw, th);
   } else g.drawImage(title, (w - tw) / 2, h * (s.titleTop ?? 0.02), tw, th);
 }

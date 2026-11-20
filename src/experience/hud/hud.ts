@@ -88,7 +88,8 @@ export class Hud implements HudApi {
   /** camera-5: the capture shutter at the top of the dock (3D and AR), and how to stop a clip it is holding. */
   private dockShot: HTMLButtonElement | null = null;
   private holdStops = new WeakMap<HTMLButtonElement, () => void>();
-  private actOne: HTMLButtonElement;
+  /** The "Hold for video" cue by the capture tile shows once per page load (polish-6). */
+  private shotCued = false;
   private fx: HTMLElement;
   private coverOutT = 0;
   private coverOnAt = 0;
@@ -150,13 +151,14 @@ export class Hud implements HudApi {
     // ---- HUD
     this.hudEl = el('div', 'cbx-hud');
     this.hudEl.hidden = true;
-    // top (chrome-5, round 5, after Dapo's Happi notes): a one-line lockup top left, then the mode tabs with the menu
-    // in line with them on the right. Wide screens: one row (lockup, tabs centred, menu).
+    // top (polish-6, round 6, Dapo: "the menu should be on the same line as the lockup, top right; the mode switcher
+    // top centre, on the next line, between those items"): row 1 = the one-line lockup top left and Menu top right,
+    // row 2 = the mode tabs centred under them (a CSS grid, hud.css). Wide screens: one row (lockup, tabs centred,
+    // menu). Selfie hides the lockup (its frame carries the title cloud) but keeps the rows, so nothing jumps.
     const top = el('div', 'cbx-top');
     const lockup = el('div', 'cbx-lockup', `<img src="/img/cb-lockup.webp" alt="" width="295" height="63"><b aria-hidden="true">AR</b>`);
     lockup.setAttribute('role', 'img');
     lockup.setAttribute('aria-label', `${opts.title} AR`);
-    const row = el('div', 'cbx-tabsrow');
     // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
     // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
@@ -184,8 +186,7 @@ export class Hud implements HudApi {
     menuBtn.setAttribute('aria-label', 'Menu');
     menuBtn.setAttribute('aria-haspopup', 'dialog');
     menuBtn.addEventListener('click', () => this.openMenu());
-    row.append(this.switchEl, menuBtn);
-    top.append(lockup, row);
+    top.append(lockup, menuBtn, this.switchEl);
 
     this.hintEl = el('p', 'ml-hint');
     this.hintEl.setAttribute('role', 'status');
@@ -217,14 +218,7 @@ export class Hud implements HudApi {
       dockBtn('games', 'Games', ICON.games, 'Games: play with Cheer Bear'),
     );
     this.right.appendChild(this.dockEl);
-    // Selfie / Photo: a single small Actions toggle, bottom right ABOVE camera-5's live look chips (hud.above at
-    // bottom + 124 px, its height in --cbx-strip-h), so it never meets the shutter or the chips
-    this.actOne = el('button', 'cbx-act1', `${ICON.actions}<span>Actions</span>`);
-    this.actOne.type = 'button';
-    this.actOne.dataset.cmd = 'actions';
-    this.actOne.setAttribute('aria-label', 'Actions: pick something for Cheer Bear to do');
-    this.actOne.hidden = true;
-    this.actOne.addEventListener('click', (e) => { e.stopPropagation(); this.opts.onDock?.('actions'); });
+    // (polish-6, round 6: Selfie and Photo have no Actions toggle or talk button any more: the camera views stay clear)
 
     // joystick (bottom centre, walking modes): a plain branded stick: glass base, a thin white ring with one short
     // white arc gliding round it (a flat shimmer, no gradient), a white thumb with a small pink heart. No arrows.
@@ -235,7 +229,7 @@ export class Hud implements HudApi {
     this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
 
-    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom, this.actOne);
+    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom);
     this.layer = el('div', 'cbx-layer');
 
     // the mode-change cover (chrome-5, round 5): a flat iris in the destination's colour grows from the tapped tab,
@@ -385,14 +379,23 @@ export class Hud implements HudApi {
     this.root.style.setProperty('--cbx-reserved', Math.max(0, px) + 'px');
   }
   /** Show / hide the Actions + Games pair (bottom right, above the talk button). Modes call it as their state allows. */
-  dock(show: boolean | 'actions'): void {
+  dock(show: boolean): void {
     const full = show === true;
     if (!full && this.dockShot) this.holdStops.get(this.dockShot)?.(); // the dock hides mid-clip: the clip ends there
     if (this.dockEl.hidden !== !full) this.dockEl.hidden = !full;
     if (full && this.dockEl.parentElement !== this.right) this.right.appendChild(this.dockEl);
-    // Selfie and Photo: one compact Actions toggle above the look chips (games are 3D / AR only)
-    const one = show === 'actions';
-    if (this.actOne.hidden !== !one) this.actOne.hidden = !one;
+    if (full && this.dockShot && !this.shotCued) this.cueShot(this.dockShot);
+  }
+  /** The first time the capture tile shows: a small "Hold for video" pill beside it for a few seconds. */
+  private cueShot(b: HTMLButtonElement): void {
+    this.shotCued = true;
+    const cue = el('span', 'cbx-shot-cue', 'Hold for video');
+    cue.setAttribute('aria-hidden', 'true');
+    window.setTimeout(() => {
+      if (!b.isConnected || this.dockEl.hidden) { this.shotCued = false; return; } // try again next time it shows
+      b.appendChild(cue);
+      window.setTimeout(() => cue.remove(), 4200);
+    }, 900);
   }
   /** camera-5 (round 5): put a capture shutter (from shutter()) at the TOP of the Actions + Games stack, over the talk
    *  button, or take it away (null). It shows and hides with the dock. */
@@ -402,6 +405,13 @@ export class Hud implements HudApi {
       this.dockShot.remove();
     }
     this.dockShot = b;
+    if (b && !b.querySelector('.cbx-shot-face')) {
+      // polish-6 (round 6, Dapo: "the white circle looks out of place"): a branded tile like Actions / Games: a camera
+      // with a heart for a lens and "Photo" under it; recording turns it red with a white stop square and the clock
+      b.classList.add('is-shot');
+      b.insertAdjacentHTML('beforeend', `<span class="cbx-shot-face" aria-hidden="true">${ICON.camHeart}</span><span class="cbx-shot-lbl" aria-hidden="true">Photo</span>`);
+      b.title = 'Tap for a photo, hold for a video';
+    }
     if (b && b.parentElement !== this.dockEl) this.dockEl.prepend(b);
   }
 
@@ -508,7 +518,9 @@ export class Hud implements HudApi {
     const loop = () => {
       if (!recording) return;
       if (!recorder.recording) { endRec(false); return; } // stopped by itself (the time limit)
-      ring.style.strokeDashoffset = String(100 - Math.min(100, (recorder.seconds / CLIP_MAX_S) * 100));
+      const p = Math.min(1, recorder.seconds / CLIP_MAX_S);
+      ring.style.strokeDashoffset = String(100 - p * 100);
+      b.style.setProperty('--rec-p', p.toFixed(3)); // (the dock's capture tile shows it as a bar)
       const sec = Math.floor(recorder.seconds);
       clock.textContent = `0:${String(sec).padStart(2, '0')}`;
       raf = requestAnimationFrame(loop);
@@ -519,6 +531,7 @@ export class Hud implements HudApi {
       recording = false;
       b.classList.remove('rec', 'rec-wait');
       ring.style.strokeDashoffset = '100';
+      b.style.removeProperty('--rec-p');
       if (callStop) hold.stop();
     };
     b.addEventListener('pointerdown', (e) => {
@@ -735,7 +748,7 @@ export class Hud implements HudApi {
         <li><b>Talk to her</b>: hold the pink mic, say <b>rainbow</b>, <b>dance</b>, <b>party</b> or <b>house</b>, then let go. You can call her too.</li>
         <li><b>Actions</b> makes her do something. <b>Games</b> has Heart Run, Heart Hoops and word games.</li>
         <li><b>3D</b>: drag to look around; the joystick walks her. <b>AR</b>: point at the floor and tap <b>Place</b>.</li>
-        <li><b>Selfie</b> and <b>Photo</b>: the white button takes a picture with her.</li>
+        <li><b>Photo</b> (3D and AR): tap for a picture, hold for a video. In <b>Selfie</b> and <b>Photo</b> mode it is the big white button; <b>Frame</b> and <b>Filter</b> change the look.</li>
       </ol>`,
       buttons: ['Got it'],
     });

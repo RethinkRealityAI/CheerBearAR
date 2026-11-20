@@ -17,6 +17,10 @@
 //   frames    round 5 (camera-5, ported from the Happi demo): live frame + filter chips above the shutter (Rainbow,
 //             Clouds, Hearts, Clean | Natural, Warm, Candy, Mono). The frame draws on the overlay at once, the filter
 //             is a CSS look on the camera canvas; both are baked into the photo and the video exactly.
+//             polish-6 (round 6): one row at a time, from a compact "Frame · Rainbow | Filter · Natural" toggle under
+//             the look picker (folded by default; a tap on the camera view folds it). The title cloud is part of the
+//             frame at the TOP of the picture (frame-art.ts titleAt 'top-edge'); on screen it sits just under the
+//             top bar (the lockup is hidden in Selfie, the cloud is the branding).
 //   shutter   tap = photo (the countdown as before); press and hold = a video clip (frame, filter, title and the
 //             experience's sound in it; capture/recorder.ts), up to 30 s, then the review plays it inline.
 //   smile     optional "Smile" switch (bottom left, off by default): a held smile starts the shot.
@@ -57,6 +61,9 @@ const REACT: Record<string, BearClip> = {
 };
 
 const SMILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8 14c1 1.6 2.4 2.4 4 2.4s3-.8 4-2.4"/><path d="M9 9.5v.5M15 9.5v.5"/></svg>';
+
+/** The title cloud's width as a share of the picture (polish-6: a little smaller, so it frames rather than covers). */
+const TITLE_W = 0.5;
 
 export class FaceMode implements Mode {
   readonly id = 'face' as ExperienceMode;
@@ -104,6 +111,12 @@ export class FaceMode implements Mode {
   private cheered = false;
   private lastReact = 0;
   private resizeObs: ResizeObserver | null = null;
+  /** A tap anywhere but the frame / filter controls folds the open chip row away (polish-6). */
+  private foldTap = (e: Event) => {
+    const t = e.target as Node | null;
+    if (!this.strip.opened || !t || this.strip.el.contains(t) || this.strip.toggle.contains(t)) return;
+    this.strip.open(null);
+  };
   private titleTop = 0.09;
   private wp = new THREE.Vector3();
   private unprime: (() => void) | null = null;
@@ -239,6 +252,9 @@ export class FaceMode implements Mode {
     this.resizeObs = new ResizeObserver(() => { this.measureTitle(); this.drawOverlay(); this.publishStripHeight(); });
     this.resizeObs.observe(this.ctx.container);
     this.resizeObs.observe(this.strip.el);
+    this.resizeObs.observe(this.strip.toggle);
+    this.ctx.container.addEventListener('pointerdown', this.foldTap, true);
+    this.strip.open(null);
     this.borrowBear();
     this.state = 'live';
     this.toLive(true);
@@ -257,7 +273,10 @@ export class FaceMode implements Mode {
     this.shutterBtn?.remove();
     this.shutterBtn = null;
     this.picker.el.remove();
+    this.strip.open(null);
     this.strip.el.remove();
+    this.strip.toggle.remove();
+    this.ctx.container.removeEventListener('pointerdown', this.foldTap, true);
     this.tint.remove();
     this.liveFilter(true);
     this.smileBtn.remove();
@@ -266,6 +285,7 @@ export class FaceMode implements Mode {
     this.resizeObs?.disconnect();
     this.resizeObs = null;
     this.ctx.container.style.removeProperty('--cbx-strip-h');
+    this.ctx.container.style.removeProperty('--cbc-title-h');
     this.setExpression('neutral');
     this.returnBear();
     this.root.visible = false;
@@ -548,8 +568,8 @@ export class FaceMode implements Mode {
       // hold the shutter for a video: the chosen frame, filter and the title are baked into the clip
       can: () => this.state === 'live' && !this.review.open,
       options: () => {
-        const frame = this.frame, top = this.titleTop;
-        return { overlay: (g, w, h) => drawFrameArt(g, w, h, { title: true, titleTop: top, frame }), filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint };
+        const frame = this.frame;
+        return { overlay: (g, w, h) => drawFrameArt(g, w, h, { title: true, titleAt: 'edge', titleWidth: TITLE_W, frame }), filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint };
       },
       onStart: () => {
         this.state = 'recording';
@@ -570,8 +590,9 @@ export class FaceMode implements Mode {
     this.armShutter(false);
     if (this.shutterBtn.parentElement !== hud.centre) hud.centre.appendChild(this.shutterBtn);
     this.tuckPicker(false);
-    // above the shutter, close together: the look picker, then the frame + filter chips
-    hud.above.append(this.picker.el, this.strip.el);
+    // above the shutter, close together: the look picker, the frame / filter row (only while opened), then the
+    // compact Frame | Filter toggle that opens it (polish-6)
+    hud.above.append(this.picker.el, this.strip.el, this.strip.toggle);
     hud.left.appendChild(this.smileBtn);
     this.publishStripHeight();
     // Classic between takes: she stays on her last frame (the clip is paused there); the shutter plays it again
@@ -615,7 +636,8 @@ export class FaceMode implements Mode {
 
   /** Countdowns and recording: the look picker and the chips (over her at phone size) fade out, inert until live. */
   private tuckPicker(on: boolean): void {
-    for (const el of [this.picker.el, this.strip.el]) {
+    if (on) this.strip.open(null);
+    for (const el of [this.picker.el, this.strip.el, this.strip.toggle]) {
       el.classList.toggle('cbc-tuck', on);
       el.inert = on;
     }
@@ -631,16 +653,21 @@ export class FaceMode implements Mode {
   }
 
   /**
-   * The height of what the Selfie stacks above the shutter (look picker + chip strip, in hud.above), as
-   * `--cbx-strip-h` on the experience root, so the HUD can sit its bottom-right toggle above it (chrome-5): that
-   * stack spans from `--cbx-bottom + 124px` up to `--cbx-bottom + 124px + --cbx-strip-h`. Removed on leaving.
+   * The height of what the Selfie stacks above the shutter (look picker, the open chip row, the Frame | Filter toggle,
+   * in hud.above), as `--cbx-strip-h` on the experience root: that stack spans from `--cbx-bottom + 124px` up to
+   * `--cbx-bottom + 124px + --cbx-strip-h`. Her speech bubble sits above it (hud.css). Removed on leaving.
    */
   private publishStripHeight(): void {
     if (this.state === 'off') return;
-    const a = this.picker.el.getBoundingClientRect(), b = this.strip.el.getBoundingClientRect();
-    if (!a.height && !b.height) return;
-    const h = Math.round(Math.max(a.bottom, b.bottom) - Math.min(a.top || b.top, b.top || a.top));
-    this.ctx.container.style.setProperty('--cbx-strip-h', `${Math.max(0, h)}px`);
+    let top = Infinity, bottom = -Infinity;
+    for (const n of [this.picker.el, this.strip.el, this.strip.toggle]) {
+      const r = n.getBoundingClientRect();
+      if (!r.height) continue;
+      top = Math.min(top, r.top);
+      bottom = Math.max(bottom, r.bottom);
+    }
+    if (!(bottom > top)) return;
+    this.ctx.container.style.setProperty('--cbx-strip-h', `${Math.round(bottom - top)}px`);
   }
 
   /** Test hook: pick a frame / filter as a chip tap would. */
@@ -721,8 +748,9 @@ export class FaceMode implements Mode {
       shutterSound(this.ctx.reducedMotion);
       const img = await engineShot(this.ctx.engine);
       if (this.state !== 'busy') return;
-      const top = this.titleTop, frame = this.frame, filter = this.filter;
-      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleTop: top, frame, filter }));
+      const frame = this.frame, filter = this.filter;
+      // the saved picture has no top bar: the title cloud is part of the frame, tucked into its top edge (polish-6)
+      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, { title: true, titleAt: 'edge', titleWidth: TITLE_W, frame, filter }));
       img.src = '';
       if (this.state !== 'busy') return;
       this.diag.shots++;
@@ -841,13 +869,17 @@ export class FaceMode implements Mode {
     this.tilt = 0;
   }
 
-  /** The title cloud sits just under the HUD's top bar (same share of the height in the photo). */
+  /** On screen the title cloud sits just under the HUD's top bar (the saved photo: at the frame's top edge). */
   private measureTitle(): void {
     const c = this.ctx.container;
     const h = c.clientHeight || 1;
     const bar = c.querySelector('.cbx-top') as HTMLElement | null;
     const bottom = bar ? bar.getBoundingClientRect().bottom - c.getBoundingClientRect().top : 64;
     this.titleTop = Math.min(0.2, Math.max(0.06, (bottom + 6) / h));
+    // the hint pill sits under the cloud in Selfie (hud.css), so "Look at the camera" never covers it (polish-6)
+    const w = c.clientWidth || 1;
+    const th = Math.min((w * TITLE_W * 349) / 662, h * 0.17); // frame-title.webp is 662 x 349
+    c.style.setProperty('--cbc-title-h', `${Math.round(th + 4)}px`);
   }
 
   private drawOverlay(): void {
@@ -859,7 +891,8 @@ export class FaceMode implements Mode {
     const g = c.getContext('2d')!;
     g.clearRect(0, 0, w, h);
     if (this.state === 'off') return;
-    drawFrameArt(g, w, h, { title: true, titleTop: this.titleTop, frame: this.frame, live: true });
+    // on screen the cloud sits just under the top bar (the saved picture has it at the frame's top edge)
+    drawFrameArt(g, w, h, { title: true, titleTop: this.titleTop, titleWidth: TITLE_W, frame: this.frame, live: true });
   }
 }
 

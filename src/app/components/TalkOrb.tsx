@@ -35,6 +35,9 @@ export function TalkOrb() {
   // the first-time nudge only in the 3D view: in camera modes the bottom centre holds Place / shutter pills
   const quietCorner = useApp((s) => s.expMode !== 'showcase' || s.expBusy || s.captionOn);
   const isDesktop = useApp((s) => s.isDesktop);
+  // polish-6 (round 6, Dapo): Selfie and Photo have no talk button (the camera views stay uncluttered); talking lives in
+  // 3D and AR. A call already on (or the mic explainer for one) keeps it, so you can always hang up.
+  const cameraView = useApp((s) => s.expMode === 'face' || s.expMode === 'photo');
   const voiceEnabled = useApp((s) => s.ui.voiceMode.enabled);
   const voice = useApp((s) => s.voice);
   const voiceBubble = useApp((s) => s.voiceBubble);
@@ -114,6 +117,7 @@ export function TalkOrb() {
 
   // phones: the sheet covers the corner. Desktop: the sidebar sits beside it, so voice mode stays in reach.
   if (sheetOpen && !(isDesktop && voiceOn)) return <VoiceDiagHost />;
+  if (cameraView && (call === 'idle' || call === 'error') && !micAsk) return <VoiceDiagHost />;
 
   const state = inCall ? 'live' : busy ? 'busy' : voiceOn ? 'voice' : !canCall ? 'chat' : call === 'error' ? 'error' : 'idle';
   const label = {

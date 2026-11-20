@@ -127,7 +127,7 @@ export interface HudApi {
   /** Show a sheet with a title, text and buttons. Resolves with the index of the button pressed. */
   sheet(opts: { title: string; body: string; buttons: string[] }): Promise<number>;
   /** (chrome-5) Show / hide the Actions + Games pair, bottom right above the talk button. */
-  dock?(show: boolean | 'actions'): void;
+  dock?(show: boolean): void;
   /** Joystick (bottom centre). Read `vector` every frame: x right, y down, length <= 1. */
   joystick(show: boolean): { readonly vector: THREE.Vector2; readonly active: boolean };
 }

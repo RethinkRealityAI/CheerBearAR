@@ -34,13 +34,27 @@ import { SceneShot } from '../../capture/scene-shot';
 /** The "throw hearts" hint shows once per visit. */
 let tossHinted = false;
 
-const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tall, her house life size
+/**
+ * Her size in AR: metres tall (the stage is in bear heights). polish-6 (round 6, Dapo: "make sure the bear is like 2.5
+ * times bigger in this mode, she's very, very small"): the default went from 0.5 m to 1.25 m; the pinch goes from 0.5 m
+ * (the old default) to 2.5 m. Her house stays life size at the default (houseMul), so she now stands about chest high
+ * to its door (2.12 m) and still walks through it.
+ */
+const SCALE = { def: 1.25, min: 0.5, max: 2.5 };
+/**
+ * While a mini game runs she (and the game, which lives on her stage) eases to this height in metres: Heart Run's field
+ * and Heart Hoops' ring were tuned with her at 0.5 m and at 1.25 m the ring filled the screen and the run field reached
+ * behind you (polish-6, sim). She grows back when the game ends. Her house is away during games anyway.
+ */
+const GAME_SIZE_M = 0.75;
 /**
  * The pinch sizes her house too (ar-4, Dapo: "I can't really resize it"): life size at the default, from 0.6x to 1.6x.
  * Move puts both back to the default.
  */
 const houseMul = (s: number) => THREE.MathUtils.clamp(s / SCALE.def, 0.6, 1.6);
-const REACH = { min: 0.8, max: 3.6, far: 6 }; // metres from the phone the reticle may sit (far: only to clear the controls)
+// metres from the phone the reticle may sit (far: only to clear the controls). polish-6: min 0.8 -> 1.3, so the bigger
+// bear is never placed under your nose
+const REACH = { min: 1.3, max: 3.6, far: 6 };
 const STEADY = 0.5; // seconds the reticle must sit steadily on the floor before Place lights up
 const LOST_S = 4; // seconds off screen before "Can't see Cheer Bear?"
 const LOST_HINT = "Can't see her? Tap Move";
@@ -60,6 +74,11 @@ export class ArMode implements Mode {
   shot: SceneShot | null = null;
   private state: State = 'placing';
   private scale = SCALE.def;
+  /** Her size right now as a share of `scale` (eases to GAME_SIZE_M / scale while a game runs, back to 1 after). */
+  private fit = 1;
+  private get fitTo(): number {
+    return this.game ? Math.min(1, GAME_SIZE_M / this.scale) : 1;
+  }
   private everPlaced = false;
   private resumePlaced = false;
   private saved: { fwd: number; side: number; yaw: number } | null = null;
@@ -146,7 +165,7 @@ export class ArMode implements Mode {
 
   /** Her size (the pinch) and her house's (life size times houseMul). */
   private applyScale(): void {
-    this.stage.root.scale.setScalar(this.scale);
+    this.stage.root.scale.setScalar(this.scale * this.fit);
     this.stage.houseSet.sizeMul = houseMul(this.scale);
   }
   /** Tests: the pinch scale and what it was reset to. */
@@ -273,7 +292,7 @@ export class ArMode implements Mode {
       constrain: (p) => this.constrain(p, false),
       // the placed stage's floor around her spot (about 1.5 m across each way at the default size), away from the house
       field: (o) => { o.x = 0; o.z = 0.35; o.r = Math.min(AREA - 0.45, 2.6); },
-      get unitsPerM() { return 1 / Math.max(0.05, self.scale); },
+      get unitsPerM() { return 1 / Math.max(0.05, self.scale * self.fitTo); },
       get ready() { return self.state === 'placed' && !self.restoring && self.houseT >= 1 && !self.inside; },
       sync: () => this.syncHud(),
     };
@@ -288,6 +307,8 @@ export class ArMode implements Mode {
       this.toss.show(false);
       this.hintT = 0;
     } else if (this.active) this.toss.show(true);
+    // polish-6: games play at the size they were tuned for (GAME_SIZE_M); she grows back afterwards
+    if (!this.live || this.sh.reduced) { this.fit = this.fitTo; this.applyScale(); }
     // the house (and its mailbox) pops out of the way while a game runs and comes back when it ends (ar-4)
     this.stage.houseSet.setAway(!!g);
     if (!g) this.walk.evict();
@@ -497,6 +518,11 @@ export class ArMode implements Mode {
     this.walk.applyTestPose(xr.camera); // ?test only: walk the camera through the door in the simulator
 
     if (this.restoring && settled) this.restore(xr.camera);
+    if (this.fit !== this.fitTo) {
+      this.fit += (this.fitTo - this.fit) * damp(7, dt);
+      if (Math.abs(this.fitTo - this.fit) < 0.002) this.fit = this.fitTo;
+      this.applyScale();
+    }
 
     if (this.state === 'placing') {
       const hasHit = settled && this.floorHit();

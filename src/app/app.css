@@ -7,7 +7,7 @@
   position: fixed; inset: 0; overflow: hidden; background: #000;
   font-family: var(--cb-font); color: var(--cb-white);
   --side-w: 400px;
-  --top-bar: 104px; /* the experience's top bar: the lockup, then the tabs + menu (chrome-5, round 5) */
+  --top-bar: 116px; /* the experience's top bar: the lockup + menu row, then the tabs (polish-6: 10 + 44 + 8 + 54) */
 }
 @media (min-width: 700px) { .cb-app { --top-bar: 72px; } } /* wide: one row */
 @media (max-width: 1100px) { .cb-app { --side-w: 360px; } }

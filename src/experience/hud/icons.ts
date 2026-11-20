@@ -15,5 +15,7 @@ export const ICON = {
   actions: svg('<path d="M4 20 14 10"/><path d="M15.5 3.5v3M14 5h3M19.5 8.5v2.4M18.3 9.7h2.4M9 4.6v2M8 5.6h2"/><path d="m14 10 2-2"/>', 2.2),
   /** Games: a heart with speed lines (filled). */
   games: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 20.5 7.6 14.3a4.1 4.1 0 0 1 6.4-5.1 4.1 4.1 0 0 1 6.4 5.1Z"/><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5h3M2 13h2.5M3 16.5h2.5"/></g></svg>',
+  /** polish-6: the 3D / AR capture tile's glyph: a camera whose lens is a small heart. */
+  camHeart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4.2 7.6h2.9l1.5-2.1h6.8l1.5 2.1h2.9c.9 0 1.7.8 1.7 1.7v8.6c0 .9-.8 1.7-1.7 1.7H4.2c-.9 0-1.7-.8-1.7-1.7V9.3c0-.9.8-1.7 1.7-1.7z"/><path fill="currentColor" d="M12 17.4s-3.6-2.2-3.6-4.7a1.9 1.9 0 0 1 3.6-.9 1.9 1.9 0 0 1 3.6.9c0 2.5-3.6 4.7-3.6 4.7z"/><circle cx="18.2" cy="10.2" r="1" fill="currentColor"/></svg>',
   heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.2 0 3.9 1.3 5.3 3.1 1.4-1.8 3.1-3.1 5.3-3.1 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>',
 };

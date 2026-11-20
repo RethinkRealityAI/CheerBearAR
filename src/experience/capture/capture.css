@@ -52,23 +52,49 @@
 .cbx .cbx-shutter .cbx-rec-time::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--cb-red); }
 .cbx .cbx-shutter.rec .cbx-rec-time { display: inline-flex; }
 
-/* ---------------------------------------------------------------- live frame + filter strip (Selfie, round 5)
-   Round glass chips with a preview, the name under each, a caption under each group (style-strip.ts). */
+/* ---------------------------------------------------------------- live frame + filter picker (Selfie)
+   Round glass chips with a preview and the name under each (style-strip.ts). polish-6: one row at a time (frames OR
+   filters), opened from the compact Frame | Filter toggle under the look picker; folded by default. */
 .cbx .cbc-strip { width: 100%; max-width: 560px; pointer-events: auto; transition: opacity 0.25s ease, transform 0.25s ease; }
+.cbx .cbc-strip.cbc-strip-in { animation: cbc-strip-in 0.26s var(--cb-ease-spring) both; }
+@keyframes cbc-strip-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: none; } }
 .cbx .cbc-strip.cbc-tuck { opacity: 0; transform: translateY(10px); pointer-events: none; }
-@media (prefers-reduced-motion: reduce) { .cbx .cbc-strip.cbc-tuck { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .cbx .cbc-strip.cbc-tuck { transform: none; }
+  .cbx .cbc-strip.cbc-strip-in { animation: cbx-fade 0.2s ease-out both; }
+}
 .cbx .cbc-strip-row {
   display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
   padding: 4px 14px 2px; scroll-snap-type: x proximity; touch-action: pan-x; justify-content: safe center;
 }
 .cbx .cbc-strip-row::-webkit-scrollbar { display: none; }
-.cbx .cbc-strip-group { display: flex; gap: 8px; }
-.cbx .cbc-strip-sec { flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.cbx .cbc-strip-cap {
-  font-size: 10.5px; line-height: 1; letter-spacing: 0.08em; text-transform: uppercase; font-weight: var(--cb-w-label);
-  color: var(--cb-on-glass-soft); padding: 3px 8px; border-radius: var(--cb-r-pill); background: var(--cb-glass-hint);
+.cbx .cbc-strip-group { display: flex; gap: 10px; }
+/* the toggle: the look picker's glass pill, two halves; each names what is on now; the open half turns white */
+.cbx .cbc-styletog {
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--cb-glass);
+  border: 1px solid var(--cb-glass-line); -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur);
+  pointer-events: auto; transition: opacity 0.25s ease, transform 0.25s ease;
 }
-.cbx .cbc-strip-div { flex: none; width: 1px; height: 40px; margin: 8px 2px 0; background: rgba(255, 255, 255, 0.45); }
+.cbx .cbc-styletog.cbc-tuck { opacity: 0; transform: translateY(10px); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .cbx .cbc-styletog.cbc-tuck { transform: none; } }
+.cbx .cbc-styletog button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 12px 0 11px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--cb-white); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+.cbx .cbc-styletog svg { width: 17px; height: 17px; flex: none; }
+.cbx .cbc-styletog-v { font-weight: 500; opacity: 0.86; }
+.cbx .cbc-styletog-v::before { content: "\00b7"; margin-right: 5px; font-weight: 700; }
+.cbx .cbc-styletog-chev {
+  width: 7px; height: 7px; margin: 2px 0 0 1px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-135deg); transition: transform 0.2s var(--cb-ease);
+}
+.cbx .cbc-styletog button[aria-expanded="true"] { background: var(--cb-white); color: var(--cb-pink-deep); }
+.cbx .cbc-styletog button[aria-expanded="true"] .cbc-styletog-v { opacity: 1; }
+.cbx .cbc-styletog button[aria-expanded="true"] .cbc-styletog-chev { transform: translateY(-3px) rotate(45deg); }
+.cbx .cbc-styletog button:active { transform: scale(0.96); }
+@media (hover: hover) { .cbx .cbc-styletog button[aria-expanded="false"]:hover { background: var(--cb-fill-2); } }
+@media (max-width: 360px) { .cbx .cbc-styletog-k { display: none; } .cbx .cbc-styletog-v::before { content: none; } }
 .cbx .cbc-chipc {
   flex: none; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 58px; padding: 0; border: 0;
   background: none; color: var(--cb-white); cursor: pointer; scroll-snap-align: center; font: inherit;
@@ -85,9 +111,8 @@
 .cbx .cbc-chipc:focus-visible { outline: none; }
 .cbx .cbc-chipc:focus-visible .cbc-chipc-face { box-shadow: var(--cb-focus); }
 @media (max-height: 700px) {
-  .cbx .cbc-chipc { width: 52px; }
-  .cbx .cbc-chipc-face { width: 46px; height: 46px; }
-  .cbx .cbc-strip-cap { display: none; }
+  .cbx .cbc-chipc { width: 54px; }
+  .cbx .cbc-chipc-face { width: 48px; height: 48px; }
 }
 /* the live filter tint (candy) over the camera, under the frame overlay */
 .cbx .cbc-tint { position: absolute; inset: 0; pointer-events: none !important; }

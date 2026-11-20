@@ -3,7 +3,7 @@
 
 .cbx {
   --cbx-reserved: 88px; /* bottom-right corner kept free for the app's talk button (setReservedCorner) */
-  --cbx-head: 100px; /* the top bar: lockup (30) + the tabs row (52) + gaps; hints and the app's chip sit below it */
+  --cbx-head: 112px; /* the top bar (polish-6): lockup + Menu row (44) + 8 + the tabs row (54), + 6 clear; hints sit below it */
   --cbx-pad: 14px;
   --cbx-top: calc(var(--cb-safe-top) + 10px);
   --cbx-bottom: calc(var(--cb-safe-bottom) + 16px);
@@ -201,32 +201,35 @@
 
 .cbx-top {
   position: absolute; left: 0; right: 0; top: 0; padding: var(--cbx-top) calc(var(--cb-safe-right) + 10px) 0 calc(var(--cb-safe-left) + 10px);
-  display: flex; flex-direction: column; align-items: stretch; gap: 8px; pointer-events: none;
+  /* polish-6 (round 6): row 1 = lockup top left + Menu top right, row 2 = the mode tabs centred under them */
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "lock menu" "tabs tabs";
+  align-items: center; column-gap: 8px; row-gap: 8px; pointer-events: none;
 }
 .cbx-top > * { pointer-events: auto; }
 /* the one-line lockup, top left: the title art's "Cheer Bear" on a white cloud pill, and a pink "AR" tag */
 .cbx-lockup {
-  align-self: flex-start; display: flex; align-items: center; gap: 6px; height: 32px; padding: 3px 4px 3px 9px;
+  grid-area: lock; justify-self: start; display: flex; align-items: center; gap: 6px; height: 36px; padding: 3px 5px 3px 10px;
   border-radius: var(--cb-r-pill); background: var(--cb-white); box-shadow: var(--cb-shadow-1); pointer-events: none !important;
+  transition: opacity var(--cb-dur-2) ease, visibility var(--cb-dur-2);
 }
-.cbx-lockup img { display: block; height: 24px; width: auto; }
+.cbx-lockup img { display: block; height: 27px; width: auto; }
 .cbx-lockup b {
-  display: grid; place-items: center; height: 24px; padding: 0 8px; border-radius: var(--cb-r-pill); background: var(--cb-pink);
-  color: var(--cb-white); font-size: 13px; font-weight: var(--cb-w-heavy); letter-spacing: 0.06em; line-height: 1;
+  display: grid; place-items: center; height: 27px; padding: 0 9px; border-radius: var(--cb-r-pill); background: var(--cb-pink);
+  color: var(--cb-white); font-size: 14px; font-weight: var(--cb-w-heavy); letter-spacing: 0.06em; line-height: 1;
 }
-/* row 2: the mode tabs and the menu in line with them */
-.cbx-tabsrow { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 520px; align-self: center; }
-.cbx-tabsrow .cbx-switch { margin: 0; max-width: none; }
-.cbx-top .cbx-menu { width: 54px; height: 54px; }
+/* Selfie: the frame carries the title cloud, so the lockup steps out (the rows stay, nothing below moves) */
+.cbx[data-mode="face"] .cbx-lockup { opacity: 0; visibility: hidden; }
+.cbx-top .cbx-menu { grid-area: menu; justify-self: end; width: 44px; height: 44px; }
+.cbx-top .cbx-switch { grid-area: tabs; justify-self: center; width: 100%; max-width: 400px; margin: 0; }
 /* wide screens: one row (lockup left, tabs centred, menu right) */
 @media (min-width: 700px) {
   .cbx { --cbx-head: 64px; }
-  .cbx-top { flex-direction: row; align-items: center; }
-  .cbx-lockup { align-self: center; height: 40px; padding: 4px 6px 4px 12px; flex: none; }
+  .cbx-top { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "lock tabs menu"; }
+  .cbx-lockup { height: 40px; padding: 4px 6px 4px 12px; }
   .cbx-lockup img { height: 30px; }
   .cbx-lockup b { height: 30px; font-size: 15px; padding: 0 10px; }
-  .cbx-tabsrow { max-width: none; flex: 1 1 auto; justify-content: flex-end; }
-  .cbx-tabsrow .cbx-switch { width: min(420px, 100%); position: absolute; left: 50%; transform: translateX(-50%); }
+  .cbx-top .cbx-switch { width: 420px; max-width: none; }
+  .cbx-top .cbx-menu { width: 54px; height: 54px; }
 }
 
 /* ---- mode switcher: one sliding pill (transform only), icon + label on every tab */
@@ -281,7 +284,6 @@
   .cbx-switch button { flex-direction: column; gap: 3px; padding: 5px 2px 4px; font-size: 12px; min-height: 46px; }
   .cbx-switch button svg { width: 19px; height: 19px; }
 }
-@media (max-width: 360px) { .cbx-tabsrow { gap: 6px; } .cbx-top .cbx-menu { width: 48px; height: 48px; } }
 
 .cbx-ib {
   pointer-events: auto; flex: none; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--cb-glass-line);
@@ -307,6 +309,8 @@
   color: var(--cb-white); font-size: 13px; font-weight: var(--cb-w-label); line-height: 1.3; letter-spacing: 0.01em; text-align: center;
   white-space: normal; pointer-events: none;
 }
+/* Selfie (polish-6): the frame's title cloud sits just under the top bar; the pill goes under the cloud */
+.cbx[data-mode="face"] .ml-hint { top: calc(var(--cbx-top) + var(--cbx-head) + var(--cbc-title-h, 0px)); }
 .cbx .ml-hint.on { opacity: 1; transform: translate3d(-50%, var(--cb-top-reserve, 0px), 0); }
 .cbx .ml-hint.on.swap { opacity: 0; transform: translate3d(-50%, calc(var(--cb-top-reserve, 0px) - 6px), 0); transition-duration: 150ms; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .cbx .ml-hint { background: var(--cb-glass-hint-solid); } }
@@ -376,17 +380,57 @@
 .cbx-tool.is-games { background: var(--cb-pink); border-color: rgba(255, 255, 255, 0.55); }
 .cbx-tool.is-games:active { background: var(--cb-pink-deep); }
 @media (hover: hover) { .cbx-tool.is-games:hover { background: var(--cb-pink-deep); } }
-/* camera-5 (round 5): the capture shutter tops the stack in 3D and AR (tap = photo, hold = video). Round, the same
-   60 px as Actions and Games, a white ring round a white disc like the big shutter; the clip timer sits to its left
-   (the stack is at the screen's right edge) and the recording ring stays inside the column. */
-.cbx-dock .cbx-shutter.is-shot {
-  width: 60px; height: 60px; border-width: 4px; flex: none;
-  background: var(--cb-glass); -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur); /* reads on bright Care-a-Lot */
+/* camera-5 (round 5): the capture button tops the stack in 3D and AR (tap = photo, hold = video).
+   polish-6 (round 6, Dapo: "the white circle looks out of place"): a branded tile the same 60 px as Actions and Games:
+   flat white with a pink camera whose lens is a heart, "Photo" under it. Recording: the tile turns flat red, a white
+   stop square and the clock replace the icon and label, a white bar along its foot fills over the clip limit, and a
+   red ring pulses round it. No gradients. (The shutter's own round ring and "0:04" pill are hidden here.) */
+.cbx .cbx-dock .cbx-shutter.is-shot {
+  width: 60px; height: 60px; flex: none; border: 0; border-radius: 20px; padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: var(--cb-white); color: var(--cb-pink-deep); box-shadow: var(--cb-shadow-1), inset 0 0 0 1px rgba(216, 27, 124, 0.12);
+  transition: transform var(--cb-dur-1) var(--cb-ease), background-color var(--cb-dur-2), color var(--cb-dur-2);
 }
-.cbx-dock .cbx-shutter.is-shot i { width: 44px; height: 44px; }
-.cbx-dock .cbx-shutter.is-shot.rec { transform: scale(1.06); }
-.cbx-dock .cbx-shutter.is-shot .cbx-rec-ring { inset: -7px; width: calc(100% + 14px); height: calc(100% + 14px); }
-.cbx-dock .cbx-shutter.is-shot .cbx-rec-time { left: auto; right: calc(100% + 14px); bottom: auto; top: 50%; transform: translateY(-50%); }
+.cbx .cbx-dock .cbx-shutter.is-shot .cbx-rec-ring { display: none; }
+.cbx .cbx-dock .cbx-shutter.is-shot .cbx-shot-face { order: 1; display: grid; place-items: center; height: 26px; }
+.cbx .cbx-dock .cbx-shutter.is-shot .cbx-shot-face svg { width: 26px; height: 26px; transition: transform var(--cb-dur-1) var(--cb-ease); }
+.cbx .cbx-dock .cbx-shutter.is-shot .cbx-shot-lbl { order: 2; font-size: 11.5px; font-weight: var(--cb-w-strong); letter-spacing: 0.01em; line-height: 1.2; }
+.cbx .cbx-dock .cbx-shutter.is-shot > i {
+  order: 1; display: none; width: 18px; height: 18px; margin: 4px 0 3px; border-radius: 4px; background: var(--cb-white); transform: none;
+}
+.cbx .cbx-dock .cbx-shutter.is-shot.down:not(.rec) { transform: scale(0.92); }
+.cbx .cbx-dock .cbx-shutter.is-shot.down:not(.rec) .cbx-shot-face svg { transform: scale(0.88); }
+@media (hover: hover) { .cbx .cbx-dock .cbx-shutter.is-shot:not(.rec):hover { background: var(--cb-pink-soft); } }
+/* recording */
+.cbx .cbx-dock .cbx-shutter.is-shot.rec { background: var(--cb-red); color: var(--cb-white); transform: none; box-shadow: var(--cb-shadow-2); }
+.cbx .cbx-dock .cbx-shutter.is-shot.rec > i { display: block; background: var(--cb-white); border-radius: 4px; transform: none; }
+.cbx .cbx-dock .cbx-shutter.is-shot.rec .cbx-shot-face,
+.cbx .cbx-dock .cbx-shutter.is-shot.rec .cbx-shot-lbl { display: none; }
+.cbx .cbx-dock .cbx-shutter.is-shot .cbx-rec-time {
+  order: 2; position: static; transform: none; padding: 0; background: none; font-size: 12px; line-height: 1.2; gap: 0;
+}
+.cbx .cbx-dock .cbx-shutter.is-shot .cbx-rec-time::before { content: none; }
+.cbx .cbx-dock .cbx-shutter.is-shot.rec::after {
+  content: ""; position: absolute; left: 10px; bottom: 5px; height: 3px; border-radius: 2px; background: var(--cb-white);
+  width: calc((100% - 20px) * var(--rec-p, 0)); opacity: 0.9;
+}
+.cbx .cbx-dock .cbx-shutter.is-shot.rec::before {
+  content: ""; position: absolute; inset: -5px; border-radius: 24px; border: 3px solid var(--cb-red); pointer-events: none;
+  animation: cbx-rec-pulse 1.2s ease-out infinite;
+}
+@keyframes cbx-rec-pulse { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.18); } }
+.cbx .cbx-dock .cbx-shutter.is-shot.rec-wait > i { animation: cbc-recwait 0.6s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .cbx .cbx-dock .cbx-shutter.is-shot.rec::before { animation: none; opacity: 0.8; } }
+/* the first time it shows: "Hold for video" on glass, to its left (the stack sits at the right edge) */
+.cbx .cbx-dock .cbx-shot-cue {
+  position: absolute; right: calc(100% + 10px); top: 50%; transform: translateY(-50%); white-space: nowrap; pointer-events: none;
+  padding: 6px 11px; border-radius: var(--cb-r-pill); background: var(--cb-glass-hint); color: var(--cb-white);
+  font-size: 13px; font-weight: var(--cb-w-strong); line-height: 1.2;
+  animation: cbx-cue 4.2s var(--cb-ease) both;
+}
+@keyframes cbx-cue { 0% { opacity: 0; transform: translate(8px, -50%); } 10%, 85% { opacity: 1; transform: translate(0, -50%); } 100% { opacity: 0; transform: translate(0, -50%); } }
+@media (prefers-reduced-motion: reduce) { .cbx .cbx-dock .cbx-shot-cue { animation-name: cbx-fade-io; } }
+@keyframes cbx-fade-io { 0%, 100% { opacity: 0; } 10%, 85% { opacity: 1; } }
 /* while the app's talk button shows a bubble (the voice bubble, the first "Hold to talk" nudge, call bubbles, the mic
    explainer) or a call is on (the red hang-up sits above it), the pair steps aside at once (visibility, so the
    app's bubble measuring sees it gone); it pops back in when the corner is free. data-orb-busy is set by App.tsx for
@@ -625,26 +669,11 @@
 }
 .cbx .cbx-moves button:active { transform: scale(0.94); }
 
-/* Selfie / Photo: one compact Actions toggle, bottom right, above the live look chips (camera-5 sets --cbx-strip-h on
-   the experience root while Selfie runs) and right-aligned near the talk button's axis. Never near the shutter.
-   Photo has no strip: its hud.above holds one centred pill (bottom + 124 px, up to ~56 px tall), so it sits above it. */
-.cbx-act1 {
-  position: absolute; right: calc(var(--cb-safe-right) + max(16px, calc(var(--cbx-reserved) - 88px + 16px)) + 8px);
-  bottom: calc(var(--cbx-bottom) + 124px + var(--cbx-strip-h, 0px) + 12px);
-  display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px 0 10px; border-radius: var(--cb-r-pill);
-  border: 1px solid var(--cb-glass-line); background: var(--cb-glass); -webkit-backdrop-filter: var(--cb-blur); backdrop-filter: var(--cb-blur);
-  color: var(--cb-white); font-size: 13px; font-weight: var(--cb-w-strong); cursor: pointer; pointer-events: auto; box-shadow: var(--cb-shadow-1);
-  transition: transform var(--cb-dur-1) var(--cb-ease), background-color var(--cb-dur-2);
-}
-.cbx[data-mode="photo"] .cbx-act1 { bottom: calc(var(--cbx-bottom) + 124px + 56px + 12px); }
-.cbx-act1:not([hidden]) { animation: cbx-pop-in var(--cb-dur-3) var(--cb-ease) backwards; }
-.cbx-act1 svg { width: 18px; height: 18px; }
-.cbx-act1:active { transform: scale(0.94); background: var(--cb-glass-strong); }
-@media (hover: hover) { .cbx-act1:hover { background: var(--cb-glass-strong); } }
-.cb-app[data-orb-busy="true"] .cbx-act1,
-.cb-app:has(.cb-vbubble, .cb-orb-bubble, .cb-mic, .cb-hangup) .cbx-act1 { visibility: hidden; }
 /* her speech bubble steps up over a contextual pill (Place, Step inside, look picker) in the row above the controls */
 .cbx-hud:has(.cbx-above > :not([hidden])) .cbx-bubble { bottom: calc(var(--cbx-bottom) + 196px); }
+/* Selfie (polish-6): above its whole stack (look picker, an open chip row, the Frame | Filter toggle; face sets
+   --cbx-strip-h to its height) */
+.cbx[data-mode="face"] .cbx-hud:has(.cbx-above > :not([hidden])) .cbx-bubble { bottom: calc(var(--cbx-bottom) + 124px + var(--cbx-strip-h, 96px) + 14px); }
 /* while Actions + Games stand over the talk button, her speech bubble centres in the space left of them */
 .cb-app:not([data-orb-busy="true"]):not(:has(.cb-vbubble, .cb-orb-bubble, .cb-mic, .cb-hangup)) .cbx-hud:has(.cbx-dock:not([hidden])) .cbx-bubble {
   left: calc(50% - 46px); max-width: min(360px, calc(100% - 128px));

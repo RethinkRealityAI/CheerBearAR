@@ -180,7 +180,8 @@ export class HouseWalk {
       const fwd = hs.fromStage(V.copy(st.cam).add(st.camDir), new THREE.Vector3()).sub(hs.fromStage(V2.copy(st.cam), new THREE.Vector3())).setY(0);
       if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
       fwd.normalize();
-      const spot = hs.clampToRoom(new THREE.Vector3(lp.x, 0, lp.z).addScaledVector(fwd, 1.3));
+      // (polish-6: she is 1.25 m tall now: further in, so you see all of her, not just her tummy)
+      const spot = hs.clampToRoom(new THREE.Vector3(lp.x, 0, lp.z).addScaledVector(fwd, 1.3 + Math.max(0, this.bearM - 0.5)));
       const yaw = Math.atan2(lp.x - spot.x, lp.z - spot.z) + st.house.rotation.y;
       this.hopTo(hs.toStage(spot, new THREE.Vector3()), yaw, 0.35, () => { if (this.runner.trigger('Wave')) this.host.tapAction('Wave'); });
       this.bearIn = false;
@@ -205,6 +206,15 @@ export class HouseWalk {
     this.hop = { at: delay, to: to.clone(), yaw, then };
   }
 
+  /** Her height in metres (the AR stage is in bear heights). */
+  private get bearM(): number {
+    return this.st.root.scale.x;
+  }
+  /** How far her centre may sit off the door's axis in the doorway, so all of her fits through it (polish-6). */
+  private get doorSlack(): number {
+    return Math.max(0.12, DOOR.w / 2 - Math.max(0.16, 0.28 * this.bearM));
+  }
+
   // ------------------------------------------------------------------ her walking (joystick) near / in the house
   /** Keep her in the room (you're in), in the cottage (she went in first) or out of its walls; the doorway lets her in. */
   constrain(p: THREE.Vector3, door: boolean): void {
@@ -219,7 +229,7 @@ export class HouseWalk {
     if (this.bearIn) {
       if (l.z > -0.45 && Math.abs(l.x) < gap) {
         // in the doorway: she may walk back out
-        l.x = THREE.MathUtils.clamp(l.x, -gap, gap);
+        l.x = THREE.MathUtils.clamp(l.x, -this.doorSlack, this.doorSlack);
         if (l.z > 0.3) this.bearIn = false;
       } else hs.clampToCottage(l);
       p.copy(hs.toStage(l.setY(0), V2)).setY(0);
@@ -237,7 +247,12 @@ export class HouseWalk {
     }
     if (Math.abs(l.x) < hw && l.z > z0 && l.z < z1) {
       if (door && Math.abs(l.x) < gap && hs.open > 0.6) {
-        // through the open door: in she goes
+        // through the open door: in she goes, guided onto the door's axis so all of her fits through (polish-6)
+        const slack = this.doorSlack;
+        if (Math.abs(l.x) > slack) {
+          l.x = Math.sign(l.x) * slack;
+          p.copy(hs.toStage(V2.set(l.x, 0, l.z), new THREE.Vector3())).setY(0);
+        }
         if (l.z < -0.35) {
           this.bearIn = true;
           this.host.hint('Follow her inside!', 4);

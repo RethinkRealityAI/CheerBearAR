@@ -453,7 +453,7 @@ class Experience implements ExperienceApi {
     // (awaited: the hud's iris finishes covering the old view before it is torn down; ~0.35 s)
     if (from) await hud.cover(camera ? (to.camera === 'face' ? 'Turning the camera round…' : 'Opening the camera…') : 'Back to Care-a-Lot…');
     this.entered = false;
-    hud.dock(false); // (3D and AR show it again as their state allows; Selfie and Photo below)
+    hud.dock(false); // (3D and AR show it again as their state allows; Selfie and Photo have none)
     try {
       if (from) await from.exit(id);
     } catch (e) {
@@ -472,8 +472,7 @@ class Experience implements ExperienceApi {
         await to.enter(from?.id ?? null);
       }
       this.entered = true;
-      // Selfie / Photo: only a small Actions toggle above the look chips (no Games there: games are 3D / AR only)
-      if (id === 'face' || id === 'photo') hud.dock('actions');
+      // (Selfie / Photo: no dock, no Actions toggle and no talk button since polish-6: the camera views stay clear)
 
     } catch (e) {
       const err = e instanceof EngineError ? e : new EngineError('error', String((e as Error)?.message ?? e));

@@ -38,12 +38,37 @@ async function saveBlob(page, expr, name) {
   log('live', JSON.stringify(await fm(page)), 'programs', await page.evaluate(() => window.__cb.debug().enginePrograms));
   await shot(page, '01-live-rainbow');
   // tap chips for real: Hearts + Candy
-  const tapChip = async (id) => { await page.evaluate((id) => document.querySelector(`.cbc-chipc[data-id="${id}"]`).click(), id); await sleep(900); };
+  // polish-6: the chips show one row at a time, opened from the Frame | Filter toggle under the look picker
+  const openRow = (g) => page.evaluate((g) => { const b = document.querySelector(`.cbc-styletog [data-group="${g}"]`); if (b.getAttribute('aria-expanded') !== 'true') b.click(); }, g);
+  const tapChip = async (id) => {
+    await openRow(['rainbow', 'clouds', 'hearts', 'clean'].includes(id) ? 'frame' : 'filter');
+    await sleep(350);
+    await page.evaluate((id) => document.querySelector(`.cbc-chipc[data-id="${id}"]`).click(), id);
+    await sleep(900);
+  };
+  const stack = () => page.evaluate(() => {
+    const r = (s) => { const e = document.querySelector(s); if (!e || !e.offsetParent) return null; const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)]; };
+    return { look: r('.cbc-look'), row: r('.cbc-strip'), toggle: r('.cbc-styletog'), shutter: r('.cbx-slot-centre .cbx-shutter'), top: r('.cbx-top'), lockupVisible: getComputedStyle(document.querySelector('.cbx-lockup')).visibility, orb: !!document.querySelector('.cb-orb'), actions: !!document.querySelector('.cbx-act1'), chipsShown: [...document.querySelectorAll('.cbc-chipc')].filter((c) => c.offsetParent).map((c) => c.dataset.id).join(','), stripH: getComputedStyle(document.querySelector('.cbx')).getPropertyValue('--cbx-strip-h') };
+  });
+  log('collapsed', JSON.stringify(await stack()));
+  await openRow('frame'); await sleep(600);
+  await shot(page, '01b-frames-open');
+  log('frames open', JSON.stringify(await stack()));
+  await openRow('filter'); await sleep(600);
+  await shot(page, '01c-filters-open');
+  log('filters open', JSON.stringify(await stack()));
+  // a tap on the camera view folds it away
+  { const c = await (await page.$('canvas.cbx-xr')).boundingBox(); await page.mouse.click(c.x + c.width / 2, c.y + c.height * 0.35); }
+  await sleep(600);
+  log('after camera tap', JSON.stringify(await stack()));
   await tapChip('hearts'); await tapChip('candy');
   log('after chips', JSON.stringify(await fm(page)), 'canvas filter', await page.evaluate(() => document.querySelector('canvas.cbx-xr').style.filter));
   await shot(page, '02-live-hearts-candy');
   await tapChip('clouds'); await tapChip('mono');
   await shot(page, '03-live-clouds-mono');
+  await page.evaluate(() => document.querySelector('.cbc-styletog [aria-expanded="true"]')?.click()); await sleep(500); // (tapping the open half again folds it)
+  log('folded by its own toggle', JSON.stringify(await stack()));
+  await shot(page, '03b-collapsed-clouds-mono');
   // photo: shutter tap (countdown), tap again to shoot now
   const sh = await page.$('.cbx-slot-centre .cbx-shutter');
   const box = await sh.boundingBox();
