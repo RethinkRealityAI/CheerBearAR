@@ -1,0 +1,17 @@
+16:32:28 showcase live; programs null
+16:33:04 placed; programs before place 36 after place 36 door open 36 {"inside":false,"open":0.97,"roomVis":true,"bodyVis":true,"k":2,"theme":false,"busy":false,"cam":[-0.02,0.8,2.19]}
+16:33:07 fps outside (default camera) 3
+16:33:12 outside {"inside":false,"open":1,"roomVis":true,"bodyVis":true,"k":2,"theme":false,"busy":false,"cam":[0.35,1.45,4.2]} programs 36
+16:33:21 through door {"inside":false,"open":1,"roomVis":true,"bodyVis":true,"k":2,"theme":false,"busy":false,"cam":[0.1,1.4,1.5]} programs 36 fps 2.7
+16:33:30 crossed {"inside":true,"open":1,"roomVis":true,"bodyVis":false,"k":2,"theme":true,"busy":false,"cam":[0,1.4,-0.8]} programs 36
+16:33:39 inside at TV {"inside":true,"open":1,"roomVis":true,"bodyVis":false,"k":2,"theme":true,"busy":false,"cam":[0.2,1.45,-1.4]} fps 2.8
+16:34:03 party {"inside":true,"open":1,"roomVis":true,"bodyVis":false,"k":2,"theme":true,"busy":false,"cam":[0.3,1.4,-2.3]} programs 36 fps 3.5
+16:34:13 taps done; programs 36
+16:34:28 walked out {"inside":false,"open":1,"roomVis":true,"bodyVis":true,"k":2,"theme":false,"busy":false,"cam":[0.4,1.45,2.8]} programs 36
+16:34:32 step inside pill true
+16:34:46 stepped inside {"inside":true,"open":1,"roomVis":true,"bodyVis":false,"k":2,"theme":true,"busy":false,"cam":[0.33,0.75,-0.96]} programs 36
+16:34:58 left {"inside":false,"open":1,"roomVis":true,"bodyVis":true,"k":2,"theme":false,"busy":true,"cam":[0,1.17,2.1]} {"placed":true,"inside":false,"restoring":false,"visible":true} programs 36
+16:35:03 move {"placed":false,"inside":false,"restoring":false,"visible":true}
+16:35:08 re-placed {"placed":true,"inside":false,"restoring":false,"visible":true} {"inside":false,"open":1,"roomVis":true,"bodyVis":true,"k":2,"theme":false,"busy":false,"cam":[-0.34,1.08,2.03]} programs 36
+16:35:14 back to 3D; programs null
+16:35:14 errors none

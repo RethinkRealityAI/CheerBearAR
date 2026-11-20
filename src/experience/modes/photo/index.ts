@@ -1,0 +1,850 @@
+// 3D Photo: your selfie in Cheer Bear's picture frame, in your room. The Mattercraft "3D-Photo" scene was unfinished;
+// the idea (Dapo): take a selfie, then project it into the frame Cheer Bear holds up. Built on the pattern of
+// MEDIALIFE Labs "Wear It, Meet It" (one engine session, front camera -> back camera, no reload).
+//
+//   selfie   FRONT camera (the mode opens here the first time). Cheer Bear ears + heart nose on your face, a guide
+//            oval, the shutter bottom centre. The selfie is cropped round your head (from the face tracking; the oval
+//            when no face is found) to the frame opening's shape and goes straight into her frame.
+//   flip     "Meet Cheer Bear" flips to the BACK camera in the same engine session (xr-core's Engine.start swap).
+//   placing  a reticle on the floor with Cheer Bear previewing on it, holding your selfie, facing you; pinch to size;
+//            Place (or a tap) once world tracking has settled.
+//   placed   she keeps turning to face you; tap her for a hop and hearts; shutter bottom centre takes the room photo
+//            (camera + 3D) -> the review sheet (Save / Share / Retake / Watch photo animation). Move (bottom left,
+//            always there) places her again; "Selfie" (stacked above Move) flips back for a new selfie.
+// Round 5 (camera-5, from the Happi demo): a "Welcome to photo mode" sheet the first time (the three steps), a short
+// toast explaining each switch (Selfie flip, Meet / Back to Cheer Bear, Move), tap = photo / hold = video in the room
+// (the title and the chosen frame + filter in the clip), and Frame / Filter chips on the review that restyle the photo.
+// Placement (relative to the phone, as the AR mode does), size and the selfie survive every flip and leaving the mode.
+// The model is the original baked CB-Frame.glb (bear + frame in one mesh, no skeleton): the selfie is a plane fitted
+// into the frame's opening (measured by ray casts: x -0.033..0.398, y 0.392..0.923, frame face z 0.096..0.15 in model
+// units), so every pose shown has the frame with your selfie in it. The rigged bear's Wave / Cheer poses were dropped:
+// they could not hold the frame.
+import * as THREE from 'three';
+import type { ExperienceMode } from '../../../shared/contracts';
+import type { CameraKind, EngineView, FaceEvent, HudApi, Mode, ModeContext, XrScene } from '../../types';
+import { ReviewSheet, RevealPlayer, compose, engineShot, flash, el } from '../../capture';
+import { FRAME_STYLES, PHOTO_FILTERS, drawFrameArt, loadFrameArt, type FrameSpec, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
+import { FILTER_CSS } from '../../capture/style-strip';
+import { clipHold, recorder } from '../../capture/recorder';
+import { askMotionPermission } from '../../core/device';
+import { bindGestures } from '../shared';
+import { ICON } from '../../hud/icons';
+import { FaceFx, heartShape } from '../face/face-fx';
+
+const FRAME_URL = '/models/capture/cb-frame.glb'; // 3.9 MB source -> 221 KB (meshopt + 1024 webp)
+const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // her height in metres
+const REACH = { min: 0.9, max: 4.0 };
+/** The frame opening in model units (feet on y = 0, 1 unit tall, facing +z); the plane is a touch bigger, inside. */
+const OPENING = { x0: -0.04, x1: 0.405, y0: 0.385, y1: 0.93, z: 0.112 };
+const OPEN_ASPECT = (OPENING.x1 - OPENING.x0) / (OPENING.y1 - OPENING.y0); // ~0.82 (w / h)
+const SELFIE_PX = { w: 612, h: Math.round(612 / OPEN_ASPECT) };
+
+type Cam = 'face' | 'world';
+type State = 'off' | 'selfie' | 'flipping' | 'placing' | 'restoring' | 'placed' | 'busy' | 'review' | 'recording';
+
+type SwapEngine = EngineView & { start?(kind: 'world' | 'face'): Promise<void> };
+type CoverHud = HudApi & { cover?(text: string | null): void };
+type SheetHud = HudApi & { sheet(o: { title: string; body: string; buttons: string[]; html?: string }): Promise<number> };
+/** Place lights up once the reticle has sat on the floor this long without a break. */
+const STEADY = 0.5;
+/** The welcome sheet shows once per visit (page load). */
+let photoWelcomed = false;
+
+export class PhotoMode implements Mode {
+  readonly id = 'photo' as ExperienceMode;
+  readonly root = new THREE.Group();
+  state: State = 'off';
+  size = SIZE.def;
+  faceFound = false;
+  readonly diag = {
+    shots: 0, lastPhoto: null as Blob | null, placedCount: 0, moved: 0, selfies: 0, flips: 0, flipMs: [] as number[],
+    restored: 0, reactions: 0, lastSelfie: null as Blob | null, selfieCrop: '' as string, errors: [] as string[],
+    clips: 0, lastClip: null as Blob | null, welcomed: false, restyles: 0,
+  };
+  /** The saved photo's frame and filter (chosen on the review sheet; kept for the next photo). */
+  frame: FrameStyle = 'clean';
+  filter: PhotoFilter = 'natural';
+  /** The last raw room shot, kept while the review is open so a new frame / filter can recompose it. */
+  private shot: HTMLImageElement | null = null;
+  private steadyT = 0;
+
+  /** Which camera the mode runs now. The experience reads it to start the engine, route face events and scenes. */
+  private cam: Cam = 'face';
+  get camera(): CameraKind {
+    return this.cam;
+  }
+
+  private anchor = new THREE.Group(); // her spot on the floor
+  private model = new THREE.Group(); // scaled to `size`
+  private framed = new THREE.Group(); // the baked bear + frame, plus the selfie plane and the hearts
+  private hop = new THREE.Group(); // the tap reaction moves this
+  private selfieMat: THREE.MeshBasicMaterial;
+  private selfieTex: THREE.Texture;
+  private hasSelfie = false;
+  private reticle = new THREE.Group();
+  private faceAnchor = new THREE.Group();
+  private fx = new FaceFx();
+  private hearts: Array<{ m: THREE.Mesh; v: THREE.Vector3; t: number; spin: number }> = [];
+  private hopT = 1;
+  private target = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), scale: 1, fresh: false };
+  // where she stood relative to the phone when we left the back camera (restored once tracking settles again)
+  private rel: { fwd: number; side: number; yaw: number } | null = null;
+  private placedOnce = false;
+  private freshSelfie = false; // a new selfie since we last left her
+  // HUD
+  private placeBtn: HTMLButtonElement;
+  private moveBtn: HTMLButtonElement;
+  private flipBtn: HTMLButtonElement;
+  private meetBtn: HTMLButtonElement;
+  private thumb: HTMLImageElement;
+  private thumbUrl: string | null = null;
+  private guide: HTMLElement;
+  private shutterBtn: HTMLButtonElement | null = null;
+  private review: ReviewSheet;
+  private reveal: RevealPlayer;
+  private unbind: (() => void) | null = null;
+  private hintT = 0;
+  private lastReact = 0;
+  // scratch
+  private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private hit = new THREE.Vector3();
+  private v = new THREE.Vector3();
+  private w = new THREE.Vector3();
+  private camPos = new THREE.Vector3();
+  private camFwd = new THREE.Vector3();
+  private ndc = new THREE.Vector2(0, -0.12);
+  private box = new THREE.Box3();
+
+  constructor(private ctx: ModeContext) {
+    this.root.name = 'photo-root';
+    this.root.visible = false;
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xc8a8bc, 1.25);
+    const sun = new THREE.DirectionalLight(0xfff3e6, 1.7);
+    sun.position.set(1.5, 3, 2);
+    this.root.add(hemi, sun, this.anchor, this.reticle, this.faceAnchor);
+    this.anchor.add(this.model);
+    this.model.add(this.hop);
+    this.hop.add(this.framed);
+    this.anchor.visible = false;
+    this.faceAnchor.add(this.fx.group);
+    this.faceAnchor.visible = false;
+    this.buildReticle();
+
+    // the selfie plane in the frame opening (a placeholder until the first selfie, so its shader is compiled up front)
+    this.selfieTex = placeholderTexture();
+    this.selfieMat = new THREE.MeshBasicMaterial({ map: this.selfieTex, toneMapped: false });
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(OPENING.x1 - OPENING.x0, OPENING.y1 - OPENING.y0), this.selfieMat);
+    plane.position.set((OPENING.x0 + OPENING.x1) / 2, (OPENING.y0 + OPENING.y1) / 2, OPENING.z);
+    plane.name = 'selfie-in-frame';
+    this.framed.add(plane);
+    // hearts for the tap reaction: flat, opaque, the same program as the face effects
+    const hg = heartShape(0.09);
+    const cols = [0xff389b, 0xffffff, 0xff8fc8];
+    for (let i = 0; i < 7; i++) {
+      const m = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: cols[i % 3], side: THREE.DoubleSide, toneMapped: false }));
+      m.visible = false;
+      m.name = 'heart';
+      this.framed.add(m);
+      this.hearts.push({ m, v: new THREE.Vector3(), t: 9, spin: 0 });
+    }
+
+    const hud = ctx.hud;
+    this.placeBtn = el('button', 'cbx-pill', 'Getting ready…');
+    this.placeBtn.type = 'button';
+    this.placeBtn.disabled = true;
+    this.placeBtn.addEventListener('click', (e) => { e.stopPropagation(); this.place(); });
+    this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Cheer Bear somewhere else', onClick: () => this.move() });
+    this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
+    this.flipBtn = hud.toolButton({ label: 'Selfie', icon: ICON.selfie, aria: 'Flip the camera for a new selfie', onClick: () => this.flipTo('face') });
+    this.meetBtn = el('button', 'cbx-pill', 'Meet Cheer Bear');
+    this.meetBtn.type = 'button';
+    this.meetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      askMotionPermission(); // iPhone: inside the tap, before anything async
+      void this.flipTo('world');
+    });
+    this.thumb = el('img', 'cbc-thumb');
+    this.thumb.alt = 'Your selfie';
+    this.guide = el('div', 'cbc-guide');
+    this.guide.setAttribute('aria-hidden', 'true');
+
+    const name = 'cheer-bear-3d-photo';
+    const self = this;
+    this.review = new ReviewSheet({
+      container: ctx.container,
+      name,
+      title: 'Your 3D photo',
+      share: { title: 'Cheer Bear and me', text: 'A photo with Cheer Bear!' },
+      onRetake: () => { this.dropShot(); this.toPlaced(); },
+      onReveal: (b) => this.reveal.play(b),
+      styles: {
+        frames: FRAME_STYLES, filters: PHOTO_FILTERS,
+        get frame() { return self.frame; },
+        get filter() { return self.filter; },
+        restyle: async (frame, filter) => {
+          if (!this.shot) throw new Error('no shot');
+          const spec = this.spec(frame as FrameStyle, filter as PhotoFilter);
+          return (await compose(this.shot, (g, w, h) => drawFrameArt(g, w, h, spec))).blob;
+        },
+        onChange: (blob, frame, filter) => {
+          this.frame = frame as FrameStyle;
+          this.filter = filter as PhotoFilter;
+          this.diag.lastPhoto = blob;
+          this.diag.restyles++;
+        },
+      },
+    });
+    this.reveal = new RevealPlayer(ctx.container, name);
+  }
+
+  private buildReticle(): void {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.17, 0.2, 48),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false }),
+    );
+    const dot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.04, 24),
+      new THREE.MeshBasicMaterial({ color: 0xff389b, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false }),
+    );
+    for (const m of [ring, dot]) { m.rotation.x = -Math.PI / 2; m.position.y = 0.003; m.renderOrder = 3; }
+    this.reticle.add(ring, dot);
+    this.reticle.visible = false;
+    this.reticle.name = 'photo-reticle';
+  }
+
+  // ------------------------------------------------------------------ Mode
+  async load(): Promise<void> {
+    const [g] = await Promise.all([this.ctx.assets.gltf(FRAME_URL), loadFrameArt()]);
+    const scene = g.scene.clone(true);
+    scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) { m.castShadow = false; m.receiveShadow = false; }
+    });
+    // the model is 1 unit tall (her ears), feet on y = 0, facing +z
+    scene.name = 'cb-frame';
+    this.framed.add(scene);
+  }
+
+  onScene(_xr: XrScene): void {
+    /* a new run has a new world origin: placement comes back relative to the phone (see rel) */
+  }
+
+  enter(_from: ExperienceMode | null): void {
+    this.root.visible = true;
+    this.model.scale.setScalar(this.size);
+    this.unbind = bindGestures(this.ctx.engine.canvas, {
+      onPinch: (k) => {
+        if (this.cam !== 'world' || (this.state !== 'placing' && this.state !== 'placed')) return;
+        this.size = THREE.MathUtils.clamp(this.size * k, SIZE.min, SIZE.max);
+        this.model.scale.setScalar(this.size);
+      },
+    });
+    this.onCamera();
+    if (!photoWelcomed) {
+      // the first time this visit: what Photo does, in three steps (Dapo, round 5: "Welcome to photo mode")
+      photoWelcomed = true;
+      this.diag.welcomed = true;
+      void (this.ctx.hud as SheetHud).sheet({ title: 'Welcome to photo mode', body: 'A photo with Cheer Bear in your room, in three steps:', html: WELCOME_HTML, buttons: ['Let’s go'] });
+    }
+  }
+
+  exit(_to: ExperienceMode): void {
+    if (this.cam === 'world') this.remember();
+    if (this.state === 'recording') void recorder.stop();
+    this.state = 'off';
+    this.review.close();
+    this.dropShot();
+    this.reveal.close();
+    this.unbind?.();
+    this.unbind = null;
+    this.clearHud();
+    this.root.visible = false;
+    this.anchor.visible = false;
+    this.reticle.visible = false;
+    this.faceAnchor.visible = false;
+    this.faceFound = false;
+    this.ctx.hud.hint('');
+    // next time: straight back to her if you already have a selfie in her frame, else the selfie first
+    this.cam = this.hasSelfie ? 'world' : 'face';
+  }
+
+  update(dt: number, now: number): void {
+    const xr = this.ctx.engine.xr;
+    if (!xr || this.state === 'off' || this.state === 'flipping') return;
+    if (this.cam === 'face') {
+      if (this.target.fresh) {
+        const k = 1 - Math.exp(-dt * 30);
+        this.faceAnchor.position.lerp(this.target.pos, k);
+        this.faceAnchor.quaternion.slerp(this.target.quat, k);
+        this.faceAnchor.scale.setScalar(this.faceAnchor.scale.x + (this.target.scale - this.faceAnchor.scale.x) * k);
+      }
+      this.fx.update(dt, this.ctx.reducedMotion);
+      return;
+    }
+    const settled = this.ctx.engine.settled();
+    const cam = xr.camera;
+    if (this.state === 'placing') {
+      const hit = settled && this.floorHit(cam);
+      this.reticle.visible = hit;
+      this.steadyT = hit ? this.steadyT + dt : 0;
+      const ok = hit && this.steadyT >= STEADY; // Place lights only on a steady floor
+      if (hit) {
+        this.reticle.position.copy(this.hit);
+        this.reticle.scale.setScalar(1 + Math.sin(now / 260) * (this.ctx.reducedMotion ? 0.01 : 0.05));
+        if (!this.anchor.visible) this.anchor.position.copy(this.hit);
+        else this.anchor.position.lerp(this.hit, 1 - Math.exp(-12 * dt));
+        this.anchor.visible = true;
+      }
+      this.placeBtn.disabled = !ok;
+      this.placeBtn.textContent = ok ? 'Place Cheer Bear' : 'Getting ready…';
+      this.ctx.hud.hint(settled ? 'Pinch to size, then Place' : 'Point at the floor');
+    } else if (this.state === 'restoring') {
+      if (settled) this.restore(cam);
+    } else if (this.hintT > 0) {
+      this.hintT -= dt;
+      if (this.hintT <= 0) this.ctx.hud.hint('');
+    }
+    // she turns to face you
+    if (this.anchor.visible) {
+      cam.getWorldPosition(this.camPos);
+      const yaw = Math.atan2(this.camPos.x - this.anchor.position.x, this.camPos.z - this.anchor.position.z);
+      let dy = yaw - this.anchor.rotation.y;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      this.anchor.rotation.y += dy * (1 - Math.exp(-(this.state === 'placing' ? 8 : 3) * dt));
+    }
+    this.animateReaction(dt);
+  }
+
+  onFace(ev: FaceEvent): void {
+    if (this.cam !== 'face') return;
+    if (ev.type === 'found' || ev.type === 'updated') {
+      const t = ev.detail?.transform;
+      if (!t) return;
+      this.target.pos.set(t.position.x, t.position.y, t.position.z);
+      this.target.quat.set(t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w);
+      this.target.scale = t.scale ?? 1;
+      this.target.fresh = true;
+      this.fx.place(ev.detail?.attachmentPoints ?? null);
+      if (!this.faceFound) {
+        this.faceFound = true;
+        this.faceAnchor.position.copy(this.target.pos);
+        this.faceAnchor.quaternion.copy(this.target.quat);
+        this.faceAnchor.scale.setScalar(this.target.scale);
+        this.faceAnchor.visible = true;
+        this.fx.pop();
+        if (this.state === 'selfie') this.selfieHint();
+      }
+    } else if (ev.type === 'lost') {
+      this.faceFound = false;
+      this.target.fresh = false;
+      this.faceAnchor.visible = false;
+      if (this.state === 'selfie') this.selfieHint();
+    }
+  }
+
+  onTap(_x: number, _y: number, ndc: THREE.Vector2): boolean {
+    if (this.cam !== 'world') return false;
+    if (this.state === 'placing') {
+      if (!this.placeBtn.disabled) this.place();
+      return true;
+    }
+    if (this.state === 'placed' && this.hitsBear(ndc)) {
+      this.react();
+      return true;
+    }
+    return false;
+  }
+
+  trigger(name: string): boolean {
+    if (this.cam !== 'world' || this.state !== 'placed') return false;
+    if (!/^(wave|cheer|sparkle|magic|rainbow|party|dance|house|running|wakeup)$/i.test(name.replace(/\s+/g, ''))) return false;
+    const t = performance.now();
+    if (t - this.lastReact < 1200) return false;
+    this.react();
+    return true;
+  }
+
+  reset(): void {
+    this.size = SIZE.def;
+    this.model.scale.setScalar(this.size);
+    this.rel = null;
+    this.placedOnce = false;
+    this.setSelfie(null);
+    if (this.state !== 'off') {
+      this.review.close();
+      this.reveal.close();
+      if (this.cam === 'world') void this.flipTo('face');
+      else this.toSelfie();
+    } else this.cam = 'face';
+  }
+
+  dispose(): void {
+    this.exit('showcase');
+    this.setSelfie(null);
+    this.selfieTex.dispose();
+  }
+
+  // ------------------------------------------------------------------ cameras
+  /** The camera has video: set up the step that goes with it. */
+  private onCamera(): void {
+    if (this.cam === 'face') this.toSelfie();
+    else if (this.rel && this.placedOnce) this.toRestoring();
+    else this.toPlacing();
+  }
+
+  /** Flip the camera inside the one engine session (xr-core's Engine.start: stop, swap tracker, run). From a tap. */
+  private async flipTo(to: Cam): Promise<void> {
+    if (this.state === 'off' || this.state === 'flipping' || this.state === 'busy' || this.cam === to) return;
+    const engine = this.ctx.engine as SwapEngine;
+    const hud = this.ctx.hud as CoverHud;
+    if (!engine.start) return;
+    if (this.cam === 'world') this.remember();
+    const from = this.cam;
+    this.state = 'flipping';
+    this.clearHud();
+    hud.hint('');
+    hud.cover?.('Turning the camera round…');
+    this.anchor.visible = false;
+    this.reticle.visible = false;
+    this.faceAnchor.visible = false;
+    this.faceFound = false;
+    this.target.fresh = false;
+    this.cam = to; // before the run: the experience routes the new scene and face events by `camera`
+    const t0 = performance.now();
+    try {
+      await engine.start(to);
+      if (this.state !== 'flipping') return; // left the mode meanwhile
+      this.diag.flips++;
+      this.diag.flipMs.push(Math.round(performance.now() - t0));
+      hud.cover?.(null);
+      this.onCamera();
+      if (to === 'world' && this.placedOnce) this.ctx.hud.toast(this.freshSelfie ? 'Your new selfie is in her frame' : 'She is where you left her', 1600);
+      else if (to === 'world') this.ctx.hud.toast('Now find a spot on the floor for her', 2000);
+      else if (this.placedOnce) this.ctx.hud.toast('New selfie: she keeps her spot', 1800);
+      if (to === 'world') this.freshSelfie = false;
+    } catch (e) {
+      hud.cover?.(null);
+      const msg = String((e as Error)?.message ?? e);
+      this.diag.errors.push(msg);
+      console.warn('[3d photo] camera flip failed', msg);
+      if (this.state !== 'flipping') return;
+      this.cam = from;
+      this.state = 'off';
+      // the camera stopped: back to the 3D view with a friendly word (the experience handles the switch)
+      await this.ctx.setMode('showcase');
+      void this.ctx.hud.sheet({
+        title: 'The camera did not turn round',
+        body: 'Your phone would not switch cameras just now. Try the Photo again in a moment.',
+        buttons: ['OK'],
+      });
+    }
+  }
+
+  // ------------------------------------------------------------------ front camera: the selfie
+  private toSelfie(): void {
+    this.state = 'selfie';
+    const hud = this.ctx.hud;
+    this.clearHud();
+    this.anchor.visible = false;
+    this.reticle.visible = false;
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
+    this.shutterBtn.disabled = false;
+    this.shutterBtn.setAttribute('aria-label', 'Take your selfie for Cheer Bear’s frame');
+    hud.centre.appendChild(this.shutterBtn);
+    hud.layer.appendChild(this.guide);
+    this.drawGuide();
+    this.showSelfieUi();
+    this.selfieHint();
+  }
+
+  private selfieHint(): void {
+    this.ctx.hud.hint(this.hasSelfie ? '' : this.faceFound ? 'Tap the shutter for your selfie' : 'Fit your face in the oval');
+  }
+
+  private showSelfieUi(): void {
+    const hud = this.ctx.hud;
+    if (this.hasSelfie) {
+      this.meetBtn.textContent = this.placedOnce ? 'Back to Cheer Bear' : 'Meet Cheer Bear';
+      hud.above.appendChild(this.meetBtn);
+      hud.left.appendChild(this.thumb);
+    } else {
+      this.meetBtn.remove();
+      this.thumb.remove();
+    }
+  }
+
+  private async takeSelfie(): Promise<void> {
+    if (this.state !== 'selfie') return;
+    this.state = 'busy';
+    if (this.shutterBtn) this.shutterBtn.disabled = true;
+    try {
+      flash(this.ctx.container, this.ctx.reducedMotion);
+      const img = await engineShot(this.ctx.engine);
+      if (this.state !== 'busy') return;
+      const c = this.cropSelfie(img);
+      img.src = '';
+      const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/jpeg', 0.9));
+      if (this.state !== 'busy') return;
+      this.setSelfie(c, blob);
+      this.freshSelfie = true;
+      this.diag.selfies++;
+      this.diag.lastSelfie = blob;
+      this.state = 'selfie';
+      if (this.shutterBtn) this.shutterBtn.disabled = false;
+      this.showSelfieUi();
+      this.selfieHint();
+      this.ctx.hud.toast(this.placedOnce ? 'New selfie in her frame' : 'Selfie saved', 1400);
+    } catch (e) {
+      console.warn('[3d photo] selfie failed', e);
+      this.ctx.hud.toast('That selfie did not work. Try again?', 2200);
+      this.state = 'selfie';
+      if (this.shutterBtn) this.shutterBtn.disabled = false;
+    }
+  }
+
+  /** Cut the selfie round your head (ears included) in the frame opening's shape, as you saw it on screen. */
+  private cropSelfie(img: HTMLImageElement): HTMLCanvasElement {
+    const W = img.naturalWidth, H = img.naturalHeight;
+    let cx = W / 2, cy = H * 0.42, ch = H * 0.5;
+    const xr = this.ctx.engine.xr;
+    let how = 'oval';
+    if (xr && this.faceFound) {
+      const cam = xr.camera;
+      cam.updateMatrixWorld();
+      cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+      this.faceAnchor.updateMatrixWorld(true);
+      const toPx = (p: THREE.Vector3) => { p.project(cam); return [(p.x + 1) / 2 * W, (1 - p.y) / 2 * H]; };
+      const c0 = toPx(this.faceAnchor.localToWorld(this.v.set(0, 0.06, 0)));
+      const c1 = toPx(this.faceAnchor.localToWorld(this.w.set(0, 1.06, 0)));
+      const fu = Math.hypot(c1[0] - c0[0], c1[1] - c0[1]); // pixels per face unit
+      if (fu > 4 && c0[0] > -W * 0.2 && c0[0] < W * 1.2 && c0[1] > -H * 0.2 && c0[1] < H * 1.2) {
+        cx = c0[0];
+        cy = c0[1];
+        ch = fu * 2.7; // chin (-1) to ear tops (+1.05) with a little room
+        how = 'face';
+      }
+    } else {
+      // the guide oval, in photo pixels
+      const box = this.ctx.container.getBoundingClientRect();
+      const o = this.ovalRect(box.width, box.height);
+      const k = W / Math.max(1, box.width);
+      cx = (o.x + o.w / 2) * k;
+      cy = (o.y + o.h / 2) * k;
+      ch = o.h * 1.25 * k;
+    }
+    let cw = ch * OPEN_ASPECT;
+    const fit = Math.min(1, W / cw, H / ch);
+    cw *= fit;
+    ch *= fit;
+    const sx = THREE.MathUtils.clamp(cx - cw / 2, 0, W - cw), sy = THREE.MathUtils.clamp(cy - ch / 2, 0, H - ch);
+    this.diag.selfieCrop = `${how} ${Math.round(sx)},${Math.round(sy)} ${Math.round(cw)}x${Math.round(ch)} of ${W}x${H}`;
+    const c = document.createElement('canvas');
+    c.width = SELFIE_PX.w;
+    c.height = SELFIE_PX.h;
+    const g = c.getContext('2d')!;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(img, sx, sy, cw, ch, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  private setSelfie(c: HTMLCanvasElement | null, blob?: Blob | null): void {
+    if (this.thumbUrl) URL.revokeObjectURL(this.thumbUrl);
+    this.thumbUrl = null;
+    const old = this.selfieMat.map;
+    if (!c) {
+      this.hasSelfie = false;
+      if (old && old !== this.selfieTex) old.dispose();
+      this.selfieMat.map = this.selfieTex;
+      this.thumb.removeAttribute('src');
+      return;
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    this.selfieMat.map = t; // same kind of texture, same program: no recompile
+    if (old && old !== this.selfieTex) old.dispose();
+    this.hasSelfie = true;
+    if (blob) {
+      this.thumbUrl = URL.createObjectURL(blob);
+      this.thumb.src = this.thumbUrl;
+    }
+  }
+
+  /** The guide oval (CSS pixels): about two thirds of the width, a little above the middle. */
+  private ovalRect(W: number, H: number): { x: number; y: number; w: number; h: number } {
+    const h = Math.min(H * 0.46, (W * 0.64) / 0.78);
+    const w = h * 0.78;
+    return { x: (W - w) / 2, y: H * 0.42 - h / 2, w, h };
+  }
+
+  private drawGuide(): void {
+    const box = this.ctx.container.getBoundingClientRect();
+    const W = Math.round(box.width), H = Math.round(box.height);
+    const o = this.ovalRect(W, H);
+    const rx = o.w / 2, ry = o.h / 2, cx = o.x + rx, cy = o.y + ry;
+    const oval = `M${cx - rx},${cy}a${rx},${ry} 0 1,0 ${2 * rx},0a${rx},${ry} 0 1,0 ${-2 * rx},0z`;
+    this.guide.innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none">` +
+      `<path d="M0,0H${W}V${H}H0z ${oval}" fill="rgba(8,8,10,0.32)" fill-rule="evenodd"/>` +
+      `<path d="${oval}" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="10 9" stroke-linecap="round"/></svg>`;
+  }
+
+  // ------------------------------------------------------------------ back camera: place, react, shoot
+  private toPlacing(): void {
+    this.state = 'placing';
+    this.steadyT = 0;
+    this.anchor.visible = false;
+    this.reticle.visible = false;
+    const hud = this.ctx.hud;
+    this.clearHud();
+    this.placeBtn.disabled = true; // the frame loop enables it once the reticle is on the floor
+    this.placeBtn.textContent = 'Getting ready…';
+    hud.centre.appendChild(this.placeBtn);
+    hud.left.appendChild(this.flipBtn);
+    hud.hint('Point at the floor');
+  }
+
+  private toRestoring(): void {
+    this.state = 'restoring';
+    this.anchor.visible = false;
+    this.clearHud();
+    this.ctx.hud.left.appendChild(this.flipBtn);
+    this.ctx.hud.hint('Hold still a moment');
+  }
+
+  /** Put her back where she stood relative to the phone, once world tracking has settled in this run. */
+  private restore(cam: THREE.Camera): void {
+    const r = this.rel;
+    if (!r) { this.toPlacing(); return; }
+    cam.getWorldPosition(this.camPos);
+    cam.getWorldDirection(this.camFwd).setY(0);
+    if (this.camFwd.lengthSq() < 1e-6) this.camFwd.set(0, 0, -1);
+    this.camFwd.normalize();
+    const side = this.w.set(-this.camFwd.z, 0, this.camFwd.x);
+    this.anchor.position.copy(this.camPos).addScaledVector(this.camFwd, r.fwd).addScaledVector(side, r.side).setY(0);
+    const camYaw = Math.atan2(this.camFwd.x, this.camFwd.z);
+    this.anchor.rotation.set(0, camYaw + r.yaw, 0);
+    this.diag.restored++;
+    this.toPlaced();
+    this.ctx.hud.hint('');
+  }
+
+  /** Remember where she stands relative to the phone (we are leaving the back camera). */
+  private remember(): void {
+    const xr = this.ctx.engine.xr;
+    if (!xr || !this.placedOnce || (this.state !== 'placed' && this.state !== 'review' && this.state !== 'busy' && this.state !== 'placing')) return;
+    const cam = xr.camera;
+    cam.getWorldPosition(this.camPos);
+    cam.getWorldDirection(this.camFwd).setY(0);
+    if (this.camFwd.lengthSq() < 1e-6) this.camFwd.set(0, 0, -1);
+    this.camFwd.normalize();
+    const side = this.w.set(-this.camFwd.z, 0, this.camFwd.x);
+    const d = this.v.copy(this.anchor.position).sub(this.camPos).setY(0);
+    const camYaw = Math.atan2(this.camFwd.x, this.camFwd.z);
+    this.rel = { fwd: d.dot(this.camFwd), side: d.dot(side), yaw: this.anchor.rotation.y - camYaw };
+  }
+
+  private place(): void {
+    if (this.state !== 'placing' || this.placeBtn.disabled || !this.reticle.visible) return;
+    this.diag.placedCount++;
+    this.placedOnce = true;
+    this.reticle.visible = false;
+    this.anchor.position.copy(this.hit);
+    this.toPlaced();
+    this.ctx.hud.hint('Tap her, then take a photo');
+    this.hintT = 4;
+    this.react();
+  }
+
+  private toPlaced(): void {
+    if (this.state === 'off') return;
+    this.state = 'placed';
+    const hud = this.ctx.hud;
+    this.clearHud();
+    if (!this.shutterBtn) this.shutterBtn = this.makeShutter();
+    this.shutterBtn.disabled = false;
+    this.shutterBtn.setAttribute('aria-label', 'Take a photo with Cheer Bear. Hold to record a video');
+    hud.centre.appendChild(this.shutterBtn);
+    // bottom left, always there once placed (the slot stacks bottom-up: Move at the bottom, Selfie above it)
+    hud.left.append(this.moveBtn, this.flipBtn);
+    this.anchor.visible = true;
+  }
+
+  private move(): void {
+    if (this.state !== 'placed') return;
+    this.diag.moved++;
+    this.toPlacing();
+    this.anchor.visible = true; // keep showing her while you look for a new spot
+    this.ctx.hud.toast('Point at a new spot, then Place', 1800);
+  }
+
+  /** One shutter for both cameras; in the room, press and hold records a video with the title, frame and filter. */
+  private makeShutter(): HTMLButtonElement {
+    return this.ctx.hud.shutter(() => this.onShutter(), 'Take a photo', clipHold({
+      can: () => this.cam === 'world' && this.state === 'placed',
+      options: () => ({
+        overlay: (g, w, h) => drawFrameArt(g, w, h, { ...this.spec(this.frame, this.filter), filter: undefined }),
+        filter: FILTER_CSS[this.filter].filter, tint: FILTER_CSS[this.filter].tint,
+      }),
+      onStart: () => { this.state = 'recording'; this.ctx.hud.hint(''); this.react(); },
+      onDone: (blob) => {
+        if ((this.state as State) !== 'recording') return;
+        if (!blob) { this.ctx.hud.toast('Hold a little longer for a video', 2000); this.toPlaced(); return; }
+        this.diag.clips++;
+        this.diag.lastClip = blob;
+        this.state = 'review';
+        this.review.show(blob);
+      },
+    }));
+  }
+
+  private spec(frame: FrameStyle, filter: PhotoFilter): FrameSpec {
+    return { title: true, titleWidth: 0.34, titleAt: 'bottom-left', frame, filter };
+  }
+
+  private dropShot(): void {
+    if (this.shot) this.shot.src = '';
+    this.shot = null;
+  }
+
+  private onShutter(): void {
+    if (this.cam === 'face') void this.takeSelfie();
+    else void this.shoot();
+  }
+
+  private async shoot(): Promise<void> {
+    if (this.state !== 'placed') return;
+    this.state = 'busy';
+    if (this.shutterBtn) this.shutterBtn.disabled = true;
+    try {
+      flash(this.ctx.container, this.ctx.reducedMotion);
+      const img = await engineShot(this.ctx.engine);
+      if (this.state !== 'busy') return;
+      const spec = this.spec(this.frame, this.filter);
+      const { blob } = await compose(img, (g, w, h) => drawFrameArt(g, w, h, spec));
+      this.dropShot();
+      this.shot = img; // kept while the review is open: the Frame / Filter chips recompose from it
+      if (this.state !== 'busy') return;
+      this.diag.shots++;
+      this.diag.lastPhoto = blob;
+      this.ctx.capture(blob);
+      this.state = 'review';
+      this.review.show(blob);
+    } catch (e) {
+      console.warn('[3d photo] failed', e);
+      this.ctx.hud.toast('That photo did not work. Try again?', 2200);
+      this.toPlaced();
+    }
+  }
+
+  /** A happy hop with a little squash, and hearts out of the frame. */
+  private react(): void {
+    this.lastReact = performance.now();
+    this.diag.reactions++;
+    this.hopT = 0;
+    const reduced = this.ctx.reducedMotion;
+    this.hearts.forEach((h, i) => {
+      const a = (i / this.hearts.length) * Math.PI * 2;
+      h.t = reduced ? 0.6 : i * 0.05;
+      h.m.position.set(0.18 + Math.cos(a) * 0.06, 0.66 + Math.sin(a) * 0.06, OPENING.z + 0.08);
+      h.v.set(Math.cos(a) * 0.25, 0.45 + Math.random() * 0.25, 0.1 + Math.random() * 0.1);
+      h.spin = (Math.random() - 0.5) * 3;
+      h.m.scale.setScalar(0.001);
+      h.m.visible = true;
+    });
+  }
+
+  private animateReaction(dt: number): void {
+    const reduced = this.ctx.reducedMotion;
+    if (this.hopT < 1) {
+      this.hopT = Math.min(1, this.hopT + dt / 0.7);
+      const t = this.hopT;
+      const up = reduced ? 0 : Math.sin(Math.min(1, t / 0.75) * Math.PI) * 0.09;
+      // squash before the jump and on landing, stretch in the air
+      const squash = reduced ? 0 : t < 0.12 ? -Math.sin((t / 0.12) * Math.PI) * 0.06 : t > 0.82 ? -Math.sin(((t - 0.82) / 0.18) * Math.PI) * 0.05 : Math.sin(((t - 0.12) / 0.7) * Math.PI) * 0.03;
+      this.hop.position.y = up;
+      this.hop.scale.set(1 - squash * 0.5, 1 + squash, 1 - squash * 0.5);
+      this.hop.rotation.z = reduced ? 0 : Math.sin(t * Math.PI * 2) * 0.05 * (1 - t);
+    }
+    for (const h of this.hearts) {
+      if (!h.m.visible) continue;
+      h.t += dt;
+      const life = 1.3;
+      if (h.t <= 0) continue;
+      if (h.t > life) { h.m.visible = false; continue; }
+      h.m.position.addScaledVector(h.v, dt);
+      h.v.y -= 0.15 * dt;
+      h.m.rotation.z += h.spin * dt;
+      const k = h.t / life;
+      h.m.scale.setScalar(Math.max(0.001, k < 0.2 ? k / 0.2 : k > 0.75 ? (1 - k) / 0.25 : 1));
+    }
+  }
+
+  // ------------------------------------------------------------------ helpers
+  private clearHud(): void {
+    this.placeBtn.remove();
+    this.moveBtn.remove();
+    this.flipBtn.remove();
+    this.meetBtn.remove();
+    this.thumb.remove();
+    this.guide.remove();
+    this.shutterBtn?.remove();
+  }
+
+  private hitsBear(ndc: THREE.Vector2): boolean {
+    this.framed.updateMatrixWorld(true);
+    this.box.setFromObject(this.framed);
+    return this.ctx.engine.ray(ndc).ray.intersectsBox(this.box);
+  }
+
+  private floorHit(cam: THREE.Camera): boolean {
+    const r = this.ctx.engine.ray(this.ndc);
+    cam.getWorldPosition(this.camPos);
+    cam.getWorldDirection(this.camFwd).setY(0);
+    if (this.camFwd.lengthSq() < 1e-6) this.camFwd.set(0, 0, -1);
+    this.camFwd.normalize();
+    const got = r.ray.intersectPlane(this.plane, this.hit);
+    let d = REACH.max;
+    if (got) d = this.v.copy(this.hit).sub(this.camPos).setY(0).length();
+    d = THREE.MathUtils.clamp(d, REACH.min, REACH.max);
+    const side = this.w.set(-this.camFwd.z, 0, this.camFwd.x);
+    const off = got ? THREE.MathUtils.clamp(this.v.dot(side), -1, 1) : 0;
+    this.hit.copy(this.camPos).addScaledVector(this.camFwd, d).addScaledVector(side, off).setY(0);
+    return true;
+  }
+}
+
+/** The frame before the first selfie: flat Cheer Bear pink with a simple "you" figure (no gradients). */
+function placeholderTexture(): THREE.Texture {
+  const c = document.createElement('canvas');
+  c.width = SELFIE_PX.w;
+  c.height = SELFIE_PX.h;
+  const g = c.getContext('2d')!;
+  const W = c.width, H = c.height;
+  g.fillStyle = '#ffd6ea';
+  g.fillRect(0, 0, W, H);
+  g.fillStyle = '#ff8fc8';
+  g.beginPath();
+  g.arc(W / 2, H * 0.4, W * 0.2, 0, Math.PI * 2);
+  g.fill();
+  g.beginPath();
+  g.ellipse(W / 2, H * 0.98, W * 0.36, H * 0.3, 0, Math.PI, 0);
+  g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+export function createMode(ctx: ModeContext): Mode {
+  return new PhotoMode(ctx);
+}
+export default createMode;
+
+const STEP = (n: number, title: string, text: string) => `<li class="cbc-wstep"><span class="cbc-wnum" aria-hidden="true">${n}</span><span><b>${title}</b>${text}</span></li>`;
+/** The welcome sheet's body: the three steps (flat, no art). */
+const WELCOME_HTML = `<ol class="cbc-welcome">
+  ${STEP(1, 'Take a selfie', 'Fit your face in the oval and tap the white button.')}
+  ${STEP(2, 'Meet Cheer Bear', 'The camera turns round. Point at the floor, pinch to size her, then Place.')}
+  ${STEP(3, 'Snap the room', 'Tap for a photo, hold for a video. Tap her for hearts. Pick a frame and a filter after.')}
+</ol>
+<p class="cbc-wfoot"><b>Selfie</b> takes a new selfie, <b>Move</b> puts her somewhere else.</p>`;

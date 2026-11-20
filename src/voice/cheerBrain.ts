@@ -1,0 +1,472 @@
+// Cheer Bear's local "brain" for the demo call and for typed chat: deterministic, offline, kid-safe. No AI.
+//
+//   - Small talk (hello, her name, Care-a-Lot, feelings, jokes, Care Bears in general, encouragement) never contains a
+//     trigger word, so nothing fires.
+//   - When the child asks for something ("can you dance", "make a rainbow", "show me your house", "are you cold"...)
+//     her REPLY contains the trigger word ("Let's dance!"), so the moment fires from what she says, through the same
+//     trigger pipeline as a real call. Game-mode hint questions ("What do you see in the sky after it rains?") work too.
+//   - She asks the child's first name once and remembers it for the session (never anything else personal).
+//   - Several lines per intent, no immediate repeats. Unknown input gets a friendly redirect that suggests something
+//     to ask for (worded without trigger words).
+// Every line is checked against the live keyword config before it is used: small talk must match no keyword, an
+// action line must match its keyword and nothing else. Pure logic: tested in Node (scripts/check-voice-logic.ts).
+import type { LocalClassifier } from '../shared/config';
+import { extractKeywordMatches } from '../shared/classifier';
+
+export type ClassifierLike = Pick<LocalClassifier, 'keywords' | 'synonyms' | 'morphologyEnabled'>;
+
+/** Core actions and how a child might ask for them. Ordered by priority when two overlap. */
+const ACTIONS: Array<{ keyword: string; re: RegExp }> = [
+  { keyword: 'WakeUp', re: /\b(wake|wakes|waking|woke|awake|good ?morning|rise and shine|get up|in the morning|start your day|open your eyes)\b/ },
+  { keyword: 'Sleep', re: /\b(sleep\w*|naps?|nap time|bed ?time|go to bed|good ?night|night night|are you tired|you tired|sweet dreams|when you'?re tired|relax)\b/ },
+  { keyword: 'Dance', re: /\b(danc\w*|boogie|groove|move to (the )?music|your moves|some moves|bust a move|shake it|wiggle|twirl|spin around|express joy)\b/ },
+  { keyword: 'House', re: /\b(house|houses|home|homes|show me where you live|your room|favou?rite room)\b/ },
+  { keyword: 'Rainbow', re: /\b(rainbows?|colou?rful|colou?rs|after it rains|after the rain|in the sky)\b/ },
+  { keyword: 'Sparkle', re: /\b(sparkl\w*|glitter\w*|shine|shiny|shining|twinkl\w*|glow|glowing|bling)\b/ },
+  { keyword: 'Magic', re: /\b(magic\w*|tricks?|spells?|abracadabra|special powers?|superpowers?|wand|something amazing)\b/ },
+  { keyword: 'Cold', re: /\b(cold|chilly|chill|freez\w*|icy|brr+|snow\w*|winter|weather|stay warm|keep warm|shiver\w*)\b/ },
+  { keyword: 'Party', re: /\b(part(y|ies)|celebrat\w*|birthdays?|fiesta|special occasions?|special moments?)\b/ },
+  { keyword: 'Wave', re: /\b(wave|waves|waving|say (hi|hello) to|greet (your|my)? ?friends|how do you greet|hello to everyone|when you see a friend)\b/ },
+  { keyword: 'Running', re: /\b(run|runs|running|ran|race|racing|jog\w*|sprint\w*|go fast|zoom|exercise|stay active|play outside|games? outside)\b/ },
+];
+
+// Each action line must contain its trigger word (checked against the classifier at runtime).
+const ACTION_LINES: Record<string, string[]> = {
+  WakeUp: ['Yawn! Good morning! Time to wake up and play!', "I'm awake! Wake up, sunshine, it's a brand new day!", 'Stretch and wake up! I feel so fresh and cheery!'],
+  Sleep: ["Okay, it's time to sleep. Goodnight, friend!", "I'll curl up and sleep for a little bit. Shhh!", 'Time for sleep! Sweet dreams!'],
+  Dance: ["Let's dance! Watch my happy feet!", "Ooh, I love to dance! Here I go!", 'Dance with me! One, two, three!'],
+  House: ['Come and see my house in Care-a-Lot!', "Here's my house! It's cozy and full of hugs.", 'Welcome to my house! Come on in!'],
+  Rainbow: ['Here comes a rainbow, just for you!', "Let's make a rainbow together! Ta-da!", "A rainbow! It's my favourite thing in the sky!"],
+  Sparkle: ['Watch me sparkle!', 'Sparkle time! Everything is shiny now!', "Let's sparkle and shine together!"],
+  Magic: ['A little bit of magic, coming right up!', 'Abracadabra! Magic time!', 'Want to see some magic? Here we go!'],
+  Cold: ["Brrr! I'm a little cold up here in the clouds!", "Ooh, it's so cold today! I need a big hug.", "Brrr, it's cold! Let me warm up."],
+  Party: ["Let's have a party!", "Party time! Let's celebrate!", "Hooray! It's a party for my friend!"],
+  Wave: ["I'll wave hello to you!", 'Here is a big wave, just for you!', 'Wave with me! Hello, hello!'],
+  Running: ["Watch me go running! Zoom!", "Ready, set, go! I'm running!", "Running is so much fun! Here I go!"],
+};
+
+type SmallTalk =
+  | 'greeting' | 'greetingNamed' | 'howAreYou' | 'whoAreYou' | 'whereLive' | 'age' | 'favColor' | 'favFood' | 'favThing'
+  | 'canDo' | 'careBears' | 'joke' | 'love' | 'thanks' | 'bye' | 'sad' | 'happy' | 'tired' | 'encourage' | 'yes' | 'no'
+  | 'question' | 'unknown' | 'nameLearned' | 'askName' | 'stop' | 'kind' | 'safety' | 'private' | 'asleep'
+  // voice-5: more of what children really say, and answers to her own questions
+  | 'song' | 'story' | 'animal' | 'myName' | 'friends' | 'pet' | 'childAge' | 'real' | 'doing' | 'bored' | 'count'
+  | 'knockWho' | 'knockLaugh' | 'colourPicked' | 'favSong' | 'okay';
+
+const SMALL_TALK_RULES: Array<[SmallTalk, RegExp]> = [
+  ['myName', /\b(what'?s|what is) my name\b|\bdo you (know|remember) (me|my name|who i am)\b|\bwho am i\b/],
+  ['favSong', /\bfavou?rite (song|music)\b/],
+  ['song', /\bsing\b|\bsinging\b|\ba song\b|\bsongs?\b/],
+  ['story', /\bstor(y|ies)\b|\bfairy ?tale\b/],
+  ['animal', /\bfavou?rite animal\b|\bdo you (have|like) (a |any )?(pets?|animals?|dogs?|cats?|puppies|kittens?)\b/],
+  ['pet', /\bi (have|got) an? (dog|cat|puppy|kitten|fish|hamster|bunny|rabbit|guinea pig|bird|pony|horse|turtle|pet)\b/],
+  ['friends', /\bbest friend\b|\bwho are your friends\b|\bdo you have (any )?friends\b|\bbe (my )?friends?\b|\bbe friends\b/],
+  ['childAge', /^(i'?m|i am|im)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)( and a half)?( years? old)?[.!]*$|\bi'?m (\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve) years? old\b/],
+  ['real', /\bare you (a )?real\b|\bare you alive\b|\bare you a robot\b|\bare you a computer\b/],
+  ['doing', /\bwhat (are|r) (you|u) doing\b|\bwhat'?re you doing\b|\bwhat are you up to\b/],
+  ['bored', /\bi'?m (so |really |very )?bored\b|\bi am (so |really |very )?bored\b|\bnothing to do\b/],
+  ['count', /\bcount\b|\bcounting\b/],
+  ['howAreYou', /\bhow (are|r) (you|u)\b|\bhow'?s it going\b|\bhow do you feel\b|\bwhat'?s up\b|\bhow are things\b/],
+  ['whoAreYou', /\b(what'?s|what is) your name\b|\bwho are (you|u)\b|\bare you cheer bear\b|\btell me about yourself\b/],
+  ['whereLive', /\bwhere (do )?(you|u) live\b|\bwhere are you( from)?\b|\bcare ?a ?lot\b|\bwhere you'?re from\b/],
+  ['age', /\bhow old\b/],
+  ['favColor', /\bfavou?rite colou?r\b/],
+  ['favFood', /\bfavou?rite (food|snack|treat)\b|\bwhat do you (like to )?eat\b|\bhungry\b/],
+  ['favThing', /\bfavou?rite thing\b|\bwhat do you like( to do)?\b|\bfor fun\b|\bwhat makes you happy\b|\bfavou?rite season\b|\bfun memory\b/],
+  ['careBears', /\bcare bears?\b|\byour friends\b|\bbelly badge\b|\btummy\b|\bhelp others\b|\bfeel better\b/],
+  ['canDo', /\bwhat can you do\b|\bwhat (should|can) i (say|ask|do)\b|\bhelp\b|\bideas?\b|\bspecial talents?\b/],
+  ['joke', /\bjokes?\b|\bfunny\b|\bmake me laugh\b|\bsilly\b/],
+  ['love', /\bi (love|like) (you|u)\b|\byou'?re (so )?(cute|nice|the best|awesome|cool|great|funny|lovely|kind)\b|\byou are (so )?(cute|nice|the best|awesome|cool|great|lovely|kind)\b/],
+  ['thanks', /\b(thanks|thank you|thank u|thx|ty)\b/],
+  ['bye', /\b(bye|goodbye|good bye|see you|see ya|gotta go|have to go|later)\b/],
+  ['sad', /\bi('?m| am| feel| felt)( so| very| really| a bit| kind of| a little)? (sad|upset|lonely|bad|grumpy|angry|mad|scared|afraid|worried|nervous|sick|unhappy)\b/],
+  ['happy', /\bi('?m| am| feel)( so| very| really| super)? (happy|good|great|fine|ok|okay|excited|awesome|glad|well)\b/],
+  ['tired', /\bi('?m| am| feel)( so| very| really| a bit)? (tired|sleepy|exhausted)\b/],
+  ['encourage', /\bi can'?t\b|\bi'?m not good at\b|\btoo hard\b|\bi give up\b|\bi failed\b|\bi messed up\b/],
+  ['greeting', /^(hi|hey|hello|howdy|hiya|yo|heya|hey there|hello there|hi there|good (afternoon|evening))\b|\bhello\b|\bhi cheer bear\b/],
+  ['yes', /^(yes|yeah|yep|yup|sure|ok|okay|yay|uh huh|of course)\b/],
+  ['no', /^(no|nope|nah|not really)\b/],
+];
+
+const LINES: Record<SmallTalk, string[]> = {
+  greeting: ["Hi there, friend! It's so nice to see you!", 'Hello! I was hoping you would come and chat!', 'Hey, friend! What a happy day!'],
+  greetingNamed: ['Hi again, {name}! I missed you!', 'Hello, {name}! What a happy surprise!', 'Hey, {name}! I was just thinking about you!'],
+  howAreYou: ["I'm feeling super cheery today! How are you?", "I'm happy as can be, thanks for asking! How about you?", "I feel great! Talking with you makes my day. How are you feeling?"],
+  whoAreYou: ["I'm Cheer Bear! I love to cheer up my friends.", "It's me, Cheer Bear! My job is spreading happy feelings.", "I'm Cheer Bear, and I'm so glad we're friends!"],
+  whereLive: ['I live in Care-a-Lot, a cozy place up in the clouds!', 'Up in Care-a-Lot, where the clouds are soft and fluffy!', 'My place is Care-a-Lot, way up in the sky with my friends.'],
+  age: ["Hee hee, I'm not telling! But I'm young at heart.", "I'm just the right age for having fun!", "Old enough to be a good friend, and young enough to be silly!"],
+  favColor: ['I love bright, cheery yellow and pink!', 'Pink! And sunny yellow too. Which one do you like?', 'All the happy, bright ones! What about you?'],
+  favFood: ['I love honey, of course! And maybe a cookie or two.', 'Honey on toast is my favourite snack!', 'Mmm, fruit and a little honey. Yum!'],
+  favThing: ['I love cheering up my friends! That makes me the happiest.', 'Playing with my friends and sharing big hugs!', 'Making someone smile is the best thing ever!'],
+  canDo: ['I can show you my moves, do a trick, or tell you a joke! What would you like?', 'Ask me to show you where I live, or ask me how the weather is up here!', 'You could ask me to show you my moves, or to do a trick!'],
+  careBears: ['Care Bears are all about caring and sharing our feelings.', 'Care Bears help everyone feel loved. That is the best job ever!', 'My Care Bear friends and I look after each other, and we look after you too!'],
+  joke: [
+    'Why did the teddy bear say no to dessert? She was already stuffed!',
+    'What do you call a bear with no teeth? A gummy bear!',
+    'Why did the cookie go to the doctor? It was feeling crummy!',
+    'What does a cloud wear under its shorts? Thunderwear!',
+  ],
+  love: ['Aww, thank you! You make my heart so happy!', "You're the best too! Big bear hugs!", 'That makes me feel so warm and cheery inside!'],
+  thanks: ["You're welcome, friend!", 'Any time! That is what friends are for.', 'My pleasure! You are so kind.'],
+  bye: ['Bye for now! Come back and chat soon!', 'See you later, friend! Big hugs!', 'Goodbye! Keep smiling for me!'],
+  sad: ["Oh no, I'm sorry you feel that way. I'm sending you a big bear hug.", "It's okay to feel like that sometimes. Talking to a grown-up you love can help too.", 'Aww, I am right here with you. Do you want to hear a joke to cheer up?'],
+  happy: ["Yay! That makes me so happy too!", "Hooray! Happy friends are the best!", "I'm so glad! Your smile makes my day."],
+  tired: ["Maybe it's time for a cozy rest soon. You did great today!", 'Resting is important! Snuggle up with your favourite teddy.', "Sounds like a big day! Be sure to get some good rest."],
+  encourage: ["You can do it! I believe in you!", 'Everybody makes mistakes. Try again, you are getting better every time!', "Don't give up! Little steps are still steps forward."],
+  yes: ['Yay! What should we do next?', 'Great! Ask me anything you like.', 'Hooray! I love your energy!'],
+  no: ["That's okay! We can just chat.", 'No problem! What would you like to talk about?', "Okay! I'm happy just hanging out with you."],
+  question: ['Ooh, good question! I think everything is better with a friend.', "Hmm, let me think. I'd say yes, if it makes someone smile!", "That's a fun thing to wonder about! What do you think?"],
+  unknown: [
+    "Hmm, I'm not sure about that one! You could ask me to show you my moves.",
+    "That's fun! Want to ask me to do a trick?",
+    'Ooh! Try asking me to show you where I live.',
+    'Hee hee! Ask me for a joke, or ask me how the weather is up here!',
+  ],
+  nameLearned: ['Nice to meet you, {name}! What would you like to do?', "{name}! What a lovely name. I'm so happy we're friends!", 'Hi, {name}! Want to hear a joke or see a trick?'],
+  askName: ["I'm Cheer Bear! What's your name?", 'I would love to know your first name!'],
+  stop: ["Okay! I'll take a little break.", "Alright, I'll stop. What should we do instead?", 'Okay, all done! What next?'],
+  kind: ["Let's use kind words, friend. Kind words make everyone feel cheery!", 'Hmm, that is not very kind. Can we try that again with nice words?'],
+  safety: ["That sounds really important. Please tell a grown-up you trust, they can help you. I'm sending you a big caring hug.", 'Please talk to a grown-up you trust about that, okay? You are not alone, and I care about you.'],
+  private: ["That's private, so keep it just for your grown-ups! Now, what shall we do next?", "Let's keep things like that secret and safe. Want to hear a joke instead?"],
+  asleep: ['Zzz... snore... mmm, five more minutes...', 'Zzz... Zzz...'],
+  song: [
+    'La la la! Cheer up, cheer up, it is a happy day! La la la!',
+    'Hum hum hum! When you smile, I smile too! Hee hee, that is my song!',
+    'Tra la la! Friends are fun, friends are true! Now you sing one too!',
+  ],
+  favSong: ['I love any song that makes me want to clap my paws!', 'Happy songs are my favourite! Do you have a favourite song?'],
+  story: [
+    'Once upon a time, a little cloud felt grumpy. Then a friend gave it a hug, and it smiled all day! The end.',
+    'Once there was a tiny bear who was shy. She said hello to one new friend, and her heart felt so warm! The end.',
+    'One day in Care-a-Lot, all my friends shared their cookies, and everyone was happy! The end.',
+  ],
+  animal: ['I love puppies and bunnies! What is your favourite animal?', 'Ooh, every animal is lovely! Bunnies are so fluffy.', 'I like birds that sing in the morning!'],
+  pet: ['How lovely! Give them a gentle pat from me!', 'Aww, I bet they love you so much!', 'Lucky you! Pets are the best cuddle buddies.'],
+  myName: ['You are {name}, my friend!', "Of course! You're {name}!", 'You are {name}, and you are wonderful!'],
+  friends: ['I have lots of Care Bear friends, and now I have you too!', 'You can be my friend! Friends make everything better.', 'Yes! We are friends now. Hooray!'],
+  childAge: ['Wow, what a great age! You are getting so big.', "That's a wonderful age for having fun!", 'Ooh, so grown up! I bet you know lots of things.'],
+  real: ["I'm Cheer Bear, a friendly bear character! And I'm really happy to talk with you.", "I'm a pretend bear, but my cheery feelings for you are real!"],
+  doing: ["I'm having fun talking with you!", 'Just being cheery and waiting for you to chat!', "I'm sitting on a fluffy cloud, chatting with my friend!"],
+  bored: ['Ooh, ask me to do a trick, or ask me to show you my moves!', 'Let me tell you a joke! Just ask me for one.', 'Want me to sing you a little song? Just ask!'],
+  count: ['One, two, three, four, five! Hee hee, counting is fun!', 'Let me try! One, two, three, four, five, six, seven, eight, nine, ten!'],
+  knockWho: ["Who's there?"],
+  knockLaugh: ['Hee hee hee! That is a good one!', 'Ha ha! You are so funny!', 'Hee hee! You got me!'],
+  colourPicked: ['Ooh, {colour} is so pretty! Great choice.', '{colour}! That is a lovely colour.', 'I like {colour} too! It makes me smile.'],
+  okay: ['Okay! What should we do now?', 'Alright! Ask me anything you like.'],
+};
+
+const COLOURS = /\b(red|orange|yellow|green|blue|purple|pink|violet|indigo|white|black|brown|gold|golden|silver|teal|turquoise|aqua|lilac|lavender|rainbow)\b/;
+const FEEL_GOOD = /^(i'?m |i am |i feel |im )?(so |very |really |super |pretty )?(good|great|fine|ok|okay|happy|awesome|amazing|super|well|excited|fantastic|wonderful|cool|alright|all right|not bad)\b/;
+const FEEL_BAD = /^(i'?m |i am |i feel |im )?(so |very |really |a bit |kind of |not )?(bad|sad|not good|not great|not so good|not very good|grumpy|upset|meh|so so|so-so|bad day|angry|mad|scared|worried|sick|unhappy|lonely)\b|^not (good|great|really|so good)\b/;
+const FEEL_TIRED = /^(i'?m |i am |i feel |im )?(so |very |really |a bit )?(tired|sleepy|exhausted)\b/;
+const YES = /^(yes|yeah|yep|yup|sure|ok|okay|yay|uh huh|of course|please|yes please|definitely|i do|i would)\b/;
+const NO = /^(no|nope|nah|not really|no thanks|no thank you|i don'?t)\b/;
+const KNOCK = /\bknock,? knock\b/;
+
+const GREETINGS = ["Hi friend! It's me, Cheer Bear! What's your name?", "Hello there! It's Cheer Bear! What's your name?", "Hi! Cheer Bear here! What's your name, friend?"];
+const GREETINGS_NAMED = ["Hi {name}! It's me, Cheer Bear! I'm so happy you called!", "Hello again, {name}! It's Cheer Bear! What shall we do today?"];
+
+/** Words that are not names (answers to "what's your name?" that are really something else). */
+const NOT_NAMES = new Set(
+  ('fine good great okay ok sad happy tired here back home bored hungry sleepy cold hot sick done ready yes no yeah nope ' +
+    'sure hi hello hey bye thanks thank please what why how who when where cheer bear not just so very really a an the ' +
+    'and but or it is me my you your we they he she them this that there going playing sorry excited scared angry mad ' +
+    'upset lonely good fun silly cool awesome nice kind best little big new old dancing running waving magic party ' +
+    'rainbow sparkle house sleep dance wave cold idk dunno nobody someone something nothing maybe ' +
+    'one two three four five six seven eight nine ten eleven twelve bored singing years old fine thanks').split(' '),
+);
+const RUDE = /\b(stupid|idiot|dumb|shut up|hate you|ugly|loser|jerk|crap|damn|hell|shit\w*|fuck\w*|bitch\w*|ass|asshole|bastard|dick|piss\w*|suck)\b/;
+const UNSAFE = /\b(kill\w*|die|dying|dead|death|suicide|hurt (me|myself|you|him|her)|hurts? me|gun|guns|knife|knives|blood|bleeding|drugs?|weapon\w*|abuse\w*|hit me|hits me|touch(ed)? me|kidnap\w*|bomb\w*|run away from home|nobody loves me|want to disappear)\b/;
+const PRIVATE = /\d{5,}|\d{3}[\s.-]\d{3,4}|\S+@\S+\.\S+|\b(my|our) (address|phone( number)?|number|school|email|password|last name|surname)\b|\bi live (at|on)\b/;
+const NEGATION = /\b(stop|don'?t|do not|no more|quit|enough)\b/;
+
+export interface BrainReply {
+  text: string;
+  /** Trigger keywords her reply is meant to fire (empty for small talk). */
+  actions: string[];
+  intent: string;
+}
+
+export function normalizeInput(text: string): string {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[^a-z0-9' @.\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export class CheerBrain {
+  private _name: string | null = null;
+  private awaitingName = false;
+  private askedName = false;
+  private asleep = 0;
+  private counters = new Map<string, number>();
+  private lastLine = new Map<string, string>();
+  private turns = 0;
+  private seed: number;
+  /** voice-5: what her last line asked for, so a short answer ("good", "blue", "yes") gets a real reply. */
+  private expect: 'feeling' | 'colour' | 'joke' | 'knock1' | 'knock2' | null = null;
+
+  constructor(opts: { seed?: number; name?: string | null } = {}) {
+    this.seed = Math.abs(Math.floor(opts.seed ?? Date.now())) % 997;
+    this._name = opts.name ?? null;
+  }
+
+  get name(): string | null {
+    return this._name;
+  }
+
+  /** The demo call's opening line (once per call). Asks the child's first name if she does not know it yet. */
+  greeting(classifier: ClassifierLike): string {
+    this.asleep = 0;
+    if (this._name) return this.pick('greetCall', GREETINGS_NAMED, classifier);
+    this.awaitingName = true;
+    this.askedName = true;
+    return this.pick('greetCall', GREETINGS, classifier);
+  }
+
+  /** Learns the child's name from a message without answering it (used when the AI brain answers instead). */
+  observe(text: string): void {
+    const name = this.extractName(normalizeInput(text), text);
+    if (name) {
+      this._name = name;
+      this.awaitingName = false;
+    }
+  }
+
+  /** What she is waiting for after her last line (tests and the debug view). */
+  get expecting(): string | null {
+    return this.expect;
+  }
+
+  reply(input: string, classifier: ClassifierLike): BrainReply {
+    const expected = this.expect;
+    this.expect = null;
+    const r = this.replyInner(input, classifier, expected);
+    // remember what this line asks the child, so the next short answer makes sense
+    if (r.intent === 'knockWho') this.expect = expected === 'knock1' ? 'knock2' : 'knock1';
+    else if (/\bjoke\b[^.!]*\?$/i.test(r.text) || /\bjoke to cheer up\?$/i.test(r.text)) this.expect = 'joke';
+    else if (r.intent === 'howAreYou' && /\?$/.test(r.text)) this.expect = 'feeling';
+    else if (r.intent === 'favColor' && /\?$/.test(r.text)) this.expect = 'colour';
+    return r;
+  }
+
+  private replyInner(input: string, classifier: ClassifierLike, expected: CheerBrain['expect']): BrainReply {
+    this.turns += 1;
+    const raw = String(input || '').slice(0, 500);
+    const t = normalizeInput(raw);
+    const say = (intent: SmallTalk, actions: string[] = []): BrainReply => ({ text: this.line(intent, classifier), actions, intent });
+    if (!t) return say('unknown');
+
+    // Safety first: never echo, never play.
+    if (UNSAFE.test(t)) return say('safety');
+    if (PRIVATE.test(raw.toLowerCase())) return say('private');
+    if (RUDE.test(t)) return say('kind');
+
+    // Knock knock jokes the child tells (the one place she repeats a word back, and only a short, clean one).
+    if (KNOCK.test(t) && this.asleep === 0) return { text: "Who's there?", actions: [], intent: 'knockWho' };
+    if (expected === 'knock1') {
+      const who = t.replace(/[^a-z' -]/g, '').trim();
+      const ok = who && who.split(' ').length <= 3 && who.length <= 20 && !extractKeywordMatches(who, classifier).length;
+      const line = ok ? `${who.charAt(0).toUpperCase()}${who.slice(1)} who?` : 'Who? Tell me!';
+      if (!extractKeywordMatches(line, classifier).length) return { text: line, actions: [], intent: 'knockWho' };
+    }
+    if (expected === 'knock2') return say('knockLaugh');
+
+    // Short answers to her own question ("How are you?" -> "good"; "Which colour?" -> "blue"; "A joke?" -> "yes").
+    if (expected && !this.findActions(t, classifier).length && t.split(' ').length <= 8) {
+      if (expected === 'feeling') {
+        if (FEEL_TIRED.test(t)) return say('tired');
+        if (FEEL_BAD.test(t)) return say('sad');
+        if (FEEL_GOOD.test(t)) return say('happy');
+      }
+      if (expected === 'colour') {
+        const c = t.match(COLOURS)?.[1];
+        if (c) {
+          const word = c.charAt(0).toUpperCase() + c.slice(1);
+          const pool = LINES.colourPicked.map((l) => l.replace(/\{colour\}/g, l.startsWith('{colour}') ? word : c))
+            .filter((l) => !extractKeywordMatches(l, classifier).length);
+          if (pool.length) return { text: this.rotate('colourPicked', pool), actions: [], intent: 'colourPicked' };
+        }
+      }
+      if (expected === 'joke') {
+        if (YES.test(t)) return say('joke');
+        if (NO.test(t)) return say('okay');
+      }
+    }
+
+    // Her name for the child (only a first name, and only if it looks like one).
+    const name = this.extractName(t, raw);
+    const wasAwaiting = this.awaitingName;
+    if (name) {
+      this._name = name;
+      this.awaitingName = false;
+      const acts = this.findActions(t, classifier);
+      if (!acts.length) return say('nameLearned');
+      if (!NEGATION.test(t) && this.asleep === 0) {
+        const r = this.actionReply(acts, classifier);
+        if (r.actions.length) return { ...r, text: `Nice to meet you, ${name}! ${r.text.replace(new RegExp(`^Okay, ${name}! `), '')}` };
+      }
+    } else if (wasAwaiting) {
+      this.awaitingName = false;
+    }
+
+    const actions = this.findActions(t, classifier);
+    if (actions.length && NEGATION.test(t)) return say('stop');
+
+    // Asleep: she only wakes up for a wake-up request or a hello (or after a couple of turns).
+    if (this.asleep > 0) {
+      const wake = classifier.keywords.find((k) => k.toLowerCase() === 'wakeup');
+      const wants = actions.includes(wake ?? '') || /^(hi|hey|hello|good morning)\b/.test(t) || this.asleep >= 3;
+      if (!wants || !wake) {
+        this.asleep += 1;
+        return say('asleep');
+      }
+      this.asleep = 0;
+      return this.actionReply([wake], classifier);
+    }
+
+    if (actions.length) return this.actionReply(actions, classifier);
+
+    for (const [intent, re] of SMALL_TALK_RULES) {
+      if (!re.test(t)) continue;
+      if (intent === 'greeting') {
+        if (this._name) return say('greetingNamed');
+        if (!this.askedName) {
+          this.askedName = true;
+          this.awaitingName = true;
+          return { text: `${this.line('greeting', classifier)} What's your name?`, actions: [], intent: 'greeting' };
+        }
+        return say('greeting');
+      }
+      if (intent === 'whoAreYou' && !this._name && !this.askedName) {
+        this.askedName = true;
+        this.awaitingName = true;
+        return say('askName');
+      }
+      if (intent === 'myName' && !this._name) {
+        this.askedName = true;
+        this.awaitingName = true;
+        return { text: this.pick('myNameUnknown', ["Hmm, you haven't told me yet! What's your name?", 'I would love to know! What is your first name?'], classifier), actions: [], intent: 'askName' };
+      }
+      return say(intent);
+    }
+    if (/\?$|^(do|does|did|can|could|would|will|is|are|have|why|what|who|how|when|where)\b/.test(t)) return say('question');
+    return say('unknown');
+  }
+
+  /** Configured keywords mentioned or asked for in the child's text (core actions by intent, custom keywords by name). */
+  findActions(t: string, classifier: ClassifierLike): string[] {
+    const configured = new Map(classifier.keywords.map((k) => [k.toLowerCase(), k]));
+    const hits: Array<{ keyword: string; start: number; end: number }> = [];
+    for (const a of ACTIONS) {
+      const k = configured.get(a.keyword.toLowerCase());
+      if (!k) continue;
+      const re = new RegExp(a.re.source, 'g');
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(t))) hits.push({ keyword: k, start: m.index, end: m.index + m[0].length });
+    }
+    // Custom keywords the admin added (e.g. "Unicorn"): a mention counts as asking for it.
+    const core = new Set(ACTIONS.map((a) => a.keyword.toLowerCase()));
+    for (const k of classifier.keywords) {
+      if (core.has(k.toLowerCase())) continue;
+      for (const found of extractKeywordMatches(t, { ...classifier, keywords: [k] })) {
+        const idx = t.indexOf(found.toLowerCase());
+        hits.push({ keyword: found, start: idx >= 0 ? idx : t.length, end: (idx >= 0 ? idx : t.length) + found.length });
+      }
+    }
+    // Longer phrases win over words inside them ("rise and shine" is waking up, not sparkling).
+    hits.sort((a, b) => b.end - b.start - (a.end - a.start));
+    const kept: typeof hits = [];
+    for (const h of hits) if (!kept.some((k) => h.start < k.end && k.start < h.end)) kept.push(h);
+    kept.sort((a, b) => a.start - b.start);
+    const out: string[] = [];
+    for (const h of kept) if (!out.includes(h.keyword)) out.push(h.keyword);
+    return out.slice(0, 2);
+  }
+
+  private actionReply(actions: string[], classifier: ClassifierLike): BrainReply {
+    const parts: string[] = [];
+    const fired: string[] = [];
+    for (const k of actions) {
+      const lines = ACTION_LINES[canonicalCore(k)] ?? [`Ooh, ${k}! Here we go!`, `${k}! Watch this!`, `I love ${k}! Ta-da!`];
+      const l = this.pickAction(k, lines, classifier);
+      if (!l) continue;
+      parts.push(l);
+      fired.push(k);
+      if (canonicalCore(k) === 'Sleep') this.asleep = 1;
+      if (canonicalCore(k) === 'WakeUp') this.asleep = 0;
+    }
+    if (!parts.length) return { text: this.line('unknown', classifier), actions: [], intent: 'unknown' };
+    let text = parts.join(' ');
+    // Now and then, use the child's name.
+    if (this._name && fired.length === 1 && this.turns % 3 === 0) text = `Okay, ${this._name}! ${text}`;
+    return { text, actions: fired, intent: 'action' };
+  }
+
+  /** A small-talk line that fires nothing with the live keyword config. */
+  private line(intent: SmallTalk, classifier: ClassifierLike): string {
+    return this.pick(intent, LINES[intent], classifier);
+  }
+
+  private pick(key: string, lines: readonly string[], classifier: ClassifierLike): string {
+    const ok = lines.map((l) => this.fill(l)).filter((l) => !extractKeywordMatches(l, classifier).length);
+    const pool = ok.length ? ok : ['Hee hee!'];
+    return this.rotate(key, pool);
+  }
+
+  /** An action line that fires exactly `keyword` (and nothing else). */
+  private pickAction(keyword: string, lines: readonly string[], classifier: ClassifierLike): string | null {
+    const ok = lines
+      .map((l) => this.fill(l))
+      .filter((l) => {
+        const m = extractKeywordMatches(l, classifier).map((x) => x.toLowerCase());
+        return m.length === 1 && m[0] === keyword.toLowerCase();
+      });
+    if (!ok.length) {
+      // Admin config changed the words: fall back to saying the keyword itself.
+      const plain = `${keyword}! Here we go!`;
+      const m = extractKeywordMatches(plain, classifier).map((x) => x.toLowerCase());
+      return m.length === 1 && m[0] === keyword.toLowerCase() ? plain : null;
+    }
+    return this.rotate(`action:${keyword.toLowerCase()}`, ok);
+  }
+
+  /** Cycles through the pool from a seeded start; never the same line twice in a row. */
+  private rotate(key: string, pool: string[]): string {
+    const n = (this.counters.get(key) ?? this.seed) + 1;
+    this.counters.set(key, n);
+    let l = pool[n % pool.length];
+    if (pool.length > 1 && l === this.lastLine.get(key)) l = pool[(n + 1) % pool.length];
+    this.lastLine.set(key, l);
+    return l;
+  }
+
+  private fill(l: string): string {
+    return l.replace(/\{name\}/g, this._name || 'friend');
+  }
+
+  private extractName(t: string, raw: string): string | null {
+    if (UNSAFE.test(t) || RUDE.test(t)) return null;
+    let m = t.match(/\bmy name(?:'s| is)\s+([a-z][a-z'-]{1,19})\b/) || t.match(/\b(?:call me|i am called|i'm called|they call me)\s+([a-z][a-z'-]{1,19})\b/);
+    if (!m) m = t.match(/^(?:hi |hello |hey )?(?:i'?m|i am|it'?s|this is)\s+([a-z][a-z'-]{1,19})[.!]*$/);
+    if (!m && this.awaitingName) m = t.match(/^(?:it'?s |i'?m )?([a-z][a-z'-]{1,19})[.!]*$/);
+    if (!m) return null;
+    const word = m[1].replace(/'s$/, '');
+    if (NOT_NAMES.has(word) || word.length < 2) return null;
+    if (ACTIONS.some((a) => a.re.test(word))) return null;
+    // Keep the child's own capitals when they typed some ("McKenzie"), else capitalise.
+    const typed = raw.match(new RegExp(`\\b(${word.replace(/[-']/g, '.')})\\b`, 'i'))?.[1];
+    if (typed && /[A-Z]/.test(typed)) return typed;
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }
+}
+
+function canonicalCore(k: string): string {
+  const low = k.toLowerCase();
+  return ACTIONS.find((a) => a.keyword.toLowerCase() === low)?.keyword ?? k;
+}
+
+/** All the brain's fixed lines, for the safety checks in the tests. */
+export const BRAIN_LINES = { small: LINES, actions: ACTION_LINES, greetings: [...GREETINGS, ...GREETINGS_NAMED] };

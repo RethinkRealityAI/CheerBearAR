@@ -1,0 +1,8 @@
+16:36:25 showcase programs 34 after warm 34
+16:36:38 01-exterior {"open":0.99,"tour":0,"z":12.13,"inside":false,"party":false} programs 34
+16:36:54 02-glide-door {"open":1,"tour":1,"z":0.98,"inside":false,"party":false} programs 34
+16:37:19 03-inside-tv {"open":1,"tour":1,"z":-1.55,"inside":true,"party":false} programs 34
+16:37:31 04-jukebox-party {"open":1,"tour":1,"z":-1.71,"inside":true,"party":true} programs 34
+16:38:07 05-way-out {"open":1,"tour":0.99,"z":3,"inside":false,"party":false} programs 34
+16:38:23 after; programs 34 {"open":0,"tour":0,"z":13327.26,"inside":false,"party":false}
+16:38:23 errors none

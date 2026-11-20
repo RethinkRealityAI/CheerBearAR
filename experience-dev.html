@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#ff389b" />
+    <title>Experience (dev) · Cheer Bear</title>
+    <link rel="icon" href="data:," />
+    <!-- Dev-only page: the experience (src/experience) mounted without React, with a test panel and window.__cb.
+         npm run dev, then open /experience-dev.html. Flags: ?desktop (camera modes on a computer / simulator),
+         ?clean (no test panel), ?autostart, ?mode=ar|face|photo (first mode after Start), ?diag. -->
+    <script async src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1.0.0/dist/xr.js" crossorigin="anonymous" data-preload-chunks="slam,face"></script>
+    <style>
+      html, body { margin: 0; height: 100%; background: #ff389b; overflow: hidden; overscroll-behavior: none; }
+      #app { position: fixed; inset: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/experience/dev.ts"></script>
+  </body>
+</html>

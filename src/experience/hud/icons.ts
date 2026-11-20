@@ -1,0 +1,21 @@
+// Flat line icons (white stroke), inline SVG strings.
+const svg = (d: string, w = 2) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+
+export const ICON = {
+  menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+  close: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  move: svg('<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>'),
+  leave: svg('<path d="M10 4H5v16h5"/><path d="M14 8l4 4-4 4M18 12H9"/>'),
+  cube: svg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
+  ar: svg('<path d="M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3"/><path d="M12 7l4 2.5v5L12 17l-4-2.5v-5z"/>'),
+  selfie: svg('<circle cx="12" cy="10" r="4"/><path d="M5 20c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/>'),
+  photo: svg('<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>'),
+  /** Actions: a magic wand with sparkles. */
+  actions: svg('<path d="M4 20 14 10"/><path d="M15.5 3.5v3M14 5h3M19.5 8.5v2.4M18.3 9.7h2.4M9 4.6v2M8 5.6h2"/><path d="m14 10 2-2"/>', 2.2),
+  /** Games: a heart with speed lines (filled). */
+  games: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M14 20.5 7.6 14.3a4.1 4.1 0 0 1 6.4-5.1 4.1 4.1 0 0 1 6.4 5.1Z"/><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2.5 9.5h3M2 13h2.5M3 16.5h2.5"/></g></svg>',
+  /** polish-6: the 3D / AR capture tile's glyph: a camera whose lens is a small heart. */
+  camHeart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M4.2 7.6h2.9l1.5-2.1h6.8l1.5 2.1h2.9c.9 0 1.7.8 1.7 1.7v8.6c0 .9-.8 1.7-1.7 1.7H4.2c-.9 0-1.7-.8-1.7-1.7V9.3c0-.9.8-1.7 1.7-1.7z"/><path fill="currentColor" d="M12 17.4s-3.6-2.2-3.6-4.7a1.9 1.9 0 0 1 3.6-.9 1.9 1.9 0 0 1 3.6.9c0 2.5-3.6 4.7-3.6 4.7z"/><circle cx="18.2" cy="10.2" r="1" fill="currentColor"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2.2 0 3.9 1.3 5.3 3.1 1.4-1.8 3.1-3.1 5.3-3.1 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z"/></svg>',
+};

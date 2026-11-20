@@ -1,0 +1,51 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "esbuild"
+  # twilio is CommonJS with dynamic requires: ship it as a node module instead of bundling it.
+  external_node_modules = ["twilio"]
+
+# `netlify dev` (alternative to `npm run dev`): runs Vite and serves the functions + a local Blobs sandbox on :8888.
+[dev]
+  framework = "#custom"
+  command = "npm run dev:web"
+  targetPort = 5173
+  port = 8888
+  autoLaunch = false
+
+# Unknown /api/* paths must not fall through to the SPA with a 200 (functions with a `path` match first).
+[[redirects]]
+  from = "/api/*"
+  to = "/index.html"
+  status = 404
+
+# Single-page app: every path that is not a file or a function goes to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Demo build: keep it out of search engines until the Care Bears rights are confirmed. Remove at launch.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/models/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+[[headers]]
+  for = "/media/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
