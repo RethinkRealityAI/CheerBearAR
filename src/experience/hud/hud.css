@@ -3,10 +3,10 @@
 
 .cbx {
   --cbx-reserved: 0px; /* bottom-right corner kept free for an app button (none since the talk button went) */
-  --cbx-dock: 62px; /* the bottom dock (mode tabs + menu) */
+  --cbx-head: 112px; /* the top bar: mode tabs + menu (52) and the lockup under them; hints sit below it */
   --cbx-pad: 14px;
   --cbx-top: calc(var(--cb-safe-top) + 10px);
-  --cbx-bottom: calc(var(--cb-safe-bottom) + 10px + var(--cbx-dock) + 12px);
+  --cbx-bottom: calc(var(--cb-safe-bottom) + 14px);
   position: absolute;
   inset: 0;
   overflow: hidden;
@@ -173,24 +173,24 @@
 
 .cbx-top {
   position: absolute; left: 0; right: 0; top: 0; padding: var(--cbx-top) calc(var(--cb-safe-right) + 10px) 0 calc(var(--cb-safe-left) + 10px);
-  display: flex; align-items: center; gap: 8px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; pointer-events: none;
 }
-.cbx-top .lockup { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(26, 12, 30, 0.25)); }
+.cbx-top .lockup { align-self: flex-start; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(26, 12, 30, 0.25)); }
 .cbx-top .lockup img { display: block; width: auto; }
-.cbx-top .lockup img:first-child { height: 26px; }
-.cbx-top .lockup img:last-child { height: 34px; margin-left: 1px; }
+.cbx-top .lockup img:first-child { height: 21px; }
+.cbx-top .lockup img:last-child { height: 27px; margin-left: 1px; }
 /* the selfie view keeps the face clear: no lockup there (the photo frames carry the brand) */
 .cbx[data-mode="face"] .cbx-top .lockup { display: none; }
+.cbx[data-mode="face"] { --cbx-head: 62px; }
 
-/* ---- the bottom dock: mode tabs + menu, one-handed */
+/* ---- the top bar: mode tabs + the menu in line at the right */
 .cbx-dock {
-  position: absolute; left: 50%; bottom: calc(var(--cb-safe-bottom) + 10px); transform: translateX(-50%);
-  width: min(calc(100% - var(--cb-safe-left) - var(--cb-safe-right) - 20px), 460px);
+  align-self: center; width: min(100%, 480px);
   display: flex; align-items: center; gap: 8px; pointer-events: none;
 }
 .cbx-dock > * { pointer-events: auto; }
 .cbx-dock .cbx-switch { margin: 0; max-width: none; background: rgba(27, 35, 64, 0.72); }
-.cbx-menu { width: 52px; height: 52px; background: var(--cb-blue); border-color: rgba(255, 255, 255, 0.35); }
+.cbx-menu { flex: none; width: 52px; height: 52px; background: var(--cb-blue); border-color: rgba(255, 255, 255, 0.35); }
 @media (hover: hover) { .cbx-menu:hover { background: #33479f; } }
 
 /* ---- mode switcher: one sliding pill (transform only), icon + label on every tab */
@@ -261,7 +261,7 @@
    It rises in, lifts out, and slides down (transform only) while the app's chip or toast sits under the top bar
    (--cb-top-reserve, set by the app). */
 .cbx .ml-hint {
-  position: absolute; left: 50%; top: calc(var(--cbx-top) + 64px);
+  position: absolute; left: 50%; top: calc(var(--cbx-top) + var(--cbx-head));
   transform: translate3d(-50%, calc(var(--cb-top-reserve, 0px) + 8px), 0) scale(0.96); opacity: 0;
   transition: opacity var(--cb-dur-2) ease, transform var(--cb-dur-3) var(--cb-ease);
   box-sizing: border-box; width: max-content; max-width: min(340px, calc(100% - 48px)); margin: 0;
@@ -322,7 +322,7 @@
 .cbx-bottom > div > * { pointer-events: auto; }
 .cbx-slot-left { justify-content: flex-start; flex-direction: column-reverse; align-items: flex-start !important; }
 .cbx-slot-centre { justify-content: center; min-height: 76px; }
-.cbx-slot-right { min-width: var(--cbx-reserved) !important; }
+.cbx-slot-right { min-width: var(--cbx-reserved) !important; justify-content: flex-start; flex-direction: column-reverse; align-items: flex-end !important; }
 
 /* one family for the in-camera controls: glass, white glyphs, 64 px tools, the same press (scale) and focus ring */
 .cbx-tool {
@@ -491,6 +491,14 @@
   background: var(--cb-pink); color: var(--cb-white);
 }
 .cbx-sheet .btn.alt { background: var(--cb-pink-soft); color: var(--cb-pink-deep); }
+/* the photo mode's frame / cutout choice (modes/photo) */
+.cbx-sheet .ph-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
+.cbx-sheet .ph-card { display: flex; flex-direction: column; gap: 6px; padding: 14px 12px; border-radius: var(--cb-r-md); background: var(--cb-cloud); border: 2px solid transparent; }
+.cbx-sheet .ph-card.on { border-color: var(--cb-blue); }
+.cbx-sheet .ph-card b { font-size: 15px; color: var(--cb-ink); }
+.cbx-sheet .ph-card > span:last-child { font-size: 13px; line-height: 1.35; color: var(--cb-ink-soft); }
+.cbx-sheet .ph-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--cb-blue); color: var(--cb-white); }
+.cbx-sheet .ph-ic svg { width: 22px; height: 22px; }
 .cbx-sheet .mi {
   display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 54px; padding: 0 18px;
   border-radius: var(--cb-r-md); border: 0; background: var(--cb-cloud); color: var(--cb-ink); font-size: 16px; font-weight: var(--cb-w-label); cursor: pointer; text-align: left;

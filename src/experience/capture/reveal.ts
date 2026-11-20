@@ -69,7 +69,7 @@ export class RevealPlayer {
     c.width = 720;
     c.height = 1280;
     c.setAttribute('role', 'img');
-    c.setAttribute('aria-label', 'Happi puts your photo in her picture frame');
+    c.setAttribute('aria-label', 'Happi puts your photo in the picture frame');
     stage.appendChild(c);
     const close = iconButton(CICON.close, 'Close the animation', () => this.close(), 'cbc-pl-close');
     this.skipBtn = actionButton('Skip', CICON.skip, () => this.skip(), 'ghost');

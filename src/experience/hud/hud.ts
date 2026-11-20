@@ -116,12 +116,16 @@ export class Hud implements HudApi {
     // ---- HUD
     this.hudEl = el('div', 'cbx-hud');
     this.hudEl.hidden = true;
-    // top: only the lockup (the parade's wordmark over Happi, the same as the splash). Everything you tap lives in
-    // the bottom dock, in thumb reach: the mode tabs and the menu.
+    // top (Dapo, 2026-11-20): the mode tabs with the menu in line at the right, and under them, small at the left,
+    // the lockup (the parade's wordmark over Happi, the same as the splash). Mode tools sit at the bottom.
     const top = el('div', 'cbx-top');
-    top.innerHTML = `<div class="lockup" role="img" aria-label="Japan Parade &amp; Street Fair official mascot ${esc(opts.title)}"><img src="/img/parade-wordmark.webp" alt="" width="600" height="127"><img src="/img/happi-logo-sm.webp" alt="" width="76" height="31"></div>`;
     const dock = el('nav', 'cbx-dock');
     dock.setAttribute('aria-label', 'Views and menu');
+    const lockup = el('div', 'lockup');
+    lockup.setAttribute('role', 'img');
+    lockup.setAttribute('aria-label', `Japan Parade and Street Fair official mascot ${opts.title}`);
+    lockup.innerHTML = `<img src="/img/parade-wordmark.webp" alt="" width="600" height="127"><img src="/img/happi-logo-sm.webp" alt="" width="76" height="31">`;
+    top.append(dock, lockup);
     // Mode switcher: a tablist with ONE sliding selection pill (transform only, so it springs at 60 fps with no
     // layout). Manual activation: arrow keys move focus, Enter / Space switch (each switch may start a camera).
     this.switchEl = el('div', 'cbx-switch');
@@ -178,7 +182,7 @@ export class Hud implements HudApi {
     this.stickKnob = this.stick.querySelector('span') as HTMLElement;
     this.bindStick();
 
-    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom, dock);
+    this.hudEl.append(top, this.hintEl, this.toastEl, this.bubble, this.above, bottom);
     this.layer = el('div', 'cbx-layer');
 
     // the mode-change cover: a flat pink iris grows from the tapped tab, the target mode's badge sits in the middle,
@@ -529,7 +533,7 @@ export class Hud implements HudApi {
     const url = location.href.replace(/[?&](test|desktop|diag|verbose)\b[^&]*/g, '').replace(/[?&]$/, '');
     return this.sheet({
       title: 'Open this on your phone',
-      body: `${what} uses your phone's camera. Scan this to open it there. The 3D view and the call work right here.`,
+      body: `${what} uses your phone's camera. Scan this to open it there. The 3D view works right here.`,
       buttons: ['Close'],
       qr: url,
     });
@@ -564,10 +568,10 @@ export class Hud implements HudApi {
       title: 'How it works',
       body: '',
       html: `<ol>
-        <li><b>3D</b>: Happi in New York. Drag to look around, pinch to zoom, the joystick walks her.</li>
-        <li><b>AR</b>: point your phone at the floor, tap <b>Place</b>. Walk her into her house to go inside. <b>Move</b> puts it all somewhere else.</li>
-        <li><b>Selfie</b> and <b>Photo</b>: the white button takes a picture with her.</li>
-        <li>Talk to her! Say <b>house</b>, <b>rainbow</b>, <b>party</b>, <b>magic</b>, <b>dance</b> or <b>sleep</b> and watch what happens.</li>
+        <li><b>3D</b>: Happi's festival square in New York. Drag to look around, pinch to zoom, and walk Happi with the joystick. <b>Actions</b> picks something for Happi to do, <b>Games</b> starts Parade Dash or Blossom Toss.</li>
+        <li><b>AR</b>: point your phone at the floor and tap <b>Place</b>. Walk Happi to the door to go inside. <b>Move</b> puts everything somewhere else.</li>
+        <li><b>Selfie</b>: wear Happi's hood, pick a frame and a filter, then tap the white button.</li>
+        <li><b>Photo</b>: your selfie in the frame Happi holds, or a life-size Happi cutout a friend can step behind.</li>
       </ol>`,
       buttons: ['Got it'],
     });

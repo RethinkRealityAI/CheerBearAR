@@ -29,7 +29,7 @@ import { happiPhotoFrame } from '../../../happi/frame';
 import { happiCutout } from '../../../happi/cutout';
 
 const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // the frame's height in metres
-const CUT = { def: 1.75, min: 1.2, max: 2.1 }; // the cutout standee, life size
+const CUT = { def: 2.3, min: 1.6, max: 2.8 }; // the cutout standee, life size (hole centre ~1.39 m at the default)
 /** Happi beside the frame (model units: the frame is 1 tall), turned a little toward it, his right hand on its edge. */
 const BESIDE = { x: 0.74, z: 0.02, yaw: -0.38, h: 0.92, grip: new THREE.Vector3(0.47, 0.6, 0.15) };
 type Variant = 'frame' | 'cutout';
@@ -165,7 +165,7 @@ export class PhotoMode implements Mode {
     this.placeBtn.addEventListener('click', (e) => { e.stopPropagation(); this.place(); });
     this.moveBtn = hud.toolButton({ label: 'Move', icon: ICON.move, aria: 'Move Happi somewhere else', onClick: () => this.move() });
     this.placeBtn.dataset.cmd = 'place'; this.moveBtn.dataset.cmd = 'move'; // voice commands press these (../../commands.ts)
-    this.variantBtn = hud.toolButton({ label: 'Cutout', icon: CUTOUT_ICON, aria: 'Use the Happi cutout instead', tone: 'navy', onClick: () => void this.switchVariant() });
+    this.variantBtn = hud.toolButton({ label: 'Cutout', icon: CUTOUT_ICON, aria: 'Use the Happi cutout instead', tone: 'navy', onClick: () => void this.switchVariant(true) });
     this.flipBtn = hud.toolButton({ label: 'Selfie', icon: ICON.selfie, aria: 'Flip the camera for a new selfie', onClick: () => this.flipTo('face') });
     this.meetBtn = el('button', 'cbx-pill', 'Meet Happi');
     this.meetBtn.type = 'button';
@@ -248,6 +248,14 @@ export class PhotoMode implements Mode {
         this.applySize();
       },
     });
+    if (!photoWelcomed) {
+      // first time here this visit: "Welcome to photo mode", pick the frame or the cutout (Dapo, 2026-11-20)
+      photoWelcomed = true;
+      this.onCamera();
+      void this.ctx.hud.sheet({ title: 'Welcome to photo mode', body: 'Two ways to take a photo with Happi:', html: CHOICE_HTML(this.variant), buttons: ['Happi’s frame', 'Life-size cutout'] })
+        .then((i) => { if (i === 1 && this.variant !== 'cutout') void this.switchVariant(false); });
+      return;
+    }
     this.onCamera();
   }
 
@@ -422,7 +430,7 @@ export class PhotoMode implements Mode {
       this.diag.flipMs.push(Math.round(performance.now() - t0));
       hud.cover?.(null);
       this.onCamera();
-      if (to === 'world' && this.placedOnce) this.ctx.hud.toast(this.freshSelfie ? 'Your new selfie is in her frame' : 'She is where you left her', 1600);
+      if (to === 'world' && this.placedOnce) this.ctx.hud.toast(this.freshSelfie ? 'Your new selfie is in the frame' : 'Happi is right where you left off', 1600);
       if (to === 'world') this.freshSelfie = false;
     } catch (e) {
       hud.cover?.(null);
@@ -497,7 +505,7 @@ export class PhotoMode implements Mode {
       if (this.shutterBtn) this.shutterBtn.disabled = false;
       this.showSelfieUi();
       this.selfieHint();
-      this.ctx.hud.toast(this.placedOnce ? 'New selfie in her frame' : 'Selfie saved', 1400);
+      this.ctx.hud.toast(this.placedOnce ? 'New selfie in the frame' : 'Selfie saved', 1400);
     } catch (e) {
       console.warn('[3d photo] selfie failed', e);
       this.ctx.hud.toast('That selfie did not work. Try again?', 2200);
@@ -743,11 +751,15 @@ export class PhotoMode implements Mode {
   }
 
   /** Frame <-> Cutout. The cutout needs no selfie: straight to the back camera. The frame needs one first. */
-  private async switchVariant(): Promise<void> {
+  private async switchVariant(ask: boolean): Promise<void> {
     if (this.state === 'busy' || this.state === 'flipping' || this.state === 'off') return;
     const to: Variant = this.variant === 'cutout' ? 'frame' : 'cutout';
+    if (ask) {
+      // say what each one is at the moment you choose (the chooser marks the one you're on)
+      const i = await this.ctx.hud.sheet({ title: 'Frame or cutout?', body: '', html: CHOICE_HTML(this.variant), buttons: to === 'cutout' ? ['Use the cutout', 'Keep the frame'] : ['Use the frame', 'Keep the cutout'] });
+      if (i !== 0 || (this.state as string) === 'busy' || (this.state as string) === 'flipping' || (this.state as string) === 'off') return;
+    }
     this.setVariant(to);
-    this.ctx.hud.toast(to === 'cutout' ? 'Happi cutout: a friend puts their face in it' : 'Happi’s photo frame', 1600);
     if (to === 'cutout' && this.cam === 'face') { askMotionPermission(); await this.flipTo('world'); return; }
     if (to === 'frame' && this.cam === 'world' && !this.hasSelfie) { await this.flipTo('face'); return; }
     if (this.state === 'placed') {
@@ -920,5 +932,15 @@ export function createMode(ctx: ModeContext): Mode {
   return new PhotoMode(ctx);
 }
 export default createMode;
+
+let photoWelcomed = false;
+
+const FRAME_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="3" width="16" height="15" rx="1.5"/><circle cx="12" cy="9.5" r="2.6"/><path d="M7.5 15.5c1-2.2 2.7-3 4.5-3s3.5.8 4.5 3M9 18l-2 4M15 18l2 4"/></g></svg>';
+
+/** The two photo styles side by side, each with a one-line "how": the welcome and the Frame/Cutout chooser. */
+const CHOICE_HTML = (cur: 'frame' | 'cutout') => `<div class="ph-choice">
+  <div class="ph-card${cur === 'frame' ? ' on' : ''}"><span class="ph-ic">${FRAME_ICON}</span><b>Happi’s frame</b><span>Take a selfie, then Happi holds it in a big frame in your room. Great on your own.</span></div>
+  <div class="ph-card${cur === 'cutout' ? ' on' : ''}"><span class="ph-ic">${CUTOUT_ICON}</span><b>Life-size cutout</b><span>Place a life-size Happi board. A friend puts their face in the hole and you snap them as Happi.</span></div>
+</div>`;
 
 const CUTOUT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 22V9.5L7 3l3 4h4l3-4 2 6.5V22z"/><ellipse cx="12" cy="12" rx="3" ry="3.8" fill="currentColor"/></g></svg>';

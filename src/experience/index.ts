@@ -284,7 +284,7 @@ class Experience implements ExperienceApi {
     return on ? this.play.pause('sheet') : this.play.resume('sheet');
   }
 
-  /** The Moves button (bottom right in 3D and AR): a grid of everything Happi can do; a tap closes it and he does it. */
+  /** The Actions button (bottom right in 3D and AR): a grid of everything Happi can do; a tap closes it and he does it. */
   private pickMove(): void {
     const hud = this.hud;
     if (!hud || hud.sheetOpen) return;

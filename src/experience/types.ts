@@ -126,7 +126,7 @@ export interface HudApi {
   /** A white flash (photo taken). */
   flash(): void;
   /** Show a sheet with a title, text and buttons. Resolves with the index of the button pressed. */
-  sheet(opts: { title: string; body: string; buttons: string[] }): Promise<number>;
+  sheet(opts: { title: string; body: string; buttons: string[]; html?: string }): Promise<number>;
   /** Joystick (bottom centre). Read `vector` every frame: x right, y down, length <= 1. */
   joystick(show: boolean): { readonly vector: THREE.Vector2; readonly active: boolean };
 }

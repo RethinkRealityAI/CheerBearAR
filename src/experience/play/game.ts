@@ -151,7 +151,7 @@ export abstract class PlayGame {
     // the app's sheet covers the scene and lets go when it closes, so it needs no card of its own
     const hard = this.holds.has('user') || this.holds.has('hidden');
     if (hard && !this.ui.cardOpen) this.ui.pauseCard(() => this.resume('all'), () => this.quit(), this.pauseExtra());
-    if (!hard && (this.holds.has('move') || this.holds.has('place'))) this.host.hint('Place her to keep playing');
+    if (!hard && (this.holds.has('move') || this.holds.has('place'))) this.host.hint('Place Happi to keep playing');
     this.emit(true);
     this.host.sync();
   }

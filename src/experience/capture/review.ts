@@ -71,17 +71,21 @@ export class ReviewSheet {
     this.img = img;
 
     const acts = el('div', 'cbc-rv-actions');
-    const r1 = el('div', 'row');
+    // one compact row (Dapo, 2026-11-20: the photo big, the buttons smaller): Retake (navy), Save, Share
+    const r1 = el('div', 'row main');
     r1.append(
+      actionButton('Retake', CICON.retake, () => this.retake(), 'navy'),
       actionButton('Save', CICON.save, () => this.save()),
       actionButton('Share', CICON.share, () => void this.share()),
     );
-    const r2 = el('div', 'row');
-    r2.append(actionButton('Retake', CICON.retake, () => this.retake(), 'alt'));
-    if (this.o.onReveal) r2.append(actionButton('Watch photo animation', CICON.play, () => this.blob && this.o.onReveal!(this.blob), 'alt'));
     const st = this.o.styles;
     if (st) acts.append(this.styleRows(st));
-    acts.append(r1, r2);
+    acts.append(r1);
+    if (this.o.onReveal) {
+      const r2 = el('div', 'row');
+      r2.append(actionButton('Watch photo animation', CICON.play, () => this.blob && this.o.onReveal!(this.blob), 'alt'));
+      acts.append(r2);
+    }
     const foot = el('div', 'row foot');
     if (this.o.onBts) foot.append(actionButton('Behind the scenes', CICON.clapper, () => this.o.onBts!(), 'ghost'));
     this.status = el('p', 'cbc-status');
@@ -94,7 +98,7 @@ export class ReviewSheet {
     n.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.retake(); });
     this.o.container.appendChild(n);
     this.node = n;
-    (r1.firstElementChild as HTMLElement).focus({ preventScroll: true });
+    (r1.children[1] as HTMLElement).focus({ preventScroll: true });
   }
 
   /** Two rows of chips: Frame (Blossom, Parade, Clean) and Filter (Natural, Warm, Sakura, Mono). */

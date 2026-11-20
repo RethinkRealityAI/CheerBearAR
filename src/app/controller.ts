@@ -203,10 +203,12 @@ export class AppController {
     this.readyDone = true;
     const s = this.s;
     const open = s.prefs.sheetOpen ?? (s.isDesktop ? s.ui.defaultSheetOpen.desktop : s.ui.defaultSheetOpen.mobile);
-    this.set({ sheetOpen: open, game: newGame(s.game.modeId) });
+    void open;
+    // Happi has no voice games or talk (Dapo, 2026-11-19): no game chip, no voice welcome card
+    this.set({ sheetOpen: false, game: newGame(null) });
     const wm = s.ui.welcome;
     const seen = wm.showOnce && s.prefs.welcomeSeenVersion >= wm.version;
-    if (wm.enabled && !seen && !this.welcomeShownThisSession) {
+    if (false && wm.enabled && !seen && !this.welcomeShownThisSession) {
       this.timer('welcome', wm.delayMs, () => {
         if (!this.s.overlay) { this.welcomeShownThisSession = true; this.set({ overlay: 'welcome' }); }
       });
@@ -308,7 +310,7 @@ export class AppController {
       this.showToast('found', `You found “${actionLabel(d.found)}”!`, 2600);
       if (d.completes) this.timer('complete', 1600, () => this.openOverlay('completion'));
     } else if (!played && t.speaker === 'quick-action' && d.fire) {
-      this.showToast('info', 'One moment… she’s still busy!', 1800);
+      this.showToast('info', 'One moment… Happi is still busy!', 1800);
     }
   }
 

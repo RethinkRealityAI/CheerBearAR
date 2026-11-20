@@ -25,7 +25,7 @@ export const CICON = {
 };
 
 /** A round-cornered action button with an icon and a label. */
-export function actionButton(label: string, icon: string, onClick: () => void, kind: 'main' | 'alt' | 'ghost' = 'main'): HTMLButtonElement {
+export function actionButton(label: string, icon: string, onClick: () => void, kind: 'main' | 'alt' | 'ghost' | 'navy' = 'main'): HTMLButtonElement {
   const b = el('button', `cbc-btn ${kind}`, `${icon}<span>${esc(label)}</span>`);
   b.type = 'button';
   b.addEventListener('click', (e) => {

@@ -22,7 +22,8 @@ import type { FaceEvent, Mode, ModeContext, XrScene } from '../../types';
 import {
   BtsPlayer, CICON, Countdown, RevealPlayer, ReviewSheet, chromaMaterial, compose, engineShot, flash, el, segmented,
 } from '../../capture';
-import { FRAME_STYLES, PHOTO_FILTERS, drawFrameArt, loadFrameArt, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
+import { styleStrip, FILTER_CSS, type StyleStrip } from '../../capture/style-strip';
+import { drawFrameArt, loadFrameArt, type FrameStyle, type PhotoFilter } from '../../capture/frame-art';
 import { shutterSound } from '../../capture/sounds';
 import { FaceFx } from './face-fx';
 import { FaceSignals, type FaceCue } from './signals';
@@ -38,7 +39,7 @@ const CLASSIC_COUNT_S = 3;
 const OVERLAY_ORDER = 1000;
 
 type State = 'off' | 'live' | 'countdown' | 'clip' | 'busy' | 'review';
-type Look = 'hood' | 'faces';
+type Look = 'hood' | 'plush' | 'faces';
 
 // trigger words -> what the selfie bear does
 const REACT: Record<string, BearClip> = {
@@ -79,6 +80,9 @@ export class FaceMode implements Mode {
   private overlay: HTMLCanvasElement;
   private shutterBtn: HTMLButtonElement | null = null;
   private picker: { el: HTMLElement; set(id: string): void };
+  /** The live frame + filter chips above the shutter (Dapo, 2026-11-20: pick them while framing, not after). */
+  private strip: StyleStrip;
+  private tint: HTMLElement;
   private smileBtn: HTMLButtonElement;
   /** Show the 3D Happi beside you (the Happi on/off button, bottom right). */
   private showHappi = true;
@@ -166,7 +170,15 @@ export class FaceMode implements Mode {
     this.overlay = el('canvas', 'cbc-overlay');
     this.overlay.setAttribute('aria-hidden', 'true');
     // choosing Classic is a tap: the clip starts (with sound) inside it
-    this.picker = segmented('Selfie look', [{ id: 'hood', label: 'Happi hood' }, { id: 'faces', label: 'Happi faces' }], this.look, (id) => this.setLook(id as Look, true));
+    this.picker = segmented('Selfie look', [{ id: 'hood', label: 'Cartoon hood' }, { id: 'plush', label: 'Plush hood' }, { id: 'faces', label: 'Happi faces' }], this.look, (id) => this.setLook(id as Look, true));
+    this.strip = styleStrip(this.frame, this.filter, (frame, filter) => {
+      this.frame = frame;
+      this.filter = filter;
+      this.drawOverlay();
+      this.liveFilter();
+    });
+    this.tint = el('div', 'cbc-tint');
+    this.tint.setAttribute('aria-hidden', 'true');
     this.smileBtn = ctx.hud.toolButton({ label: 'Smile', icon: SMILE_ICON, aria: 'Smile to take the photo', onClick: () => this.toggleSmileSnap() });
     this.smileBtn.setAttribute('aria-pressed', 'false');
     this.smileBtn.classList.add('cbc-toggle');
@@ -179,27 +191,12 @@ export class FaceMode implements Mode {
     this.tapPlay.addEventListener('click', (e) => { e.stopPropagation(); this.playClip(); });
 
     const name = 'happi-selfie';
-    const self = this;
     this.review = new ReviewSheet({
       container: ctx.container,
       name,
       title: 'Your selfie',
       share: { title: 'Me and Happi', text: 'My selfie with Happi!' },
       onRetake: () => { this.dropShot(); this.toLive(false); },
-      styles: {
-        frames: FRAME_STYLES, filters: PHOTO_FILTERS,
-        get frame() { return self.frame; },
-        get filter() { return self.filter; },
-        restyle: async (frame, filter) => {
-          if (!this.shot) throw new Error('no shot');
-          return (await compose(this.shot, (g, w, h) => drawFrameArt(g, w, h, { title: true, frame: frame as FrameStyle, filter: filter as PhotoFilter }))).blob;
-        },
-        onChange: (blob, frame, filter) => {
-          this.frame = frame as FrameStyle; // the live frame and the next photo follow the last pick
-          this.filter = filter as PhotoFilter;
-          this.lastPhoto = this.diag.lastPhoto = blob;
-        },
-      },
     });
     this.reveal = new RevealPlayer(ctx.container, name);
     this.bts = new BtsPlayer(ctx.container);
@@ -231,8 +228,9 @@ export class FaceMode implements Mode {
     this.signals.reset();
     const hud = this.ctx.hud;
     this.countdown = new Countdown(hud.layer, this.ctx.reducedMotion);
-    hud.layer.appendChild(this.overlay);
+    hud.layer.append(this.tint, this.overlay);
     this.drawOverlay();
+    this.liveFilter();
     this.resizeObs = new ResizeObserver(() => this.drawOverlay());
     this.resizeObs.observe(this.ctx.container);
     this.borrowBear();
@@ -252,6 +250,9 @@ export class FaceMode implements Mode {
     this.shutterBtn?.remove();
     this.shutterBtn = null;
     this.picker.el.remove();
+    this.strip.el.remove();
+    this.tint.remove();
+    this.liveFilter(true);
     this.smileBtn.remove();
     this.happiBtn.remove();
     this.tapPlay.remove();
@@ -518,12 +519,12 @@ export class FaceMode implements Mode {
     this.armShutter(false);
     if (this.shutterBtn.parentElement !== hud.centre) hud.centre.appendChild(this.shutterBtn);
     this.tuckPicker(false);
-    hud.above.appendChild(this.picker.el);
+    hud.above.append(this.picker.el, this.strip.el);
     hud.left.appendChild(this.smileBtn);
     hud.right.appendChild(this.happiBtn);
     // Classic between takes: she stays on her last frame (the clip is paused there); the shutter plays it again
     this.clipQuad.visible = false;
-    this.fx.setLook(this.look);
+    this.fxLook(this.look);
     this.setBearVisible(true);
     this.drawOverlay();
     hud.hint(this.faceFound ? '' : 'Look at the camera');
@@ -540,11 +541,16 @@ export class FaceMode implements Mode {
     this.bounce = 1;
   }
 
+  private fxLook(l: Look): void {
+    this.fx.setLook(l === 'faces' ? 'faces' : 'hood');
+    if (l !== 'faces') this.fx.setHoodStyle(l === 'plush' ? 'plush' : 'cartoon');
+  }
+
   private setLook(l: Look, _fromTap: boolean): void {
     const was = this.look;
     this.look = l;
     this.picker.set(l);
-    this.fx.setLook(l);
+    this.fxLook(l);
     if (this.state === 'off' || this.state === 'busy' || this.state === 'review') { this.drawOverlay(); return; }
     if (was !== l) {
       this.fx.pop();
@@ -566,9 +572,19 @@ export class FaceMode implements Mode {
 
   /** Classic's countdown: the look picker (over her face at phone size) fades out and is inert until live again. */
   private tuckPicker(on: boolean): void {
-    const el = this.picker.el;
-    el.classList.toggle('cbc-tuck', on);
-    el.inert = on;
+    for (const el of [this.picker.el, this.strip.el]) {
+      el.classList.toggle('cbc-tuck', on);
+      el.inert = on;
+    }
+  }
+
+  /** The chosen filter's live look on the camera canvas (and the sakura tint); `off` clears it on leaving. */
+  private liveFilter(off = false): void {
+    const css = FILTER_CSS[off ? 'natural' : this.filter];
+    const cam = this.ctx.container.querySelector<HTMLCanvasElement>('canvas.cbx-xr');
+    if (cam) cam.style.filter = css.filter;
+    this.tint.style.background = css.tint;
+    this.tint.hidden = !css.tint;
   }
 
   private toggleHappi(): void {
@@ -610,6 +626,7 @@ export class FaceMode implements Mode {
     this.state = 'countdown';
     this.cheered = false;
     this.ctx.hud.hint('');
+    this.tuckPicker(true);
     this.armShutter(true);
     void this.countdown
       .start(seconds, (left) => { if (!this.cheered && left <= 1.3) this.cheer(); })

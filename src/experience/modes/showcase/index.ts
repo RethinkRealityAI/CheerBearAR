@@ -72,7 +72,7 @@ export class ShowcaseMode implements Mode {
   game: PlayGame | null = null;
   /** Set by the experience: open the game chooser (the Games button, bottom left). */
   onPickGame: (() => void) | null = null;
-  /** Set by the experience: open Happi's moves (the Moves button, bottom right). */
+  /** Set by the experience: open Happi's actions (the Actions button, bottom right). */
   onPickMove: (() => void) | null = null;
   private movesBtn: HTMLButtonElement | null = null;
   private gamesBtn: HTMLButtonElement | null = null;
@@ -314,11 +314,12 @@ export class ShowcaseMode implements Mode {
     if (!g && this.onPickGame) {
       this.gamesBtn ??= this.sh.hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', tone: 'orange', onClick: () => this.onPickGame?.() });
       this.gamesBtn.dataset.cmd = 'games';
-      if (this.gamesBtn.parentElement !== this.sh.hud.left) this.sh.hud.left.appendChild(this.gamesBtn);
+      if (this.gamesBtn.parentElement !== this.sh.hud.right) this.sh.hud.right.prepend(this.gamesBtn);
     } else this.gamesBtn?.remove();
     if (!g && this.onPickMove) {
-      this.movesBtn ??= this.sh.hud.toolButton({ label: 'Moves', icon: MOVES_ICON, aria: 'Pick something for Happi to do', tone: 'navy', onClick: () => this.onPickMove?.() });
+      this.movesBtn ??= this.sh.hud.toolButton({ label: 'Actions', icon: MOVES_ICON, aria: 'Pick something for Happi to do', tone: 'navy', onClick: () => this.onPickMove?.() });
       if (this.movesBtn.parentElement !== this.sh.hud.right) this.sh.hud.right.appendChild(this.movesBtn);
+      // Games and Actions stack together at the bottom right (Dapo, 2026-11-20): Games at the bottom, Actions above
     } else this.movesBtn?.remove();
   }
 

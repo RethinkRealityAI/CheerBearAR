@@ -7,7 +7,6 @@ import { AppContext, useApp } from './context';
 import { AppController } from './controller';
 import { createAppStore } from './state/appState';
 import { ErrorBoundary } from './ErrorBoundary';
-import { GameChip } from './components/GameChip';
 import { PlayBridge } from './components/GamesPanel'; // mini games pause while the sheet is open (games-3)
 import { Toast } from './components/Toast';
 import { Overlays } from './components/Overlays';
@@ -75,7 +74,7 @@ function TopSlot() {
     apply();
     return () => { ro.disconnect(); root.style.removeProperty('--cb-top-reserve'); };
   }, []);
-  return <div ref={ref} className="cb-top-slot"><GameChip /><Toast /></div>;
+  return <div ref={ref} className="cb-top-slot"><Toast /></div>;
 }
 
 function Shell({ rootRef, stageRef }: { rootRef: React.RefObject<HTMLDivElement>; stageRef: React.RefObject<HTMLDivElement> }) {

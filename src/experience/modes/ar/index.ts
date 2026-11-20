@@ -34,6 +34,7 @@ const SCALE = { def: 0.5, min: 0.25, max: 1.3 }; // 0.5: she is half a metre tal
  * Move puts both back to the default.
  */
 const houseMul = (s: number) => THREE.MathUtils.clamp(s / SCALE.def, 0.6, 1.6);
+const STEADY = 0.5; // seconds the reticle must sit steadily on the floor before Place lights up
 const REACH = { min: 0.8, max: 3.6 }; // metres from the phone the reticle may sit
 const AREA = 3.0; // stage units she may walk from the stage centre
 const TAP_REACTIONS = ['Wave', 'Cheer', 'Sparkle'];
@@ -74,6 +75,12 @@ export class ArMode implements Mode {
   private hintT = 0;
   private limitedT = 0;
   private lastHint = '';
+  /** How long the reticle has sat on the floor without a break (Place waits for a steady half second). */
+  private steadyT = 0;
+  /** The floor point is past arm's reach (phone held level): the reticle would sit low on screen, so ask to tilt. */
+  private aimLow = false;
+  /** How long Happi has been off screen while placed (a hint offers Move to bring Happi back). */
+  private lostT = 0;
   // scratch
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private hit = new THREE.Vector3();
@@ -352,7 +359,7 @@ export class ArMode implements Mode {
 
   // ------------------------------------------------------------------ placing
   private canPlace(): boolean {
-    return this.state === 'placing' && this.sh.ctx.engine.settled() && this.reticle.visible;
+    return this.state === 'placing' && this.sh.ctx.engine.settled() && this.reticle.visible && this.steadyT >= STEADY;
   }
 
   private place(): void {
@@ -372,7 +379,7 @@ export class ArMode implements Mode {
     if (first) this.runner.trigger('Wave');
     this.syncHud();
     this.walk.placed();
-    this.flashHint('Walk in through her door', 5);
+    this.flashHint('Walk Happi to the door', 5);
   }
 
   /**
@@ -387,6 +394,15 @@ export class ArMode implements Mode {
     this.runner.cancel();
     this.collapseNow();
     this.walk.reset();
+    // Happi comes home to the stage's centre, facing you: the preview sits right on the reticle (Dapo, 2026-11-20:
+    // after a reset Happi must always be in view, never left wherever the joystick took them)
+    if (!this.game) {
+      this.stage.actor.position.set(0, 0, 0);
+      this.stage.actor.setHeading(0);
+      this.stage.actor.settle();
+    }
+    this.steadyT = 0;
+    this.lostT = 0;
     this.game?.pause('move'); // the round waits; Place carries on (the game keeps its state)
     this.scale = SCALE.def;
     this.applyScale();
@@ -457,6 +473,7 @@ export class ArMode implements Mode {
     if (this.state === 'placing') {
       const hasHit = settled && this.floorHit();
       this.reticle.visible = hasHit;
+      this.steadyT = hasHit ? this.steadyT + dt : 0;
       if (hasHit) {
         const first = !this.anchor.visible;
         this.reticle.position.copy(this.hit);
@@ -473,8 +490,9 @@ export class ArMode implements Mode {
         }
         this.anchor.visible = true;
       }
-      this.placeBtn.disabled = !hasHit;
-      this.placeBtn.textContent = hasHit ? 'Place Happi' : 'Getting ready…';
+      const ready = hasHit && this.steadyT >= STEADY;
+      this.placeBtn.disabled = !ready;
+      this.placeBtn.textContent = ready ? 'Place Happi' : 'Getting ready…';
     }
 
     // walking
@@ -498,8 +516,20 @@ export class ArMode implements Mode {
     st.root.updateMatrixWorld();
     st.update(dt, xr.camera);
     a.update(dt, xr.camera.getWorldPosition(this.w));
+    this.trackLost(dt, xr.camera);
     this.hints(dt, eng.tracking, settled);
   }
+
+  /** Count how long Happi has been off screen while placed (outside the house, no game). */
+  private trackLost(dt: number, cam: THREE.Camera): void {
+    if (this.state !== 'placed' || this.restoring || this.inside || this.game) { this.lostT = 0; return; }
+    const p = this.stage.actor.holder.getWorldPosition(this.pv); p.y += 0.25 * this.scale;
+    const v = this.pv2.copy(p).applyMatrix4(cam.matrixWorldInverse);
+    let on = v.z < -0.05;
+    if (on) { p.project(cam); on = Math.abs(p.x) < 1.05 && Math.abs(p.y) < 1.05; }
+    this.lostT = on ? 0 : this.lostT + dt;
+  }
+  private pv2 = new THREE.Vector3();
 
   /** Keep her in the play area and out of the house walls; the open doorway lets her in (./house-walk.ts). */
   private constrain(p: THREE.Vector3, door = true): void {
@@ -521,6 +551,7 @@ export class ArMode implements Mode {
       this.v.copy(this.hit).sub(this.camPos).setY(0);
       d = this.v.length();
     } else d = REACH.max;
+    this.aimLow = d > REACH.max;
     d = THREE.MathUtils.clamp(d, REACH.min, REACH.max);
     this.hit.copy(this.camPos).addScaledVector(this.camFwd, d).setY(0);
     if (got) {
@@ -552,14 +583,14 @@ export class ArMode implements Mode {
     if (walking && this.inside) hud.left.appendChild(this.leaveBtn);
     else this.leaveBtn.remove();
     this.walk.syncHud(walking && !this.game);
-    // Games (above Move) once she is placed, while no game runs and you're not inside the house
+    // Games and Actions stack together bottom right once Happi is placed (Games at the bottom), while no game runs
     if (walking && !this.inside && !this.game && this.onPickGame) {
       this.gamesBtn ??= hud.toolButton({ label: 'Games', icon: GAMES_ICON, aria: 'Play a game with Happi', tone: 'orange', onClick: () => this.onPickGame?.() });
       this.gamesBtn.dataset.cmd = 'games';
-      hud.left.appendChild(this.gamesBtn);
+      hud.right.prepend(this.gamesBtn);
     } else this.gamesBtn?.remove();
     if (walking && !this.game && this.onPickMove) {
-      this.movesBtn ??= hud.toolButton({ label: 'Moves', icon: MOVES_ICON, aria: 'Pick something for Happi to do', tone: 'navy', onClick: () => this.onPickMove?.() });
+      this.movesBtn ??= hud.toolButton({ label: 'Actions', icon: MOVES_ICON, aria: 'Pick something for Happi to do', tone: 'navy', onClick: () => this.onPickMove?.() });
       hud.right.appendChild(this.movesBtn);
     } else this.movesBtn?.remove();
   }
@@ -577,7 +608,9 @@ export class ArMode implements Mode {
     this.limitedT = tracking === 'LIMITED' ? this.limitedT + dt : 0;
     if (this.limitedT > 1.5) text = 'Move your phone slowly';
     else if (this.restoring || (this.state === 'placing' && !settled)) text = 'Point at the floor';
+    else if (this.state === 'placing' && this.aimLow) text = 'Tilt your phone down to the floor';
     else if (this.state === 'placing') text = 'Pinch to size, then Place';
+    else if (this.lostT > 4 && !this.inside && !this.game) text = "Can't see Happi? Tap Move to bring Happi back";
     else if (this.hintT > 0) {
       this.hintT -= dt;
       text = this.hintT > 0 ? this.lastHint : '';
