@@ -1,6 +1,6 @@
 // What the Selfie puts on your head and face, in face units (1 FU ~ 118-139 mm; x = wearer's left, y up, the face
 // looks down -z). Two looks:
-//   hood    Happi's own head from the model (src/happi/hood.ts, a plush costume hood), a vertical face oval centred on
+//   hood    Happi's own head from the model (src/happi/hood.ts, the head Happi wears), a vertical face oval centred on
 //           your face, the hood wraps the head (the code-built hood is the fallback); a depth-only head occluder hides what is behind your head.
 //   faces   flat "Happi faces" decals: red cheek dots, the little squirrel face on your forehead, and the four
 //           official expression heads that pop up beside you to match your face (smile, gasp, frown, sleepy).
@@ -154,13 +154,13 @@ export class FaceFx {
     this.place(null);
   }
 
-  /** Load the hood once: Happi's own head as a plush costume hood; the code-built hood if the model can't load. */
+  /** Load the hood once: Happi's own head as worn by Happi; the code-built hood if the model can't load. */
   async loadHood(_loader?: unknown): Promise<void> {
     if (this.hoodLoaded) return;
     const fit = new THREE.Group();
     fit.name = 'hood-fit';
     try {
-      fit.add(await buildModelHood()); // the plush hood (Dapo, round 5: the cartoon one is gone)
+      fit.add(await buildModelHood()); // the model head, no fur (Dapo, round 6: the same one Happi has)
     } catch (e) {
       console.warn('[selfie] model hood failed, using the drawn one', e);
       fit.add(buildHood());

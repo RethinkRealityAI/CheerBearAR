@@ -442,14 +442,15 @@ export class ShowcaseMode implements Mode {
 
   private playPitch = -1;
 
-  /** Halve the pixel ratio once if frames are slow (phones with big screens). */
+  /** Lower the pixel ratio once if frames are very slow (phones with big screens). */
   private adapt(dt: number): void {
-    if (this.dpr <= 1.25 || !this.renderer) return;
+    // only for really slow phones, and never below 1.5: dropping to 1.25 made Happi look soft on Android (2026-11-20)
+    if (this.dpr <= 1.5 || !this.renderer) return;
     this.frames++;
-    if (this.frames < 60) return;
-    this.slow = this.slow * 0.97 + (dt > 0.026 ? 0.03 : 0);
-    if (this.slow > 0.5) {
-      this.dpr = 1.25;
+    if (this.frames < 90) return;
+    this.slow = this.slow * 0.97 + (dt > 0.034 ? 0.03 : 0);
+    if (this.slow > 0.6) {
+      this.dpr = 1.5;
       this.renderer.setPixelRatio(this.dpr);
       this.resize();
     }

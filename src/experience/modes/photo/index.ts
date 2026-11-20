@@ -32,7 +32,9 @@ import { FILTER_CSS } from '../../capture/style-strip';
 
 const SIZE = { def: 1.0, min: 0.4, max: 1.8 }; // the frame's height in metres
 // the cutout standee. Dapo (round 5, after the phone test): at least twice the old 2.3 default; pinch from 1.6 up.
-const CUT = { def: 4.6, min: 1.6, max: 6.4 };
+// Dapo 2026-11-20: half the earlier 4.6 (iPhone showed it far too big). World units follow the phone's height when
+// the camera starts (responsive scale, CAM_H 1.3), so 2.3 units is about 2.3 m held at chest height.
+const CUT = { def: 2.3, min: 1.2, max: 4.6 };
 /** Happi beside the frame (model units: the frame is 1 tall), turned a little toward it, his right hand on its edge. */
 const BESIDE = { x: 0.74, z: 0.02, yaw: -0.38, h: 0.92, grip: new THREE.Vector3(0.47, 0.6, 0.15) };
 type Variant = 'frame' | 'cutout';

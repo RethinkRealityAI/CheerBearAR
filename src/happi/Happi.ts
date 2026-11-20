@@ -119,8 +119,13 @@ export class Happi implements BearCharacter {
   private mouthRound = 0;
   // tail spring
   private hipPrev = new THREE.Vector3();
-  private tailVel = 0;
   private tailKick = 0;
+  private tailAcc = new THREE.Vector3();
+  private tailVelPrev = new THREE.Vector3();
+  private tailActive = 0;
+  private tailYawPrev = 0;
+  private tailYawRate = 0;
+  private tailSpring: Array<{ s: number; sv: number; l: number; lv: number }> = [];
 
   static async load(opts: LoadHappiOptions = {}): Promise<Happi> {
     if (!sharedLoader) {
@@ -172,6 +177,8 @@ export class Happi implements BearCharacter {
           m.material = fm;
           m.renderOrder = 1;
         } else if (mat.isMeshStandardMaterial) {
+          // the rebuilt body's flat textures stay crisp at grazing angles (sleeves, coat sides) on every phone
+          if (mat.map) mat.map.anisotropy = 8;
           // Meshy: soft matte vinyl, no baked glow
           mat.roughness = Math.max(mat.roughness, 0.68);
           mat.metalness = 0;
@@ -541,25 +548,53 @@ export class Happi implements BearCharacter {
     this.model.updateMatrixWorld(true);
   }
 
-  /** The big squirrel tail: a slow wag, a bounce from the hips moving, a flick when a one-shot clip starts. */
+  /**
+   * The big squirrel tail follows the body (Dapo, round 6: "have the tail move a little as he runs"): the hips'
+   * motion in Happi's own space (bounce, sway, speeding up, turning) drives a chain of damped springs, root to tip,
+   * so the tail lags, swings and settles like a real one; plus a slow wag that grows with how much Happi is moving,
+   * and a flick when a one-shot move starts.
+   */
   private tailSway(dt: number): void {
     if (!this.tail.length) return;
+    const h = Math.min(0.05, Math.max(0, dt));
     const hips = this.model.getObjectByName('Hips');
-    if (hips) {
+    if (hips && h > 0) {
       hips.getWorldPosition(_v);
-      const vy = dt > 0 ? (_v.y - this.hipPrev.y) / dt : 0;
+      const inv = this.object.getWorldQuaternion(_q2).invert();
+      const vel = _v2.copy(_v).sub(this.hipPrev).divideScalar(h).applyQuaternion(inv);
       this.hipPrev.copy(_v);
-      this.tailVel += (THREE.MathUtils.clamp(-vy * 0.8, -0.6, 0.6) - this.tailVel) * (1 - Math.exp(-dt / 0.12));
+      if (vel.lengthSq() > 400) vel.set(0, 0, 0); // a teleport (placing, Move): not motion
+      const k = 1 - Math.exp(-h / 0.05);
+      this.tailAcc.x += ((vel.x - this.tailVelPrev.x) / h - this.tailAcc.x) * k;
+      this.tailAcc.y += ((vel.y - this.tailVelPrev.y) / h - this.tailAcc.y) * k;
+      this.tailAcc.z += ((vel.z - this.tailVelPrev.z) / h - this.tailAcc.z) * k;
+      this.tailVelPrev.copy(vel);
+      const speed = Math.hypot(vel.x, vel.y, vel.z);
+      this.tailActive += (Math.min(1, speed * 1.5) - this.tailActive) * (1 - Math.exp(-h / 0.4));
+      hips.getWorldQuaternion(_q);
+      const yaw = Math.atan2(2 * (_q.w * _q.y + _q.x * _q.z), 1 - 2 * (_q.y * _q.y + _q.x * _q.x));
+      let dy = yaw - this.tailYawPrev;
+      if (dy > Math.PI) dy -= Math.PI * 2; else if (dy < -Math.PI) dy += Math.PI * 2;
+      this.tailYawPrev = yaw;
+      this.tailYawRate += (dy / h - this.tailYawRate) * k;
     }
-    this.tailKick *= Math.exp(-dt * 2.2);
+    this.tailKick *= Math.exp(-h * 2.2);
     const t = this.time;
-    const energy = 0.6 + this.talk * 0.4 + this.tailKick;
+    const a = this.tailAcc;
+    const wag = Math.sin(t * (1.6 + this.tailActive * 2.4)) * (0.06 + this.tailActive * 0.12 + this.talk * 0.03)
+      + Math.sin(t * 9) * this.tailKick * 0.1;
+    // inertia: the tail swings away from where the hips accelerate, and against a turn
+    let side = THREE.MathUtils.clamp(-a.x * 0.03 - this.tailYawRate * 0.1, -0.4, 0.4) + wag;
+    let lift = THREE.MathUtils.clamp(-a.y * 0.022 + a.z * 0.012, -0.35, 0.35);
     this.tail.forEach((b, i) => {
-      const lag = i * 0.55;
-      const side = Math.sin(t * 1.6 - lag) * (0.07 + i * 0.05) * energy + Math.sin(t * 9 - lag) * this.tailKick * 0.08;
-      const lift = Math.sin(t * 1.1 - lag) * 0.04 * energy + this.tailVel * (0.25 + i * 0.15);
-      this.rotateAbout(b, UP, side);
-      this.rotateAbout(b, RIGHT, lift);
+      const sp = this.tailSpring[i] ?? (this.tailSpring[i] = { s: 0, sv: 0, l: 0, lv: 0 });
+      const w = 10 - i * 2.2, z = 0.32;
+      sp.sv += (-(w * w) * (sp.s - side) - 2 * z * w * sp.sv) * h; sp.s += sp.sv * h;
+      sp.lv += (-(w * w) * (sp.l - lift) - 2 * z * w * sp.lv) * h; sp.l += sp.lv * h;
+      sp.s = THREE.MathUtils.clamp(sp.s, -0.6, 0.6); sp.l = THREE.MathUtils.clamp(sp.l, -0.5, 0.5);
+      this.rotateAbout(b, UP, sp.s * (0.8 + i * 0.25));
+      this.rotateAbout(b, RIGHT, sp.l * (0.7 + i * 0.2));
+      side = sp.s; lift = sp.l; // the next segment follows this one (lag down the tail)
     });
     this.model.updateMatrixWorld(true);
   }

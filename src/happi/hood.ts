@@ -122,18 +122,16 @@ export function buildHood(): THREE.Group {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// The hood from the real model. public/models/happi-hood.glb is Happi's own head (HappiBody above the chin, rest
-// pose) with the smooth fitted white face panel and a vertical oval cut for your face
-// (tools/happi/build_hood2.py, round 5: opening 1.54 x 1.60 FU at build scale). In face units, opening centre at the
-// origin, front = +z. Round 5 (Dapo 2026-11-20): the plush costume look only (the cartoon one is gone), the head 15%
-// narrower and taller than Happi's own, and an oval big enough for a whole face and chin.
-//   plush  a matte base with a soft sheen and short combed fur in little tufts (shell fur: the surface drawn again a
-//          few times, pushed out along the normals, each layer keeping fewer hairs)
+// The hood from the real model. public/models/happi-hood.glb is Happi's own head from the rebuilt model (rest pose,
+// seams welded, the scan's crumpled neck cut off and a clean collar run down past the chin), with the smooth white
+// face panel and a vertical oval cut for your face (tools/happi/build_hood3.py: no decimation, full-size texture).
+// In face units, opening centre at the origin, front = +z.
+// Round 6 (Dapo 2026-11-20): "the same one Happi has... copy that to be used as the selfie prop": no fur, drawn with
+// Happi's own matte material, the same 15% narrower proportions, a little taller so it covers the chin.
 const HOOD_URL = '/models/happi-hood.glb';
-const FUR = { shells: 14, length: 0.055, density: 52, clump: 7 };
-/** The hood's size per axis: 15% narrower than the old 0.84, taller, same depth. The face oval is then about
- *  1.10 x 1.55 FU (whole face and chin on a real adult: one FU ~ 118 mm). */
-const HOOD_SCALE = { x: 0.714, y: 0.97, z: 0.84 };
+/** The hood's size per axis: 15% narrower than Happi's own head, slightly taller (round 6: covers the chin). The face
+ *  oval is then about 1.10 x 1.60 FU (whole face and chin on a real adult: one FU ~ 118 mm). */
+const HOOD_SCALE = { x: 0.714, y: 1.0, z: 0.84 };
 
 let hoodGltf: Promise<THREE.Group> | null = null;
 function loadHoodScene(): Promise<THREE.Group> {
@@ -141,87 +139,28 @@ function loadHoodScene(): Promise<THREE.Group> {
   return hoodGltf;
 }
 
-let furNoise: THREE.DataTexture | null = null;
-/** Fine hair noise in R, a soft tuft mask in G (blurred random blobs), so the fur grows in little clumps. */
-function noiseTex(): THREE.DataTexture {
-  if (furNoise) return furNoise;
-  const n = 128, a = new Uint8Array(n * n * 4);
-  const coarse = new Float32Array(16 * 16).map(() => Math.random());
-  const cs = (x: number, y: number) => coarse[((y + 16) % 16) * 16 + ((x + 16) % 16)];
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
-    const i = y * n + x;
-    const fx = (x / n) * 16, fy = (y / n) * 16, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
-    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
-    const c = (cs(ix, iy) * (1 - sx) + cs(ix + 1, iy) * sx) * (1 - sy) + (cs(ix, iy + 1) * (1 - sx) + cs(ix + 1, iy + 1) * sx) * sy;
-    a[i * 4] = Math.random() * 255; a[i * 4 + 1] = c * 255; a[i * 4 + 2] = Math.random() * 255; a[i * 4 + 3] = 255;
-  }
-  furNoise = new THREE.DataTexture(a, n, n);
-  furNoise.wrapS = furNoise.wrapT = THREE.RepeatWrapping;
-  furNoise.magFilter = THREE.LinearFilter;
-  furNoise.minFilter = THREE.LinearMipmapLinearFilter;
-  furNoise.generateMipmaps = true;
-  furNoise.needsUpdate = true;
-  return furNoise;
-}
-
-/** One fur layer: the surface pushed out by `k` of the fur length, combed slightly down; hairs thin out towards the
- *  tips, are darker at the roots (soft self-shadow) and catch a little light at the tips. */
-function furLayer(base: THREE.MeshStandardMaterial, k: number): THREE.MeshStandardMaterial {
-  const m = base.clone();
-  m.side = THREE.FrontSide;
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uK = { value: k };
-    sh.uniforms.uLen = { value: FUR.length };
-    sh.uniforms.uNoise = { value: noiseTex() };
-    sh.uniforms.uDensity = { value: FUR.density };
-    sh.uniforms.uClump = { value: FUR.clump };
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uK; uniform float uLen; varying vec2 vFurUv;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed += normalize(objectNormal) * uK * uLen;\ntransformed.y -= uK * uK * uLen * 0.35;\nvFurUv = uv;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform float uK; uniform sampler2D uNoise; uniform float uDensity; uniform float uClump; varying vec2 vFurUv;')
-      .replace('#include <map_fragment>', [
-        '#include <map_fragment>',
-        'float hair = texture2D(uNoise, vFurUv * uDensity).r;',
-        'float tuft = texture2D(uNoise, vFurUv * uClump).g;',
-        'float keep = hair * mix(0.75, 1.15, tuft);',
-        'if (keep < 0.22 + uK * 0.68) discard;',
-        'diffuseColor.rgb *= mix(0.68, 1.06, uK) * mix(0.94, 1.04, tuft);',
-      ].join('\n'));
-  };
-  m.customProgramCacheKey = () => `fur2-${k.toFixed(3)}`;
-  return m;
-}
-
-/** Happi's head as a plush costume hood, from the model. */
+/** Happi's head as a costume hood, from the model, looking exactly like the head Happi wears. */
 export async function buildModelHood(): Promise<THREE.Group> {
   const scene = await loadHoodScene();
   const root = new THREE.Group();
-  root.name = 'happi-hood-plush';
+  root.name = 'happi-hood-model';
   const src = scene.clone(true);
-  const meshes: THREE.Mesh[] = [];
-  src.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
-  for (const mesh of meshes) {
+  src.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.renderOrder = 1;
     const mat = mesh.material as THREE.MeshStandardMaterial;
     const inside = mat.name === 'HoodInside';
-    mesh.renderOrder = 1;
-    // a matte, felt-like base with a warm sheen (the inside a dark, plain lining)
-    const phys = new THREE.MeshPhysicalMaterial({
-      map: mat.map, color: inside ? new THREE.Color(0x5a1606) : mat.color, roughness: 1,
-      sheen: inside ? 0 : 1, sheenRoughness: 0.45, sheenColor: new THREE.Color(inside ? 0x000000 : 0xffd9b8),
+    // the same soft matte vinyl as Happi (src/happi/Happi.ts); the inside a dark plain lining
+    const m = new THREE.MeshStandardMaterial({
+      map: mat.map, color: inside ? new THREE.Color(0x5a1606) : mat.color,
+      roughness: Math.max(0.68, mat.roughness), metalness: 0,
       side: inside ? THREE.DoubleSide : THREE.FrontSide,
     });
-    phys.name = mat.name;
-    mesh.material = phys;
-    if (inside) continue;
-    for (let i = 1; i <= FUR.shells; i++) {
-      const layer = new THREE.Mesh(mesh.geometry, furLayer(new THREE.MeshStandardMaterial({ map: mat.map, color: mat.color, roughness: 1 }), i / FUR.shells));
-      layer.renderOrder = 1;
-      layer.name = `fur-${i}`;
-      layer.position.copy(mesh.position); layer.quaternion.copy(mesh.quaternion); layer.scale.copy(mesh.scale);
-      (mesh.parent ?? src).add(layer);
-    }
-  }
+    if (m.map) m.map.anisotropy = 8;
+    m.name = mat.name;
+    mesh.material = m;
+  });
   // opening centre on the face's oval, front towards the camera (the face looks down -z)
   src.rotation.y = Math.PI;
   src.scale.set(HOOD_SCALE.x, HOOD_SCALE.y, HOOD_SCALE.z);

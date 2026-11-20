@@ -40,7 +40,8 @@
 [[headers]]
   for = "/models/*"
   [headers.values]
-    Cache-Control = "public, max-age=604800"
+    # revalidate every load (ETag): a rebuilt model must reach phones that opened an older one
+    Cache-Control = "public, max-age=0, must-revalidate"
 [[headers]]
   for = "/media/*"
   [headers.values]
