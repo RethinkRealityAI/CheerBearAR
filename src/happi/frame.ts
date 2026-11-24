@@ -37,7 +37,7 @@ export async function happiPhotoFrame(): Promise<THREE.Group> {
   // logo on the bottom bar
   try {
     const img = new Image();
-    img.src = '/img/happi-logo-sm.webp';
+    img.src = import.meta.env.BASE_URL + 'img/happi-logo-sm.webp';
     await img.decode();
     const lh = (O.y0 - B.y0) * PX * 0.62, lw = lh * (img.width / img.height);
     x.drawImage(img, (c.width - lw) / 2, Y(B.y0) - (O.y0 - B.y0) * PX * 0.5 - lh / 2 + 6, lw, lh);

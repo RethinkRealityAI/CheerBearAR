@@ -17,7 +17,7 @@ export function NotReady({ name }: { name: string }) {
       <div className="cb-recover-card">
         <h1>Coming soon</h1>
         <p>{name} isn’t here yet.</p>
-        <a className="cb-btn is-primary is-wide" href="/">Go to Happi</a>
+        <a className="cb-btn is-primary is-wide" href={import.meta.env.BASE_URL}>Go to Happi</a>
       </div>
     </main>
   );
@@ -30,7 +30,7 @@ export function NotFound() {
         <div className="cb-recover-badge" aria-hidden="true"><span /><span /><span /><span /><span /><span /></div>
         <h1>This page wandered off</h1>
         <p>Let’s go back and find Happi.</p>
-        <a className="cb-btn is-primary is-wide is-big" href="/">Go to Happi</a>
+        <a className="cb-btn is-primary is-wide is-big" href={import.meta.env.BASE_URL}>Go to Happi</a>
       </div>
     </main>
   );

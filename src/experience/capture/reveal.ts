@@ -14,8 +14,8 @@ const OPENING = { x: 505, y: 875, w: 495, h: 620 }; // in SRC pixels
 const PAW = { x: 420, y: 1270, w: 230, h: 250 }; // where the paw can cover the opening (SRC pixels)
 const FADE_IN = { at: 9.05, dur: 0.6 };
 
-export const REVEAL_URL = '/media/capture/reveal.mp4';
-export const BTS_URL = '/media/capture/bts.mp4';
+export const REVEAL_URL = import.meta.env.BASE_URL + 'media/capture/reveal.mp4';
+export const BTS_URL = import.meta.env.BASE_URL + 'media/capture/bts.mp4';
 
 function makeVideo(src: string): HTMLVideoElement {
   const v = document.createElement('video');

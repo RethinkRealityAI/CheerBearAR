@@ -23,7 +23,7 @@ export class PropKit {
     await Promise.all(names.map(async (n) => {
       const code = happiProp(n);
       if (code) { this.src.set(n, code); progress(++done / names.length); return; }
-      const g = await assets.gltf(`/models/props/${FILES[n]}.glb`);
+      const g = await assets.gltf(`${import.meta.env.BASE_URL}models/props/${FILES[n]}.glb`);
       g.scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;

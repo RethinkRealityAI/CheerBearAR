@@ -18,8 +18,8 @@ export const PHOTO_FILTERS: Array<{ id: PhotoFilter; label: string }> = [
   { id: 'natural', label: 'Natural' }, { id: 'warm', label: 'Warm' }, { id: 'sakura', label: 'Sakura' }, { id: 'mono', label: 'Mono' },
 ];
 
-const WM = { url: '/img/parade-wordmark.webp', w: 600, h: 127 };
-const LOGO = { url: '/img/happi-logo.webp', w: 769, h: 309 };
+const WM = { url: import.meta.env.BASE_URL + 'img/parade-wordmark.webp', w: 600, h: 127 };
+const LOGO = { url: import.meta.env.BASE_URL + 'img/happi-logo.webp', w: 769, h: 309 };
 
 let art: Promise<void> | null = null;
 let wm: HTMLImageElement | null = null;

@@ -79,7 +79,7 @@ export function styleStrip(frame: FrameStyle, filter: PhotoFilter, onPick: (fram
       g.drawImage(page, sx, sy, sw, sw, 0, 0, PX, PX);
     }
   });
-  void loadImage('/img/happi/head-happy.webp').then((img) => {
+  void loadImage(import.meta.env.BASE_URL + 'img/happi/head-happy.webp').then((img) => {
     for (const [id, b] of filterBtns) {
       const g = b.querySelector('canvas')!.getContext('2d', { willReadFrequently: true })!;
       g.fillStyle = '#8fd0f2'; g.fillRect(0, 0, PX, PX);

@@ -18,7 +18,9 @@ export interface ApiOptions {
 /** Base URL for the API. Same origin by default; `VITE_API_BASE` can point a static preview at another deploy. */
 export function apiBase(): string {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return (env?.VITE_API_BASE || '').replace(/\/+$/, '');
+  if (env?.VITE_API_BASE) return env.VITE_API_BASE.replace(/\/+$/, '');
+  // Under /happi/ on medialife.ai the API is proxied at /happi/api/*.
+  return /^\/happi(\/|$)/.test(window.location.pathname) ? '/happi' : '';
 }
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {

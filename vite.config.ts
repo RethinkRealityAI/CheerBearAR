@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 // Local dev: `npm run dev` serves the app; the Netlify functions are reached through the proxy below
 // (see README "Local development" for how to run them).
+// Built under /happi/ so the same build serves happi-ar.netlify.app (rewrite in netlify.toml) and medialife.ai/happi/
+// (proxied). Every asset URL goes through import.meta.env.BASE_URL.
 export default defineConfig({
+  base: '/happi/',
   plugins: [react()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {

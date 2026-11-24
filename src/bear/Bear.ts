@@ -101,7 +101,7 @@ export class Bear implements BearCharacter {
       sharedLoader = new GLTFLoader();
       sharedLoader.setMeshoptDecoder(MeshoptDecoder);
     }
-    const gltf = await sharedLoader.loadAsync(opts.url ?? '/models/cheer-bear.glb', (e) => {
+    const gltf = await sharedLoader.loadAsync(opts.url ?? import.meta.env.BASE_URL + 'models/cheer-bear.glb', (e) => {
       if (e.total) opts.onProgress?.(Math.min(0.99, e.loaded / e.total));
     });
     opts.onProgress?.(1);

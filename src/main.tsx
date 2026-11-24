@@ -23,13 +23,16 @@ function lazyPage(path: string, name: string) {
 // when it was hidden. Start clean instead of showing a scene that cannot talk.
 window.addEventListener('pageshow', (e) => { if (e.persisted) window.location.reload(); });
 
+// Served at the site root on happi-ar.netlify.app and under /happi/ on medialife.ai.
+const basename = /^\/happi(\/|$)/.test(window.location.pathname) ? '/happi' : '';
+
 const AdminPage = lazyPage('./admin/AdminPage.tsx', 'The admin panel');
 const LipSyncLab = lazyPage('./bear/lab/LipSyncLab.tsx', 'The lip sync lab');
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <BrowserRouter>
+      <BrowserRouter basename={basename}>
         <Routes>
           <Route path="/" element={<App />} />
           <Route path="/admin/*" element={<Suspense fallback={<RouteLoading />}><AdminPage /></Suspense>} />

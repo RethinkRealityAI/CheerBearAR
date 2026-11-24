@@ -15,7 +15,7 @@ export class Media {
   soundOk = false;
 
   constructor() {
-    this.theme = makeVideo('/media/theme.mp4', { loop: true, muted: true });
+    this.theme = makeVideo(import.meta.env.BASE_URL + 'media/theme.mp4', { loop: true, muted: true });
     this.theme.volume = 0.6;
     this.themeTexture = new THREE.VideoTexture(this.theme);
     this.themeTexture.colorSpace = THREE.SRGBColorSpace;

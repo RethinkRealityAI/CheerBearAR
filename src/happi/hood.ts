@@ -128,7 +128,7 @@ export function buildHood(): THREE.Group {
 // In face units, opening centre at the origin, front = +z.
 // Round 6 (Dapo 2026-11-20): "the same one Happi has... copy that to be used as the selfie prop": no fur, drawn with
 // Happi's own matte material, the same 15% narrower proportions, a little taller so it covers the chin.
-const HOOD_URL = '/models/happi-hood.glb';
+const HOOD_URL = import.meta.env.BASE_URL + 'models/happi-hood.glb';
 /** The hood's size per axis: 15% narrower than Happi's own head, slightly taller (round 6: covers the chin). The face
  *  oval is then about 1.10 x 1.60 FU (whole face and chin on a real adult: one FU ~ 118 mm). */
 const HOOD_SCALE = { x: 0.714, y: 1.0, z: 0.84 };

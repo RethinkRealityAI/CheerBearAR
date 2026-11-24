@@ -136,7 +136,7 @@ export class FaceFx {
     this.group.add(this.heads);
     const loader = new THREE.TextureLoader();
     for (const m of MOODS) {
-      const tex = loader.load(`/img/happi/head-${m}.webp`);
+      const tex = loader.load(`${import.meta.env.BASE_URL}img/happi/head-${m}.webp`);
       tex.colorSpace = THREE.SRGBColorSpace;
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(0.62, 0.57),

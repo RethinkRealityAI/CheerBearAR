@@ -13,7 +13,7 @@ export const CUTOUT_HOLE = { x: 0.0040, y: 0.6122 - 16 / 1440, rx: 0.0652, ry: 0
 /** The art has 16 px of clear margin under the shoes (of 1440): the board is lowered by that much so the shoes stand
  *  on the floor, not 1 % of the height above it (Dapo, 2026-11-20: "floating slightly above the reticle"). */
 const FOOT_PAD = 16 / 1440;
-const ART = '/img/happi/cutout.webp';
+const ART = import.meta.env.BASE_URL + 'img/happi/cutout.webp';
 
 export function happiCutout(): THREE.Group {
   const g = new THREE.Group();

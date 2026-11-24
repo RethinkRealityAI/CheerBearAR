@@ -17,7 +17,7 @@ export interface LoadHappiOptions {
   lipSync?: Partial<LipSyncConfig>;
 }
 
-export const HAPPI_MODEL_URL = '/models/happi.glb';
+export const HAPPI_MODEL_URL = import.meta.env.BASE_URL + 'models/happi.glb';
 
 /** Logical clip -> GLB clip names (first found wins) and whether it loops. */
 const CLIP_MAP: Record<BearClip, { names: string[]; loop: boolean }> = {

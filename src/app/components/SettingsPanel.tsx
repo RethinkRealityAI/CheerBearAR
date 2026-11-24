@@ -140,7 +140,7 @@ export function SettingsPanel() {
             {on('admin_allow_user_audio_to_openai') && <Row k="Caller audio transcribed" v={s.ui.staff.userAudioToOpenAI ? 'yes' : 'no'} />}
             {on('admin_english_only') && <Row k="English-only transcripts" v={s.ui.staff.englishOnly ? 'yes' : 'no'} />}
           </dl>
-          <p>Change these in the <a href="/admin">admin panel</a>.</p>
+          <p>Change these in the <a href={`${import.meta.env.BASE_URL}admin`}>admin panel</a>.</p>
         </details>
       )}
     </div>

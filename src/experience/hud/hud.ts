@@ -42,7 +42,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 /** Happi's head hopping on a sky disc, swapping expression on every landing (loading screen + mode-change cover). */
 const HEADS = ['happy', 'surprised', 'grumpy', 'sleepy'];
 function headHop(cls: string): string {
-  const imgs = HEADS.map((n, i) => `<img src="/img/happi/head-${n}.webp" alt="" width="240" height="222" style="--k:${i}" decoding="async">`).join('');
+  const imgs = HEADS.map((n, i) => `<img src="${import.meta.env.BASE_URL}img/happi/head-${n}.webp" alt="" width="240" height="222" style="--k:${i}" decoding="async">`).join('');
   return `<div class="hh ${cls}" aria-hidden="true"><i class="hh-ring"></i><i class="hh-shadow"></i><span class="hh-head">${imgs}</span></div>`;
 }
 
@@ -98,13 +98,13 @@ export class Hud implements HudApi {
     this.splash.setAttribute('aria-label', opts.title);
     this.splash.innerHTML = `
       <div class="sp-col">
-        <div class="sp-top"><div class="sp-clouds" aria-hidden="true"><i></i><i></i><i></i></div><p class="sp-eyebrow"><img class="wm" src="/img/parade-wordmark.webp" alt="Japan Parade &amp; Street Fair" width="600" height="127"><b>Official Mascot</b></p><img class="title" src="/img/happi-logo.webp" alt="${esc(opts.title)}" width="769" height="309"></div>
+        <div class="sp-top"><div class="sp-clouds" aria-hidden="true"><i></i><i></i><i></i></div><p class="sp-eyebrow"><img class="wm" src="${import.meta.env.BASE_URL}img/parade-wordmark.webp" alt="Japan Parade &amp; Street Fair" width="600" height="127"><b>Official Mascot</b></p><img class="title" src="${import.meta.env.BASE_URL}img/happi-logo.webp" alt="${esc(opts.title)}" width="769" height="309"></div>
         <div class="sp-bottom">
           <p class="lead">${esc(opts.lead)}</p>
           <button type="button" class="cbx-start" disabled>Loading…</button>
           <div class="cbx-load" role="progressbar" aria-label="Loading" aria-valuemin="0" aria-valuemax="100"><i></i></div>
           <p class="sp-credit">Designed by Japan Parade 2026 Grand Marshal <b>Acky Bright</b></p>
-          <img class="act-by" src="/img/activated-by.webp" alt="Activated by MEDIALIFE" width="148" height="58">
+          <img class="act-by" src="${import.meta.env.BASE_URL}img/activated-by.webp" alt="Activated by MEDIALIFE" width="148" height="58">
         </div>
       </div>
       <div class="sp-hero"><div class="sp-wait" aria-hidden="true">${headHop('hh-sm')}</div></div>`;
@@ -133,7 +133,7 @@ export class Hud implements HudApi {
     const lockup = el('div', 'lockup');
     lockup.setAttribute('role', 'img');
     lockup.setAttribute('aria-label', `Japan Parade and Street Fair, ${opts.title} AR`);
-    lockup.innerHTML = `<img class="wm" src="/img/parade-wordmark.webp" alt="" width="600" height="127"><img class="hp" src="/img/happi-logo-sm.webp" alt="" width="384" height="154"><b class="ar" aria-hidden="true">AR</b>`;
+    lockup.innerHTML = `<img class="wm" src="${import.meta.env.BASE_URL}img/parade-wordmark.webp" alt="" width="600" height="127"><img class="hp" src="${import.meta.env.BASE_URL}img/happi-logo-sm.webp" alt="" width="384" height="154"><b class="ar" aria-hidden="true">AR</b>`;
     row1.appendChild(lockup);
     dock.appendChild(row1);
     top.append(dock);

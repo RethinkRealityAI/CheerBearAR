@@ -19,6 +19,12 @@
   port = 8888
   autoLaunch = false
 
+# The build uses base /happi/ (medialife.ai/happi/ proxies here): serve those URLs from the root.
+[[redirects]]
+  from = "/happi/*"
+  to = "/:splat"
+  status = 200
+
 # Unknown /api/* paths must not fall through to the SPA with a 200 (functions with a `path` match first).
 [[redirects]]
   from = "/api/*"
